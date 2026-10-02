@@ -265,17 +265,18 @@ sb.auth.onAuthStateChange((_event, session) => {
 });
 
 async function loadProfile(){
-  const { data, error } = await sb.from('profiles').select('username,balance,last_daily').eq('id', user.id).single();
+  const { data, error } = await sb.from('profiles').select('username,balance').eq('id', user.id).single();
   if (error) return toast(error.message);
   $('who').textContent = data.username;
   setBalance(data.balance);
-  nextDaily = data.last_daily ? new Date(data.last_daily).getTime() + DAY : 0;
+  const nd = await sb.rpc('daily_next');
+  nextDaily = nd.data ? new Date(nd.data).getTime() : 0;
   updateDaily();
   drawGraph(1);
 }
 
 /* ---------- daily reward ---------- */
-const DAY = 24 * 60 * 60 * 1000, DAILY_AMOUNT = 250;
+const DAILY_AMOUNT = 250; // resets at midnight Pacific
 let nextDaily = 0;
 function updateDaily(){
   const b = $('daily'), left = nextDaily - Date.now();
