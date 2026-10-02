@@ -110,13 +110,14 @@ begin
 
   if rd.status = 'crashed' then
     return json_build_object('crashed', true, 'crash_point', rd.crash_point);
-  elsif rd.status = 'cashed' then
-    return json_build_object('crashed', false);
   end if;
 
   m := exp(0.09 * extract(epoch from clock_timestamp() - rd.started_at));
   if m >= rd.crash_point then
-    update crash_rounds set status = 'crashed' where id = rd.id;
+    if rd.status = 'live' then
+      update crash_rounds set status = 'crashed' where id = rd.id;
+    end if;
+    -- cashed rounds stay 'cashed'; the crash point is only revealed once the ghost reaches it
     return json_build_object('crashed', true, 'crash_point', rd.crash_point);
   end if;
 

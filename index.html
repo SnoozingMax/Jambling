@@ -71,6 +71,12 @@ input:focus{border-color:var(--ink)}
 canvas{width:100%;height:100%;display:block}
 .mult{position:absolute;top:18px;left:0;right:0;text-align:center;font-family:"IBM Plex Mono";font-weight:600;font-size:46px;pointer-events:none}
 .sub{position:absolute;top:76px;left:0;right:0;text-align:center;font-family:Fraunces;font-size:18px;pointer-events:none}
+.toggle{display:flex;align-items:center;gap:10px;text-transform:none;letter-spacing:0;font-size:14px;color:var(--ink);margin:0 0 16px;cursor:pointer;user-select:none}
+.toggle input{display:none}
+.toggle span{width:38px;height:22px;border-radius:999px;background:var(--line);position:relative;transition:.15s;flex:none}
+.toggle span::after{content:'';position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:var(--muted);transition:.15s}
+.toggle input:checked + span{background:var(--win)}
+.toggle input:checked + span::after{left:19px;background:#fff}
 .hint{font-size:12px;color:var(--muted);margin-top:6px}
 
 /* board */
@@ -181,6 +187,7 @@ tr.me td{color:var(--accent)}
         <label>Auto cash out (optional)</label>
         <input id="autoCash" type="number" min="1.01" step="0.01" placeholder="e.g. 2.00">
       </div>
+      <label class="toggle"><input type="checkbox" id="ghostToggle" checked><span></span>Ghost after cash out</label>
       <button class="go" id="crashBtn">Launch</button>
       <div class="hint">Cash out before it crashes. Too late and you lose the bet.</div>
     </div>
@@ -307,7 +314,7 @@ document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
   document.querySelectorAll('nav button').forEach(x => x.classList.toggle('on', x === b));
   ['coin', 'crash', 'board'].forEach(t => $('tab-' + t).hidden = t !== b.dataset.tab);
   if (b.dataset.tab === 'board') loadBoard();
-  if (b.dataset.tab === 'crash' && !round) drawGraph(1);
+  if (b.dataset.tab === 'crash' && !round && !ghost) drawGraph(1);
 });
 
 /* ---------- bet chips ---------- */
@@ -355,7 +362,7 @@ function niceStep(range){
   return (n < 1.5 ? 1 : n < 3 ? 2 : n < 7 ? 5 : 10) * p;
 }
 
-function drawGraph(m, state){ // state: undefined | 'lost' | 'won'
+function drawGraph(m, state, mark){ // state: undefined | 'lost' | 'won' | 'ghost'; mark: cash-out multiplier
   const c = $('graph'), ctx = c.getContext('2d');
   const w = c.clientWidth, h = c.clientHeight, d = window.devicePixelRatio || 1;
   if (!w) return;
@@ -382,7 +389,7 @@ function drawGraph(m, state){ // state: undefined | 'lost' | 'won'
   for (let s = 0; s <= maxT; s += ts) ctx.fillText(Math.round(s) + 's', X(s) - 6, h - pad.b + 8);
 
   if (m <= 1) return;
-  const color = state === 'lost' ? css('--lose') : state === 'won' ? css('--win') : css('--ink');
+  const color = state === 'lost' ? css('--lose') : state === 'won' ? css('--win') : state === 'ghost' ? css('--muted') : css('--ink');
 
   const path = () => {
     ctx.beginPath();
@@ -393,13 +400,22 @@ function drawGraph(m, state){ // state: undefined | 'lost' | 'won'
   };
   // fill
   path(); ctx.lineTo(X(t), Y(1)); ctx.lineTo(X(0), Y(1)); ctx.closePath();
-  ctx.fillStyle = state === 'lost' ? 'rgba(255,77,69,.12)' : state === 'won' ? 'rgba(47,191,107,.12)' : 'rgba(255,90,60,.12)';
+  ctx.fillStyle = state === 'ghost' ? 'rgba(141,138,148,.08)' : state === 'lost' ? 'rgba(255,77,69,.12)' : state === 'won' ? 'rgba(47,191,107,.12)' : 'rgba(255,90,60,.12)';
   ctx.fill();
   // line
   path(); ctx.strokeStyle = color; ctx.lineWidth = 3; ctx.lineJoin = 'round'; ctx.stroke();
   // tip
   ctx.beginPath(); ctx.arc(X(t), Y(m), 6, 0, Math.PI * 2);
   ctx.fillStyle = state ? color : css('--accent'); ctx.fill();
+  // cash-out marker
+  if (mark && mark > 1) {
+    const mx = X(Math.log(mark) / K), my = Y(mark);
+    ctx.beginPath(); ctx.arc(mx, my, 7, 0, Math.PI * 2);
+    ctx.fillStyle = css('--win'); ctx.fill();
+    ctx.lineWidth = 2; ctx.strokeStyle = css('--card'); ctx.stroke();
+    ctx.font = '600 12px "IBM Plex Mono"'; ctx.fillStyle = css('--win'); ctx.textBaseline = 'bottom';
+    ctx.fillText(mark.toFixed(2) + '×', Math.min(mx + 10, w - 60), my - 6);
+  }
 }
 
 function setCrashBtn(live){
@@ -413,6 +429,7 @@ $('crashBtn').onclick = () => round ? cashOut() : startCrash();
 
 async function startCrash(){
   const bet = readBet('crashBet'); if (!bet) return;
+  stopGhost();
   $('crashBtn').disabled = true;
   $('crashMsg').textContent = ''; $('crashMsg').className = 'sub';
   $('mult').className = 'mult';
@@ -460,6 +477,7 @@ function endRound(won, m, payout){
   round.done = true;
   cancelAnimationFrame(raf); clearInterval(poll);
   m = Number(m);
+  if (won && $('ghostToggle').checked) { startGhost(round, m, payout); round = null; setCrashBtn(false); return; }
   drawGraph(m, won ? 'won' : 'lost');
   $('mult').textContent = m.toFixed(2) + '×';
   $('mult').className = 'mult ' + (won ? 'win' : 'lose');
@@ -469,7 +487,51 @@ function endRound(won, m, payout){
   setCrashBtn(false);
 }
 
-window.addEventListener('resize', () => { if (!round) drawGraph(1); });
+
+/* ---------- ghost run: keep the rocket going after you cash out ---------- */
+let ghost = null, ghostRaf = null, ghostPoll = null;
+function startGhost(rd, cashM, payout){
+  ghost = { id: rd.id, t0: rd.t0, cashM, payout };
+  $('mult').className = 'mult';
+  $('crashMsg').textContent = `Cashed out +${fmt(payout)} at ${cashM.toFixed(2)}×`;
+  $('crashMsg').className = 'sub win';
+  ghostRaf = requestAnimationFrame(ghostTick);
+  ghostPoll = setInterval(ghostCheck, 250);
+}
+function ghostTick(){
+  if (!ghost) return;
+  const m = Math.exp(K * (performance.now() - ghost.t0) / 1000);
+  drawGraph(m, 'ghost', ghost.cashM);
+  $('mult').textContent = m.toFixed(2) + '×';
+  $('mult').style.color = css('--muted');
+  ghostRaf = requestAnimationFrame(ghostTick);
+}
+async function ghostCheck(){
+  if (!ghost) return;
+  const g = ghost;
+  const { data } = await sb.rpc('crash_status', { p_round: g.id });
+  if (ghost !== g || !data?.crashed) return;
+  const cp = Number(data.crash_point);
+  stopGhost();
+  drawGraph(cp, 'lost', g.cashM);
+  $('mult').style.color = '';
+  $('mult').textContent = cp.toFixed(2) + '×';
+  $('mult').className = 'mult lose';
+  $('crashMsg').textContent = `Cashed ${g.cashM.toFixed(2)}× · crashed at ${cp.toFixed(2)}×`;
+  $('crashMsg').className = 'sub win';
+}
+function stopGhost(){
+  ghost = null;
+  cancelAnimationFrame(ghostRaf); clearInterval(ghostPoll);
+  $('mult').style.color = '';
+}
+try { const v = localStorage.getItem('jmb-ghost'); if (v !== null) $('ghostToggle').checked = v === '1'; } catch {}
+$('ghostToggle').onchange = e => {
+  try { localStorage.setItem('jmb-ghost', e.target.checked ? '1' : '0'); } catch {}
+  if (!e.target.checked && ghost) { const g = ghost; stopGhost(); drawGraph(g.cashM, 'won'); $('mult').textContent = g.cashM.toFixed(2) + '×'; $('mult').className = 'mult win'; }
+};
+
+window.addEventListener('resize', () => { if (!round && !ghost) drawGraph(1); });
 
 /* ---------- leaderboard ---------- */
 async function loadBoard(){
