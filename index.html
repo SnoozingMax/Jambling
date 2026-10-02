@@ -101,17 +101,13 @@ tr.me td{color:var(--accent)}
     <h1>Jambling</h1>
     <p id="authSub">Sign in to keep your coins.</p>
     <form id="authForm" class="card">
-      <div class="field" id="userField" hidden>
+      <div class="field">
         <label>Username</label>
-        <input id="username" type="text" maxlength="20" autocomplete="username">
+        <input id="username" type="text" required maxlength="20" autocomplete="username" autocapitalize="off" spellcheck="false">
       </div>
       <div class="field">
-        <label>Email</label>
-        <input id="email" type="email" required autocomplete="email">
-      </div>
-      <div class="field">
-        <label>Password</label>
-        <input id="password" type="password" required minlength="6" autocomplete="current-password">
+        <label>Passcode (4-6 digits)</label>
+        <input id="password" type="password" required inputmode="numeric" pattern="[0-9]{4,6}" minlength="4" maxlength="6" autocomplete="current-password">
       </div>
       <button class="go" id="authBtn">Sign in</button>
       <div class="msg" id="authMsg"></div>
@@ -231,7 +227,6 @@ function readBet(id){
 let mode = 'in';
 function renderAuth(){
   const up = mode === 'up';
-  $('userField').hidden = !up;
   $('authBtn').textContent = up ? 'Create account' : 'Sign in';
   $('authSub').textContent = up ? 'Start with 1,000 coins.' : 'Sign in to keep your coins.';
   $('authSwitch').textContent = up ? 'Have an account? Sign in' : 'New here? Create an account';
@@ -240,14 +235,20 @@ function renderAuth(){
 $('authSwitch').onclick = () => { mode = mode === 'in' ? 'up' : 'in'; renderAuth(); };
 $('authForm').onsubmit = async e => {
   e.preventDefault();
-  const email = $('email').value.trim(), password = $('password').value;
+  const name = $('username').value.trim(), code = $('password').value;
+  if (!/^[A-Za-z0-9_]{3,20}$/.test(name)) { $('authMsg').textContent = 'Username: 3-20 letters, numbers, or _'; return; }
+  if (!/^[0-9]{4,6}$/.test(code)) { $('authMsg').textContent = 'Passcode must be 4-6 digits'; return; }
+  // Supabase needs an email + 6+ char password, so build them behind the scenes
+  const email = name.toLowerCase() + '@users.jambling.app';
+  const password = 'jmb-' + code;
   $('authBtn').disabled = true; $('authMsg').textContent = '';
   let res;
   if (mode === 'up') {
-    res = await sb.auth.signUp({ email, password, options: { data: { username: $('username').value.trim() } } });
-    if (!res.error && !res.data.session) $('authMsg').textContent = 'Check your email to confirm, then sign in.';
+    res = await sb.auth.signUp({ email, password, options: { data: { username: name } } });
+    if (res.error && /already/i.test(res.error.message)) res.error.message = 'That username is taken';
   } else {
     res = await sb.auth.signInWithPassword({ email, password });
+    if (res.error && /invalid/i.test(res.error.message)) res.error.message = 'Wrong username or passcode';
   }
   if (res.error) $('authMsg').textContent = res.error.message;
   $('authBtn').disabled = false;
