@@ -1,16 +1,17 @@
 <!doctype html>
 <html lang="en">
 <head>
+<meta name="color-scheme" content="dark">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Lucky Ledger</title>
+<title>Jambling</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,800&family=IBM+Plex+Mono:wght@400;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
 :root{
-  --paper:#f7f4ec; --card:#fffdf8; --ink:#17140f; --muted:#7c7466; --line:#e4ddcd;
-  --accent:#e2482d; --win:#1d8a4b; --lose:#d0342c; --gold:#e8b23a;
+  --paper:#0f0f12; --card:#18181d; --ink:#f2efe8; --muted:#8d8a94; --line:#2a2a31; --field:#111115; --grid:#24242a; --gridtext:#6c6974;
+  --accent:#ff5a3c; --win:#2fbf6b; --lose:#ff4d45; --gold:#e8b23a;
 }
 *{box-sizing:border-box}
 html,body{margin:0}
@@ -24,7 +25,7 @@ header{display:flex;align-items:center;justify-content:space-between;gap:12px;fl
 .logo{font-family:Fraunces,serif;font-weight:800;font-size:28px;letter-spacing:-.5px}
 .logo span{color:var(--accent)}
 .right{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-.bal{display:flex;align-items:center;gap:8px;background:var(--ink);color:#fff;padding:7px 14px 7px 8px;border-radius:999px;font-family:"IBM Plex Mono";font-weight:600}
+.bal{display:flex;align-items:center;gap:8px;background:var(--line);color:var(--ink);padding:7px 14px 7px 8px;border-radius:999px;font-family:"IBM Plex Mono";font-weight:600}
 .bal i{width:20px;height:20px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#ffe59a,var(--gold) 60%,#b9821d);display:inline-block}
 .who{color:var(--muted);font-size:14px}
 .ghost{background:none;border:1px solid var(--line);border-radius:8px;padding:6px 10px;cursor:pointer}
@@ -41,14 +42,14 @@ nav button.on{color:var(--ink);border-color:var(--accent)}
 .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px}
 label{display:block;font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:0 0 6px}
 .field{margin-bottom:16px}
-input[type=number],input[type=text],input[type=email],input[type=password]{width:100%;padding:11px 12px;border:1px solid var(--line);border-radius:10px;background:#fff;outline:none}
+input[type=number],input[type=text],input[type=email],input[type=password]{width:100%;padding:11px 12px;border:1px solid var(--line);border-radius:10px;background:var(--field);outline:none}
 input:focus{border-color:var(--ink)}
 .chips{display:flex;gap:6px;margin-top:8px}
-.chips button{flex:1;padding:6px 0;border:1px solid var(--line);background:#fff;border-radius:8px;cursor:pointer;font-family:"IBM Plex Mono";font-size:13px}
+.chips button{flex:1;padding:6px 0;border:1px solid var(--line);background:var(--field);border-radius:8px;cursor:pointer;font-family:"IBM Plex Mono";font-size:13px}
 .chips button:hover{border-color:var(--ink)}
 .pick{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-.pick button{padding:10px;border:1px solid var(--line);background:#fff;border-radius:10px;cursor:pointer;font-weight:600}
-.pick button.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+.pick button{padding:10px;border:1px solid var(--line);background:var(--field);border-radius:10px;cursor:pointer;font-weight:600}
+.pick button.on{background:var(--ink);color:var(--paper);border-color:var(--ink)}
 .go{width:100%;padding:14px;border:0;border-radius:12px;background:var(--accent);color:#fff;font-weight:600;font-size:16px;cursor:pointer;transition:transform .08s}
 .go:active{transform:scale(.98)}
 .go:disabled{opacity:.5;cursor:not-allowed}
@@ -59,7 +60,7 @@ input:focus{border-color:var(--ink)}
 .coinwrap{perspective:900px}
 .coin{width:170px;height:170px;position:relative;transform-style:preserve-3d;transition:transform 1.5s cubic-bezier(.15,.8,.25,1)}
 .face{position:absolute;inset:0;border-radius:50%;backface-visibility:hidden;display:grid;place-items:center;font-family:Fraunces;font-weight:800;font-size:64px;color:#7a5410;
-  background:radial-gradient(circle at 35% 30%,#fff1bf,var(--gold) 55%,#b9821d);box-shadow:inset 0 0 0 8px rgba(255,255,255,.35),inset 0 0 0 12px rgba(122,84,16,.25),0 14px 30px rgba(0,0,0,.12)}
+  background:radial-gradient(circle at 35% 30%,#fff1bf,var(--gold) 55%,#b9821d);box-shadow:inset 0 0 0 8px rgba(255,255,255,.35),inset 0 0 0 12px rgba(122,84,16,.25),0 14px 30px rgba(0,0,0,.5)}
 .face.t{transform:rotateY(180deg)}
 .result{font-family:Fraunces;font-size:24px;font-weight:600;min-height:34px}
 .win{color:var(--win)} .lose{color:var(--lose)}
@@ -87,7 +88,7 @@ tr.me td{color:var(--accent)}
 .msg{color:var(--lose);font-size:14px;min-height:20px;margin-top:10px}
 
 /* toast */
-.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(20px);background:var(--ink);color:#fff;padding:10px 16px;border-radius:10px;opacity:0;transition:.2s;pointer-events:none;font-size:14px}
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(20px);background:var(--ink);color:var(--paper);padding:10px 16px;border-radius:10px;opacity:0;transition:.2s;pointer-events:none;font-size:14px}
 .toast.show{opacity:1;transform:translateX(-50%)}
 [hidden]{display:none!important}
 </style>
@@ -97,7 +98,7 @@ tr.me td{color:var(--accent)}
 <!-- AUTH -->
 <section id="auth" class="wrap" hidden>
   <div class="auth">
-    <h1>Lucky<span>.</span>Ledger</h1>
+    <h1>Jambling</h1>
     <p id="authSub">Sign in to keep your coins.</p>
     <form id="authForm" class="card">
       <div class="field" id="userField" hidden>
@@ -122,7 +123,7 @@ tr.me td{color:var(--accent)}
 <!-- APP -->
 <section id="app" class="wrap" hidden>
   <header>
-    <div class="logo">Lucky<span>.</span>Ledger</div>
+    <div class="logo">Jambling</div>
     <div class="right">
       <span class="who" id="who"></span>
       <div class="bal"><i></i><span id="balance">0.00</span></div>
@@ -342,7 +343,7 @@ function drawGraph(m, state){ // state: undefined | 'lost' | 'won'
 
   // grid
   ctx.font = '11px "IBM Plex Mono"'; ctx.textBaseline = 'middle';
-  ctx.strokeStyle = '#ece6d8'; ctx.fillStyle = '#9a9283'; ctx.lineWidth = 1;
+  ctx.strokeStyle = css('--grid'); ctx.fillStyle = css('--gridtext'); ctx.lineWidth = 1;
   const step = niceStep(maxM - 1);
   for (let v = 1; v <= maxM + 1e-9; v += step) {
     const y = Y(v);
@@ -365,7 +366,7 @@ function drawGraph(m, state){ // state: undefined | 'lost' | 'won'
   };
   // fill
   path(); ctx.lineTo(X(t), Y(1)); ctx.lineTo(X(0), Y(1)); ctx.closePath();
-  ctx.fillStyle = state === 'lost' ? 'rgba(208,52,44,.08)' : state === 'won' ? 'rgba(29,138,75,.08)' : 'rgba(226,72,45,.08)';
+  ctx.fillStyle = state === 'lost' ? 'rgba(255,77,69,.12)' : state === 'won' ? 'rgba(47,191,107,.12)' : 'rgba(255,90,60,.12)';
   ctx.fill();
   // line
   path(); ctx.strokeStyle = color; ctx.lineWidth = 3; ctx.lineJoin = 'round'; ctx.stroke();

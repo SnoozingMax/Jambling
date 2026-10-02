@@ -1,4 +1,4 @@
--- Lucky Ledger: Supabase setup
+-- Jambling: Supabase setup
 -- Paste this whole file into Supabase > SQL Editor > New query > Run.
 -- All game logic runs here so players can't cheat from the browser.
 
