@@ -148,7 +148,7 @@ begin
   update crash_rounds set status = 'cashed', cashout = m where id = rd.id;
   update profiles set balance = balance + payout where id = auth.uid() returning balance into bal;
 
-  return json_build_object('won', true, 'multiplier', m, 'payout', payout, 'balance', bal);
+  return json_build_object('won', true, 'multiplier', m, 'payout', payout, 'balance', bal, 'crash_point', rd.crash_point);
 end $$;
 
 -- ---------- Refill when broke ----------

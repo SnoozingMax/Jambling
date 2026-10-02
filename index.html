@@ -470,14 +470,14 @@ async function cashOut(){
     round.cashing = false; checkCrash(); return;
   }
   setBalance(data.balance);
-  data.won ? endRound(true, data.multiplier, data.payout) : endRound(false, data.crash_point);
+  data.won ? endRound(true, data.multiplier, data.payout, data.crash_point) : endRound(false, data.crash_point);
 }
 
-function endRound(won, m, payout){
+function endRound(won, m, payout, crashAt){
   round.done = true;
   cancelAnimationFrame(raf); clearInterval(poll);
   m = Number(m);
-  if (won && $('ghostToggle').checked) { startGhost(round, m, payout); round = null; setCrashBtn(false); return; }
+  if (won && $('ghostToggle').checked) { startGhost(round, m, payout, crashAt); round = null; setCrashBtn(false); return; }
   drawGraph(m, won ? 'won' : 'lost');
   $('mult').textContent = m.toFixed(2) + '×';
   $('mult').className = 'mult ' + (won ? 'win' : 'lose');
@@ -490,17 +490,28 @@ function endRound(won, m, payout){
 
 /* ---------- ghost run: keep the rocket going after you cash out ---------- */
 let ghost = null, ghostRaf = null, ghostPoll = null;
-function startGhost(rd, cashM, payout){
+function startGhost(rd, cashM, payout, crashAt){
   ghost = { id: rd.id, t0: rd.t0, cashM, payout };
+  if (crashAt) { // fast-forward: replay from cash out to crash in at most ~3s
+    const tCash = Math.log(cashM) / K, tCrash = Math.log(Number(crashAt)) / K;
+    ghost.ff = { tCash, tCrash, start: performance.now(), dur: Math.min(3000, Math.max(800, (tCrash - tCash) * 250)), cp: Number(crashAt) };
+  }
   $('mult').className = 'mult';
   $('crashMsg').textContent = `Cashed out +${fmt(payout)} at ${cashM.toFixed(2)}×`;
   $('crashMsg').className = 'sub win';
   ghostRaf = requestAnimationFrame(ghostTick);
-  ghostPoll = setInterval(ghostCheck, 250);
+  if (!ghost.ff) ghostPoll = setInterval(ghostCheck, 250);
 }
 function ghostTick(){
   if (!ghost) return;
-  const m = Math.exp(K * (performance.now() - ghost.t0) / 1000);
+  let m;
+  if (ghost.ff) {
+    const f = ghost.ff, p = Math.min(1, (performance.now() - f.start) / f.dur);
+    m = Math.exp(K * (f.tCash + (f.tCrash - f.tCash) * p));
+    if (p >= 1) return ghostEnd(ghost, f.cp);
+  } else {
+    m = Math.exp(K * (performance.now() - ghost.t0) / 1000);
+  }
   drawGraph(m, 'ghost', ghost.cashM);
   $('mult').textContent = m.toFixed(2) + '×';
   $('mult').style.color = css('--muted');
@@ -511,7 +522,9 @@ async function ghostCheck(){
   const g = ghost;
   const { data } = await sb.rpc('crash_status', { p_round: g.id });
   if (ghost !== g || !data?.crashed) return;
-  const cp = Number(data.crash_point);
+  ghostEnd(g, Number(data.crash_point));
+}
+function ghostEnd(g, cp){
   stopGhost();
   drawGraph(cp, 'lost', g.cashM);
   $('mult').style.color = '';
