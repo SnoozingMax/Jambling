@@ -77,6 +77,9 @@ canvas{width:100%;height:100%;display:block}
 .toggle span::after{content:'';position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:var(--muted);transition:.15s}
 .toggle input:checked + span{background:var(--win)}
 .toggle input:checked + span::after{left:19px;background:#fff}
+.holdbtn{width:100%;height:120px;border:2px solid var(--line);border-radius:14px;background:var(--field);color:var(--ink);font-weight:600;font-size:24px;letter-spacing:.1em;cursor:pointer}
+.holdbtn.on{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+.holdbtn,.holdzone{user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;touch-action:none}
 .hint{font-size:12px;color:var(--muted);margin-top:6px}
 
 /* board */
@@ -139,6 +142,7 @@ tr.me td{color:var(--accent)}
   <nav>
     <button data-tab="coin" class="on">Coin Flip</button>
     <button data-tab="crash">Rocket</button>
+    <button data-tab="ride">Ride</button>
     <button data-tab="board">Leaderboard</button>
   </nav>
 
@@ -196,6 +200,30 @@ tr.me td{color:var(--accent)}
         <canvas id="graph"></canvas>
         <div class="mult" id="mult">1.00×</div>
         <div class="sub" id="crashMsg"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ride -->
+  <div id="tab-ride" class="game" hidden>
+    <div class="card">
+      <div class="field">
+        <label>Bet</label>
+        <input id="rideBet" type="number" min="0.01" step="0.01" value="10">
+        <div class="chips" data-for="rideBet">
+          <button data-op="half">½</button><button data-op="double">2×</button><button data-op="max">Max</button>
+        </div>
+      </div>
+      <button class="go" id="rideStart">Start</button>
+      <button class="holdbtn" id="holdBtn" hidden>HOLD</button>
+      <button class="go cash" id="rideCash" hidden style="margin-top:10px">Cash out</button>
+      <div class="hint">Hold to ride the chart: up = you gain, down = you lose. Let go to stay flat. Ends after 30s.</div>
+    </div>
+    <div class="card" style="padding:10px">
+      <div class="graphbox holdzone" id="rideBox">
+        <canvas id="rideGraph"></canvas>
+        <div class="mult" id="rideVal">0.00</div>
+        <div class="sub" id="rideMsg"></div>
       </div>
     </div>
   </div>
@@ -312,8 +340,9 @@ $('refill').onclick = async () => {
 /* ---------- tabs ---------- */
 document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
   document.querySelectorAll('nav button').forEach(x => x.classList.toggle('on', x === b));
-  ['coin', 'crash', 'board'].forEach(t => $('tab-' + t).hidden = t !== b.dataset.tab);
+  ['coin', 'crash', 'ride', 'board'].forEach(t => $('tab-' + t).hidden = t !== b.dataset.tab);
   if (b.dataset.tab === 'board') loadBoard();
+  if (b.dataset.tab === 'ride') drawRide();
   if (b.dataset.tab === 'crash' && !round && !ghost) drawGraph(1);
 });
 
@@ -545,6 +574,132 @@ $('ghostToggle').onchange = e => {
 };
 
 window.addEventListener('resize', () => { if (!round && !ghost) drawGraph(1); });
+
+
+/* ---------- ride: hold to ride the chart ---------- */
+const RIDE_STEPS = 150;
+let ride = null, ridePoll = null, rideRaf = null, lastRide = null;
+
+$('rideStart').onclick = async () => {
+  const bet = readBet('rideBet'); if (!bet) return;
+  $('rideStart').disabled = true;
+  const { data, error } = await sb.rpc('chart_start', { p_bet: bet });
+  $('rideStart').disabled = false;
+  if (error) return toast(error.message);
+  setBalance(data.balance);
+  ride = { id: data.round_id, bet, prices: [Number(data.start)], held: [], mult: 1, holding: false, done: false, busy: false, q: Promise.resolve() };
+  lastRide = ride;
+  $('rideStart').hidden = true; $('holdBtn').hidden = false; $('rideCash').hidden = false;
+  $('rideMsg').textContent = 'Hold to ride'; $('rideMsg').className = 'sub';
+  $('rideVal').className = 'mult';
+  ridePoll = setInterval(pollRide, 200);
+  rideRaf = requestAnimationFrame(rideLoop);
+};
+
+async function pollRide(){
+  const r = ride; if (!r || r.done || r.busy) return;
+  r.busy = true;
+  const { data, error } = await sb.rpc('chart_poll', { p_round: r.id, p_from: r.prices.length });
+  r.busy = false;
+  if (error || ride !== r || r.done) return;
+  (data.prices || []).forEach(p => { r.held[r.prices.length - 1] = r.holding; r.prices.push(Number(p)); });
+  r.mult = Number(data.mult);
+  if (data.status === 'done') finishRide(data);
+}
+
+function setHold(on){
+  const r = ride; if (!r || r.done || r.holding === on) return;
+  r.holding = on;
+  $('holdBtn').classList.toggle('on', on);
+  $('holdBtn').textContent = on ? 'RIDING' : 'HOLD';
+  $('rideMsg').textContent = on ? 'Riding' : 'Flat';
+  r.q = r.q.then(() => sb.rpc('chart_hold', { p_round: r.id, p_on: on })).then(({ data }) => {
+    if (!data || ride !== r || r.done) return;
+    r.mult = Number(data.mult);
+    if (data.status === 'done') finishRide(data);
+  });
+}
+
+$('rideCash').onclick = () => {
+  const r = ride; if (!r || r.done) return;
+  $('rideCash').disabled = true;
+  r.q = r.q.then(() => sb.rpc('chart_cashout', { p_round: r.id })).then(({ data, error }) => {
+    $('rideCash').disabled = false;
+    if (error) return toast(error.message);
+    if (ride === r && !r.done) finishRide(data);
+  });
+};
+
+function finishRide(d){
+  const r = ride; r.done = true; r.holding = false;
+  clearInterval(ridePoll); cancelAnimationFrame(rideRaf);
+  if (d.balance != null) setBalance(d.balance);
+  const pay = Number(d.payout), diff = pay - r.bet;
+  r.mult = pay / r.bet;
+  $('rideVal').textContent = fmt(pay);
+  $('rideVal').className = 'mult ' + (diff >= 0 ? 'win' : 'lose');
+  $('rideMsg').textContent = diff >= 0 ? `+${fmt(diff)}` : `−${fmt(-diff)}`;
+  $('rideMsg').className = 'sub ' + (diff >= 0 ? 'win' : 'lose');
+  $('holdBtn').classList.remove('on'); $('holdBtn').textContent = 'HOLD';
+  $('rideStart').hidden = false; $('holdBtn').hidden = true; $('rideCash').hidden = true;
+  ride = null;
+  drawRide();
+}
+
+function rideLoop(){
+  if (!ride) return;
+  $('rideVal').textContent = fmt(ride.bet * ride.mult);
+  drawRide();
+  rideRaf = requestAnimationFrame(rideLoop);
+}
+
+function drawRide(){
+  const c = $('rideGraph'), ctx = c.getContext('2d');
+  const w = c.clientWidth, h = c.clientHeight, d = window.devicePixelRatio || 1;
+  if (!w) return;
+  if (c.width !== w * d || c.height !== h * d) { c.width = w * d; c.height = h * d; }
+  ctx.setTransform(d, 0, 0, d, 0, 0); ctx.clearRect(0, 0, w, h);
+  const r = ride || lastRide;
+  const pad = { l: 16, r: 16, t: 120, b: 26 };
+  const X = i => pad.l + (i / RIDE_STEPS) * (w - pad.l - pad.r);
+
+  ctx.font = '11px "IBM Plex Mono"'; ctx.fillStyle = css('--gridtext'); ctx.textBaseline = 'top';
+  for (let s = 0; s <= 30; s += 10) ctx.fillText(s + 's', X(s * 5) - 8, h - pad.b + 8);
+  if (!r) return;
+
+  const ps = r.prices;
+  let lo = Math.min(...ps, 100), hi = Math.max(...ps, 100);
+  const span = Math.max(hi - lo, 8); lo -= span * 0.15; hi += span * 0.15;
+  const Y = v => h - pad.b - ((v - lo) / (hi - lo)) * (h - pad.t - pad.b);
+
+  // start line
+  ctx.strokeStyle = css('--grid'); ctx.setLineDash([4, 4]); ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(pad.l, Y(100)); ctx.lineTo(w - pad.r, Y(100)); ctx.stroke(); ctx.setLineDash([]);
+
+  // path: thick + colored where you were holding
+  ctx.lineCap = 'round';
+  for (let i = 0; i < ps.length - 1; i++) {
+    const held = r.held[i];
+    ctx.strokeStyle = held ? (ps[i + 1] >= ps[i] ? css('--win') : css('--lose')) : css('--muted');
+    ctx.lineWidth = held ? 4 : 2;
+    ctx.beginPath(); ctx.moveTo(X(i), Y(ps[i])); ctx.lineTo(X(i + 1), Y(ps[i + 1])); ctx.stroke();
+  }
+  const li = ps.length - 1;
+  ctx.beginPath(); ctx.arc(X(li), Y(ps[li]), 6, 0, Math.PI * 2);
+  ctx.fillStyle = r.holding ? css('--ink') : css('--accent'); ctx.fill();
+}
+
+// hold with the button, the chart, or the space bar
+['holdBtn', 'rideBox'].forEach(id => {
+  const el = $(id);
+  el.addEventListener('pointerdown', e => { if (!ride) return; e.preventDefault(); try { el.setPointerCapture(e.pointerId); } catch {} setHold(true); });
+  ['pointerup', 'pointercancel', 'lostpointercapture'].forEach(ev => el.addEventListener(ev, () => setHold(false)));
+  el.addEventListener('contextmenu', e => e.preventDefault());
+});
+document.addEventListener('keydown', e => { if (e.code === 'Space' && ride && !$('tab-ride').hidden) { e.preventDefault(); if (!e.repeat) setHold(true); } });
+document.addEventListener('keyup', e => { if (e.code === 'Space' && ride) { e.preventDefault(); setHold(false); } });
+window.addEventListener('blur', () => setHold(false));
+window.addEventListener('resize', drawRide);
 
 /* ---------- leaderboard ---------- */
 async function loadBoard(){
