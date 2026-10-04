@@ -618,7 +618,7 @@ $('rideStart').onclick = async () => {
   setBalance(data.balance);
   loadColors();
   ride = { id: data.round_id, bet, path: ridePath(data.seed), t0: performance.now(), cur: 0,
-           spans: [], holding: false, done: false, q: Promise.resolve(), lo: 95, hi: 105 };
+           spans: [], holding: false, done: false, q: Promise.resolve(), lo: Math.log(95), hi: Math.log(105) };
   lastRide = ride;
   $('rideStart').hidden = true; $('holdBtn').hidden = false; $('rideCash').hidden = false;
   $('rideMsg').textContent = 'Hold to ride'; $('rideMsg').className = 'sub';
@@ -715,14 +715,14 @@ function drawRide(){
   const offset = Math.max(0, end - WINDOW);                       // grow from the left, then scroll
   const X = i => pad.l + (i - offset) / WINDOW * (right - pad.l);
 
-  // y-range from visible points, eased so it doesn't jitter
+  // y-range in percent terms (log scale) from visible points, eased so it doesn't jitter
   let lo = Infinity, hi = -Infinity;
-  for (let i = Math.floor(start); i <= Math.floor(end); i++) { const p = r.path[i]; if (p < lo) lo = p; if (p > hi) hi = p; }
-  const pe = priceAt(r, end); lo = Math.min(lo, pe); hi = Math.max(hi, pe);
-  const mid = (lo + hi) / 2, half = Math.max((hi - lo) / 2 * 1.25, mid * 0.03);
+  for (let i = Math.floor(start); i <= Math.floor(end); i++) { const p = Math.log(r.path[i]); if (p < lo) lo = p; if (p > hi) hi = p; }
+  const pe = priceAt(r, end), le = Math.log(pe); lo = Math.min(lo, le); hi = Math.max(hi, le);
+  const mid = (lo + hi) / 2, half = Math.max((hi - lo) / 2 * 1.2, 0.04);
   const k = ride ? 0.08 : 1;
   r.lo += (mid - half - r.lo) * k; r.hi += (mid + half - r.hi) * k;
-  const Y = v => h - pad.b - ((v - r.lo) / (r.hi - r.lo)) * (h - pad.t - pad.b);
+  const Y = v => h - pad.b - ((Math.log(v) - r.lo) / (r.hi - r.lo)) * (h - pad.t - pad.b);
 
   // entry line while riding
   if (r.holding) {
