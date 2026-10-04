@@ -216,8 +216,8 @@ tr.me td{color:var(--accent)}
       </div>
       <button class="go" id="rideStart">Start</button>
       <button class="holdbtn" id="holdBtn" hidden>HOLD</button>
-      <button class="go cash" id="rideCash" hidden style="margin-top:10px">Cash out</button>
-      <div class="hint">Hold to ride the chart: up = you gain, down = you lose. Let go to stay flat. Ends after 30s.</div>
+      <button class="go cash" id="rideCash" hidden style="margin-top:10px">Stop</button>
+      <div class="hint">Hold to ride: while you hold, your bet moves with the chart. Let go to lock it in. Press Stop to cash out.</div>
     </div>
     <div class="card" style="padding:10px">
       <div class="graphbox holdzone" id="rideBox">
@@ -577,83 +577,86 @@ window.addEventListener('resize', () => { if (!round && !ghost) drawGraph(1); })
 
 
 /* ---------- ride: hold to ride the chart ---------- */
-// The chart animates locally for smoothness; the server sends prices a little
-// ahead and records the step where you press/release.
-const RIDE_STEPS = 150, STEP_MS = 200;
-let ride = null, ridePoll = null, rideRaf = null, lastRide = null;
+// The chart comes from a server seed, so it's drawn locally with zero lag.
+// MUST match _ride_path() in ride.sql.
+const STEP_MS = 100, WINDOW = 120; // 12s visible
+function ridePath(seed){
+  let s = Number(seed), v = 0, p = 100;
+  const arr = [100];
+  arr.ext = n => {
+    while (arr.length <= n) {
+      s = (s * 48271) % 2147483647;
+      v = 0.92 * v + (s / 2147483647 - 0.5) * 0.013;
+      p = p * Math.exp(v - 0.0003);
+      arr.push(p);
+    }
+  };
+  return arr;
+}
+
+let ride = null, rideRaf = null, lastRide = null, C = {};
+const loadColors = () => { C = { win: css('--win'), lose: css('--lose'), mut: css('--muted'), grid: css('--grid'), ink: css('--ink'), acc: css('--accent'), gt: css('--gridtext') }; };
 
 $('rideStart').onclick = async () => {
   const bet = readBet('rideBet'); if (!bet) return;
   $('rideStart').disabled = true;
-  const { data, error } = await sb.rpc('chart_start', { p_bet: bet });
+  const { data, error } = await sb.rpc('ride_start', { p_bet: bet });
   $('rideStart').disabled = false;
   if (error) return toast(error.message);
   setBalance(data.balance);
-  ride = { id: data.round_id, bet, prices: data.prices.map(Number), t0: performance.now(), cur: 0,
-           holding: false, holdStep: 0, mult: 1, spans: [], done: false, busy: false, q: Promise.resolve() };
+  loadColors();
+  ride = { id: data.round_id, bet, path: ridePath(data.seed), t0: performance.now(), cur: 0,
+           spans: [], holding: false, done: false, q: Promise.resolve(), lo: 95, hi: 105 };
   lastRide = ride;
   $('rideStart').hidden = true; $('holdBtn').hidden = false; $('rideCash').hidden = false;
   $('rideMsg').textContent = 'Hold to ride'; $('rideMsg').className = 'sub';
   $('rideVal').className = 'mult';
-  ridePoll = setInterval(pollRide, 300);
   rideRaf = requestAnimationFrame(rideLoop);
 };
 
-async function pollRide(){
-  const r = ride; if (!r || r.done || r.busy || r.prices.length > RIDE_STEPS) return;
-  r.busy = true;
-  const { data } = await sb.rpc('chart_poll', { p_round: r.id, p_from: r.prices.length });
-  r.busy = false;
-  if (!data || ride !== r || r.done) return;
-  (data.prices || []).forEach(p => r.prices.push(Number(p)));
-  // stay in sync with the server clock: don't fall too far behind
-  const behind = data.k - 2 - r.cur;
-  if (behind > 0) r.t0 -= behind * STEP_MS;
+function priceAt(r, x){
+  r.path.ext(Math.ceil(x) + 1);
+  const i = Math.floor(x), f = x - i;
+  return r.path[i] + (r.path[i + 1] - r.path[i]) * f;
 }
 
-// price at fractional step (smooth)
-function priceAt(r, x){
-  const i = Math.floor(x), f = x - i;
-  if (i >= r.prices.length - 1) return r.prices[r.prices.length - 1];
-  return r.prices[i] + (r.prices[i + 1] - r.prices[i]) * f;
+// value multiplier: closed spans at whole steps (like the server), open span live
+function rideMult(r){
+  let m = 1;
+  for (const sp of r.spans) {
+    const end = sp.b == null ? r.cur : sp.b;
+    m *= priceAt(r, end) / r.path[sp.a];
+  }
+  return Math.min(m, 25);
 }
 
 function setHold(on){
   const r = ride; if (!r || r.done || r.holding === on) return;
-  const step = Math.min(RIDE_STEPS, Math.floor(r.cur));
-  if (r.holding) r.mult *= r.prices[step] / r.prices[r.holdStep];   // close the open span locally
-  r.holding = on; r.holdStep = step;
-  if (on) r.spans.push({ a: step, b: null }); else if (r.spans.length) r.spans[r.spans.length - 1].b = step;
+  const step = Math.floor(r.cur);
+  r.holding = on;
+  if (on) r.spans.push({ a: step, b: null });
+  else r.spans[r.spans.length - 1].b = Math.max(step, r.spans[r.spans.length - 1].a);
   $('holdBtn').classList.toggle('on', on);
   $('holdBtn').textContent = on ? 'RIDING' : 'HOLD';
-  $('rideMsg').textContent = on ? 'Riding' : 'Flat';
-  r.q = r.q.then(() => sb.rpc('chart_hold', { p_round: r.id, p_on: on, p_step: step })).then(({ data }) => {
-    if (data && data.status === 'done' && ride === r && !r.done) finishRide(data);
-  });
+  r.q = r.q.then(() => sb.rpc('ride_hold', { p_round: r.id, p_on: on, p_step: step })).catch(() => {});
 }
 
-function cashOutRide(){
-  const r = ride; if (!r || r.done || r.cashing) return;
-  r.cashing = true; $('rideCash').disabled = true;
-  const step = Math.min(RIDE_STEPS, Math.floor(r.cur));
-  r.q = r.q.then(() => sb.rpc('chart_cashout', { p_round: r.id, p_step: step })).then(({ data, error }) => {
+$('rideCash').onclick = () => {
+  const r = ride; if (!r || r.done || r.stopping) return;
+  if (r.holding) setHold(false);
+  r.stopping = true; $('rideCash').disabled = true;
+  const step = Math.floor(r.cur);
+  r.q = r.q.then(() => sb.rpc('ride_stop', { p_round: r.id, p_step: step })).then(({ data, error }) => {
     $('rideCash').disabled = false;
-    if (error) { r.cashing = false; return toast(error.message); }
-    if (ride === r && !r.done) finishRide(data);
+    if (error) { r.stopping = false; return toast(error.message); }
+    finishRide(data);
   });
-}
-$('rideCash').onclick = cashOutRide;
-
-function liveMult(r){
-  return r.holding ? r.mult * priceAt(r, r.cur) / r.prices[r.holdStep] : r.mult;
-}
+};
 
 function finishRide(d){
   const r = ride; r.done = true;
-  if (r.holding && r.spans.length) r.spans[r.spans.length - 1].b = Math.floor(r.cur);
-  r.holding = false;
-  clearInterval(ridePoll); cancelAnimationFrame(rideRaf);
-  if (d.balance != null) setBalance(d.balance);
+  cancelAnimationFrame(rideRaf);
+  setBalance(d.balance);
   const pay = Number(d.payout), diff = pay - r.bet;
   $('rideVal').textContent = fmt(pay);
   $('rideVal').className = 'mult ' + (diff >= 0 ? 'win' : 'lose');
@@ -667,13 +670,12 @@ function finishRide(d){
 
 function rideLoop(){
   const r = ride; if (!r) return;
-  let cur = (performance.now() - r.t0) / STEP_MS;
-  const max = r.prices.length - 1;
-  if (cur > max) { r.t0 += (cur - max) * STEP_MS; cur = max; }  // wait for data instead of jumping
-  r.cur = Math.min(cur, RIDE_STEPS);
-  $('rideVal').textContent = fmt(r.bet * liveMult(r));
+  r.cur = (performance.now() - r.t0) / STEP_MS;
+  const val = r.bet * rideMult(r);
+  $('rideVal').textContent = fmt(val);
+  $('rideVal').className = 'mult ' + (val > r.bet + 0.004 ? 'win' : val < r.bet - 0.004 ? 'lose' : '');
+  $('rideMsg').textContent = r.holding ? 'Riding' : (r.spans.length ? 'Locked' : 'Hold to ride');
   drawRide();
-  if (r.cur >= RIDE_STEPS) return cashOutRide();
   rideRaf = requestAnimationFrame(rideLoop);
 }
 
@@ -681,47 +683,59 @@ function drawRide(){
   const c = $('rideGraph'), ctx = c.getContext('2d');
   const w = c.clientWidth, h = c.clientHeight, d = window.devicePixelRatio || 1;
   if (!w) return;
+  if (!C.win) loadColors();
   if (c.width !== w * d || c.height !== h * d) { c.width = w * d; c.height = h * d; }
   ctx.setTransform(d, 0, 0, d, 0, 0); ctx.clearRect(0, 0, w, h);
-  const r = ride || lastRide;
-  const pad = { l: 16, r: 16, t: 120, b: 26 };
-  const X = i => pad.l + (i / RIDE_STEPS) * (w - pad.l - pad.r);
+  const r = ride || lastRide; if (!r) return;
 
-  ctx.font = '11px "IBM Plex Mono"'; ctx.fillStyle = css('--gridtext'); ctx.textBaseline = 'top';
-  for (let s = 0; s <= 30; s += 10) ctx.fillText(s + 's', X(s * 5) - 8, h - pad.b + 8);
-  if (!r) return;
+  const pad = { l: 16, r: 16, t: 120, b: 20 };
+  const end = r.cur, start = Math.max(0, end - WINDOW);
+  const right = w - pad.r - (w - pad.l - pad.r) * 0.12;          // head sits a bit in from the edge
+  const X = i => right - (end - i) / WINDOW * (right - pad.l);
 
-  const end = r.cur, last = Math.floor(end);
-  let lo = 100, hi = 100;
-  for (let i = 0; i <= last; i++) { lo = Math.min(lo, r.prices[i]); hi = Math.max(hi, r.prices[i]); }
+  // y-range from visible points, eased so it doesn't jitter
+  let lo = Infinity, hi = -Infinity;
+  for (let i = Math.floor(start); i <= Math.floor(end); i++) { const p = r.path[i]; if (p < lo) lo = p; if (p > hi) hi = p; }
   const pe = priceAt(r, end); lo = Math.min(lo, pe); hi = Math.max(hi, pe);
-  const span = Math.max(hi - lo, 8); lo -= span * 0.15; hi += span * 0.15;
-  const Y = v => h - pad.b - ((v - lo) / (hi - lo)) * (h - pad.t - pad.b);
+  const mid = (lo + hi) / 2, half = Math.max((hi - lo) / 2 * 1.25, mid * 0.03);
+  const k = ride ? 0.08 : 1;
+  r.lo += (mid - half - r.lo) * k; r.hi += (mid + half - r.hi) * k;
+  const Y = v => h - pad.b - ((v - r.lo) / (r.hi - r.lo)) * (h - pad.t - pad.b);
 
-  ctx.strokeStyle = css('--grid'); ctx.setLineDash([4, 4]); ctx.lineWidth = 1;
-  ctx.beginPath(); ctx.moveTo(pad.l, Y(100)); ctx.lineTo(w - pad.r, Y(100)); ctx.stroke(); ctx.setLineDash([]);
-
-  const heldAt = i => r.spans.some(s => i >= s.a && i < (s.b == null ? Infinity : s.b));
-  const win = css('--win'), lose = css('--lose'), mut = css('--muted');
-  ctx.lineCap = 'round';
-  for (let i = 0; i <= last && i < RIDE_STEPS; i++) {
-    const x2 = Math.min(i + 1, end); if (x2 <= i) break;
-    const p1 = r.prices[i], p2 = priceAt(r, x2), held = heldAt(i);
-    ctx.strokeStyle = held ? (p2 >= p1 ? win : lose) : mut;
-    ctx.lineWidth = held ? 4 : 2;
-    ctx.beginPath(); ctx.moveTo(X(i), Y(p1)); ctx.lineTo(X(x2), Y(p2)); ctx.stroke();
+  // entry line while riding
+  if (r.holding) {
+    const ep = r.path[r.spans[r.spans.length - 1].a];
+    ctx.strokeStyle = C.grid; ctx.setLineDash([4, 4]); ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(pad.l, Y(ep)); ctx.lineTo(w - pad.r, Y(ep)); ctx.stroke(); ctx.setLineDash([]);
   }
-  ctx.beginPath(); ctx.arc(X(end), Y(pe), 6, 0, Math.PI * 2);
-  ctx.fillStyle = r.holding ? css('--ink') : css('--accent'); ctx.fill();
+
+  const heldAt = i => r.spans.some(sp => i >= sp.a && i < (sp.b == null ? Infinity : sp.b));
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  for (let i = Math.floor(start); i < end; i++) {
+    const x2 = Math.min(i + 1, end);
+    const p1 = i < start ? priceAt(r, start) : r.path[i], p2 = priceAt(r, x2);
+    const held = heldAt(i);
+    ctx.strokeStyle = held ? (p2 >= p1 ? C.win : C.lose) : C.mut;
+    ctx.lineWidth = held ? 4 : 2;
+    ctx.beginPath(); ctx.moveTo(X(Math.max(i, start)), Y(p1)); ctx.lineTo(X(x2), Y(p2)); ctx.stroke();
+  }
+  ctx.beginPath(); ctx.arc(X(end), Y(pe), 7, 0, Math.PI * 2);
+  ctx.fillStyle = r.holding ? (pe >= r.path[r.spans[r.spans.length - 1].a] ? C.win : C.lose) : C.acc; ctx.fill();
+
+  // time
+  ctx.font = '11px "IBM Plex Mono"'; ctx.fillStyle = C.gt; ctx.textBaseline = 'top';
+  ctx.fillText((end / 10).toFixed(1) + 's', 8, 8);
 }
 
-// hold with the button, the chart, or the space bar
-['holdBtn', 'rideBox'].forEach(id => {
-  const el = $(id);
-  el.addEventListener('pointerdown', e => { if (!ride) return; e.preventDefault(); try { el.setPointerCapture(e.pointerId); } catch {} setHold(true); });
-  ['pointerup', 'pointercancel', 'lostpointercapture'].forEach(ev => el.addEventListener(ev, () => setHold(false)));
+// hold: press anywhere on the HOLD button or the chart (touch, mouse) or the space bar
+function bindHold(el){
+  const down = e => { if (!ride) return; e.preventDefault(); setHold(true); };
+  el.addEventListener('touchstart', down, { passive: false });
+  el.addEventListener('mousedown', down);
   el.addEventListener('contextmenu', e => e.preventDefault());
-});
+}
+bindHold($('holdBtn')); bindHold($('rideBox'));
+['touchend', 'touchcancel', 'mouseup'].forEach(ev => window.addEventListener(ev, () => setHold(false)));
 document.addEventListener('keydown', e => { if (e.code === 'Space' && ride && !$('tab-ride').hidden) { e.preventDefault(); if (!e.repeat) setHold(true); } });
 document.addEventListener('keyup', e => { if (e.code === 'Space' && ride) { e.preventDefault(); setHold(false); } });
 window.addEventListener('blur', () => setHold(false));
