@@ -80,6 +80,11 @@ canvas{width:100%;height:100%;display:block}
 .holdbtn{width:100%;height:120px;border:2px solid var(--line);border-radius:14px;background:var(--field);color:var(--ink);font-weight:600;font-size:24px;letter-spacing:.1em;cursor:pointer}
 .holdbtn.on{background:var(--ink);color:var(--paper);border-color:var(--ink)}
 .holdbtn,.holdzone{user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;touch-action:none}
+.tag{position:absolute;top:10px;right:12px;padding:4px 10px;border-radius:999px;font:600 12px "IBM Plex Mono",monospace;letter-spacing:.08em;opacity:0;transition:opacity .15s;pointer-events:none}
+.tag.up,.tag.down,.tag.wild{opacity:1}
+.tag.up{background:var(--win);color:#fff}
+.tag.down{background:var(--lose);color:#fff}
+.tag.wild{background:var(--gold);color:#2a1d00}
 .hint{font-size:12px;color:var(--muted);margin-top:6px}
 
 /* board */
@@ -224,6 +229,7 @@ tr.me td{color:var(--accent)}
         <canvas id="rideGraph"></canvas>
         <div class="mult" id="rideVal">0.00</div>
         <div class="sub" id="rideMsg"></div>
+        <div class="tag" id="rideTag"></div>
       </div>
     </div>
   </div>
@@ -581,15 +587,20 @@ window.addEventListener('resize', () => { if (!round && !ghost) drawGraph(1); })
 // MUST match _ride_path() in ride.sql.
 const STEP_MS = 100, WINDOW = 120; // 12s visible
 function ridePath(seed){
-  let s = Number(seed), v = 0, p = 100;
-  const arr = [100];
+  let s = Number(seed), v = 0, p = 100, heat = 1;
+  const arr = [100]; arr.ev = [0]; arr.heat = [1];
+  const R = () => (s = (s * 48271) % 2147483647) / 2147483647;
   arr.ext = n => {
     while (arr.length <= n) {
-      s = (s * 48271) % 2147483647;
-      v = 0.88 * v + (s / 2147483647 - 0.5) * 0.009 - 0.002 * Math.log(p / 100);
-      s = (s * 48271) % 2147483647;
-      p = p * Math.exp(v + (s / 2147483647 - 0.5) * 0.016);
-      arr.push(p);
+      const i = arr.length, u1 = R(), u2 = R(), u3 = R();
+      if (u3 < 0.004) heat = 3;                      // wild phase
+      heat = 1 + (heat - 1) * 0.97;
+      const vol = heat * Math.min(3, 1 + i / 600);   // gets riskier over time
+      let ev = 0;
+      if (u3 > 0.995) { ev = u2 > 0.5 ? 1 : -1; v += ev * 0.03; }  // pump or dump
+      v = 0.88 * v + (u1 - 0.5) * 0.009 * vol - 0.002 * Math.log(p / 100);
+      p = p * Math.exp(v + (u2 - 0.5) * 0.016 * vol);
+      arr.push(p); arr.ev.push(ev); arr.heat.push(heat);
     }
   };
   return arr;
@@ -664,6 +675,7 @@ function finishRide(d){
   $('rideMsg').textContent = diff >= 0 ? `+${fmt(diff)}` : `−${fmt(-diff)}`;
   $('rideMsg').className = 'sub ' + (diff >= 0 ? 'win' : 'lose');
   $('holdBtn').classList.remove('on'); $('holdBtn').textContent = 'HOLD';
+  $('rideTag').className = 'tag';
   $('rideStart').hidden = false; $('holdBtn').hidden = true; $('rideCash').hidden = true;
   ride = null;
   drawRide();
@@ -675,6 +687,14 @@ function rideLoop(){
   const val = r.bet * rideMult(r);
   $('rideVal').textContent = fmt(val);
   $('rideVal').className = 'mult ' + (val > r.bet + 0.004 ? 'win' : val < r.bet - 0.004 ? 'lose' : '');
+  // flash PUMP / DUMP for ~1.5s after one happens, and WILD during wild phases
+  const ci = Math.floor(r.cur);
+  for (let j = ci; j > ci - 15 && j > 0; j--) if (r.path.ev[j]) { r.flash = { t: j, ev: r.path.ev[j] }; break; }
+  const fl = r.flash && ci - r.flash.t < 15 ? r.flash : null;
+  const tag = $('rideTag');
+  if (fl) { tag.textContent = fl.ev > 0 ? 'PUMP' : 'DUMP'; tag.className = 'tag ' + (fl.ev > 0 ? 'up' : 'down'); }
+  else if (r.path.heat[ci] > 1.6) { tag.textContent = 'WILD'; tag.className = 'tag wild'; }
+  else tag.className = 'tag';
   $('rideMsg').textContent = r.holding ? 'Riding' : (r.spans.length ? 'Locked' : 'Hold to ride');
   drawRide();
   rideRaf = requestAnimationFrame(rideLoop);

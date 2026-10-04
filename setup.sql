@@ -215,13 +215,23 @@ declare
   s bigint := p_seed;
   v float8 := 0;
   p float8 := 100;
+  heat float8 := 1;
+  vol float8;
+  u1 float8; u2 float8; u3 float8;
   arr float8[] := array[100.0];
 begin
   for i in 1..n loop
-    s := (s * 48271) % 2147483647;
-    v := 0.88 * v + (s::float8 / 2147483647 - 0.5) * 0.009 - 0.002 * ln(p / 100);  -- gentle pull back toward the start
-    s := (s * 48271) % 2147483647;
-    p := p * exp(v + (s::float8 / 2147483647 - 0.5) * 0.016);
+    s := (s * 48271) % 2147483647; u1 := s::float8 / 2147483647;
+    s := (s * 48271) % 2147483647; u2 := s::float8 / 2147483647;
+    s := (s * 48271) % 2147483647; u3 := s::float8 / 2147483647;
+    if u3 < 0.004 then heat := 3; end if;                 -- wild phase
+    heat := 1 + (heat - 1) * 0.97;
+    vol := heat * least(3, 1 + i::float8 / 600);          -- gets riskier over time
+    if u3 > 0.995 then                                    -- pump or dump
+      v := v + case when u2 > 0.5 then 0.03 else -0.03 end;
+    end if;
+    v := 0.88 * v + (u1 - 0.5) * 0.009 * vol - 0.002 * ln(p / 100);
+    p := p * exp(v + (u2 - 0.5) * 0.016 * vol);
     arr := arr || p;
   end loop;
   return arr;
