@@ -586,8 +586,9 @@ function ridePath(seed){
   arr.ext = n => {
     while (arr.length <= n) {
       s = (s * 48271) % 2147483647;
-      v = 0.92 * v + (s / 2147483647 - 0.5) * 0.013;
-      p = p * Math.exp(v - 0.0003);
+      v = 0.88 * v + (s / 2147483647 - 0.5) * 0.009;
+      s = (s * 48271) % 2147483647;
+      p = p * Math.exp(v + (s / 2147483647 - 0.5) * 0.016 - 0.0003);
       arr.push(p);
     }
   };
@@ -690,8 +691,9 @@ function drawRide(){
 
   const pad = { l: 16, r: 16, t: 120, b: 20 };
   const end = r.cur, start = Math.max(0, end - WINDOW);
-  const right = w - pad.r - (w - pad.l - pad.r) * 0.12;          // head sits a bit in from the edge
-  const X = i => right - (end - i) / WINDOW * (right - pad.l);
+  const right = w - pad.r - (w - pad.l - pad.r) * 0.12;          // head stops a bit in from the edge
+  const offset = Math.max(0, end - WINDOW);                       // grow from the left, then scroll
+  const X = i => pad.l + (i - offset) / WINDOW * (right - pad.l);
 
   // y-range from visible points, eased so it doesn't jitter
   let lo = Infinity, hi = -Infinity;
