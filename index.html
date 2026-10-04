@@ -641,20 +641,33 @@ window.addEventListener('resize', () => { if (!round && !ghost) drawGraph(1); })
 // MUST match _ride_path() in ride.sql.
 const STEP_MS = 100, WINDOW = 120; // 12s visible
 function ridePath(seed){
-  let s = Number(seed), v = 0, p = 100, heat = 1, evLeft = 0, evDir = 0;
+  let s = Number(seed), v = 0, p = 100, heat = 1;
+  let evLeft = 0, evDir = 0, D = 0, cut = -1, rug = 0, base = 0;
   const arr = [100]; arr.ev = [0]; arr.heat = [1];
   const R = () => (s = (s * 48271) % 2147483647) / 2147483647;
   arr.ext = n => {
     while (arr.length <= n) {
-      const i = arr.length, u1 = R(), u2 = R(), u3 = R();
+      const u1 = R(), u2 = R(), u3 = R();
       if (u3 < 0.004) heat = 3;                      // wild phase
       heat = 1 + (heat - 1) * 0.97;
-      const vol = heat * 2;                          // same intensity the whole round
-      if (evLeft === 0 && u3 > 0.995) { evLeft = 4; evDir = u2 > 0.5 ? 1 : -1; }  // pump or dump: ~30% in 0.4s
+      const vol = heat * 2;
+      // pump or dump: ~30% over 0.8-2s, speeding up. half of pumps rug-pull partway
+      if (evLeft === 0 && rug === 0 && u3 > 0.995) {
+        evDir = u2 > 0.5 ? 1 : -1;
+        D = 8 + Math.floor(u1 * 13);
+        evLeft = D; base = p;
+        cut = (evDir > 0 && (u1 * 97 - Math.floor(u1 * 97)) < 0.5) ? 2 + Math.floor((u1 * 331 - Math.floor(u1 * 331)) * (D - 2)) : -1;
+      }
       let ev = 0;
       if (evLeft > 0) {
-        p = p * Math.exp(evDir * 0.07); evLeft--; v = 0; ev = evDir;
-      } else {
+        const k = D - evLeft + 1;
+        if (k === cut) { evLeft = 0; rug = 4; }
+        else { p = p * Math.exp(evDir * 0.27 * k / ((D * (D + 1)) / 2)); evLeft--; v = 0; ev = evDir; }
+      }
+      if (rug > 0 && ev === 0) {
+        p = p * Math.exp(Math.log(base * 0.88 / p) / rug);   // rug pull
+        rug--; v = 0; ev = -2;
+      } else if (ev === 0) {
         v = 0.8 * v + (u1 - 0.5) * 0.009 * vol - 0.0007 * Math.log(p / 100);
         p = p * Math.exp(v + (u2 - 0.5) * 0.035 * vol);
       }
@@ -747,10 +760,10 @@ function rideLoop(){
   $('rideVal').className = 'mult ' + (val > r.bet + 0.004 ? 'win' : val < r.bet - 0.004 ? 'lose' : '');
   // flash PUMP / DUMP for ~1.5s after one happens, and WILD during wild phases
   const ci = Math.floor(r.cur);
-  for (let j = ci; j > ci - 15 && j > 0; j--) if (r.path.ev[j]) { r.flash = { t: j, ev: r.path.ev[j] }; break; }
-  const fl = r.flash && ci - r.flash.t < 15 ? r.flash : null;
+  for (let j = ci; j > ci - 10 && j > 0; j--) if (r.path.ev[j]) { r.flash = { t: j, ev: r.path.ev[j] }; break; }
+  const fl = r.flash && ci - r.flash.t < 10 ? r.flash : null;
   const tag = $('rideTag');
-  if (fl) { tag.textContent = fl.ev > 0 ? 'PUMP' : 'DUMP'; tag.className = 'tag ' + (fl.ev > 0 ? 'up' : 'down'); }
+  if (fl) { tag.textContent = fl.ev > 0 ? 'PUMP' : fl.ev === -2 ? 'RUG PULL' : 'DUMP'; tag.className = 'tag ' + (fl.ev > 0 ? 'up' : 'down'); }
   else if (r.path.heat[ci] > 1.6) { tag.textContent = 'WILD'; tag.className = 'tag wild'; }
   else tag.className = 'tag';
   $('rideMsg').textContent = r.holding ? 'Riding' : (r.spans.length ? 'Locked' : 'Hold to ride');

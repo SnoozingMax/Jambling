@@ -216,10 +216,10 @@ declare
   v float8 := 0;
   p float8 := 100;
   heat float8 := 1;
-  ev_left int := 0;
-  ev_dir float8 := 0;
   vol float8;
   u1 float8; u2 float8; u3 float8;
+  ev_left int := 0; ev_dir float8 := 0; d int := 0; cut int := -1; rug int := 0; base float8 := 0;
+  k int; ev int;
   arr float8[] := array[100.0];
 begin
   for i in 1..n loop
@@ -228,15 +228,32 @@ begin
     s := (s * 48271) % 2147483647; u3 := s::float8 / 2147483647;
     if u3 < 0.004 then heat := 3; end if;                 -- wild phase
     heat := 1 + (heat - 1) * 0.97;
-    vol := heat * 2;                                       -- same intensity the whole round
-    if ev_left = 0 and u3 > 0.995 then                    -- pump or dump: sharp ~30% move over 0.4s
-      ev_left := 4; ev_dir := case when u2 > 0.5 then 1 else -1 end;
+    vol := heat * 2;
+    -- pump or dump: ~30% move over 0.8-2s, speeding up. half of pumps rug-pull partway
+    if ev_left = 0 and rug = 0 and u3 > 0.995 then
+      ev_dir := case when u2 > 0.5 then 1 else -1 end;
+      d := 8 + floor(u1 * 13)::int;
+      ev_left := d; base := p;
+      if ev_dir > 0 and (u1 * 97 - floor(u1 * 97)) < 0.5 then
+        cut := 2 + floor((u1 * 331 - floor(u1 * 331)) * (d - 2))::int;
+      else
+        cut := -1;
+      end if;
     end if;
+    ev := 0;
     if ev_left > 0 then
-      p := p * exp(ev_dir * 0.07);
-      ev_left := ev_left - 1;
-      v := 0;
-    else
+      k := d - ev_left + 1;
+      if k = cut then
+        ev_left := 0; rug := 4;
+      else
+        p := p * exp(ev_dir * 0.27 * k / ((d * (d + 1))::float8 / 2));
+        ev_left := ev_left - 1; v := 0; ev := 1;
+      end if;
+    end if;
+    if rug > 0 and ev = 0 then
+      p := p * exp(ln(base * 0.88 / p) / rug);            -- rug pull: crash to 12% below where the pump started
+      rug := rug - 1; v := 0;
+    elsif ev = 0 then
       v := 0.8 * v + (u1 - 0.5) * 0.009 * vol - 0.0007 * ln(p / 100);
       p := p * exp(v + (u2 - 0.5) * 0.035 * vol);
     end if;
