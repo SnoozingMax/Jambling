@@ -577,7 +577,9 @@ window.addEventListener('resize', () => { if (!round && !ghost) drawGraph(1); })
 
 
 /* ---------- ride: hold to ride the chart ---------- */
-const RIDE_STEPS = 150;
+// The chart animates locally for smoothness; the server sends prices a little
+// ahead and records the step where you press/release.
+const RIDE_STEPS = 150, STEP_MS = 200;
 let ride = null, ridePoll = null, rideRaf = null, lastRide = null;
 
 $('rideStart').onclick = async () => {
@@ -587,55 +589,72 @@ $('rideStart').onclick = async () => {
   $('rideStart').disabled = false;
   if (error) return toast(error.message);
   setBalance(data.balance);
-  ride = { id: data.round_id, bet, prices: [Number(data.start)], held: [], mult: 1, holding: false, done: false, busy: false, q: Promise.resolve() };
+  ride = { id: data.round_id, bet, prices: data.prices.map(Number), t0: performance.now(), cur: 0,
+           holding: false, holdStep: 0, mult: 1, spans: [], done: false, busy: false, q: Promise.resolve() };
   lastRide = ride;
   $('rideStart').hidden = true; $('holdBtn').hidden = false; $('rideCash').hidden = false;
   $('rideMsg').textContent = 'Hold to ride'; $('rideMsg').className = 'sub';
   $('rideVal').className = 'mult';
-  ridePoll = setInterval(pollRide, 200);
+  ridePoll = setInterval(pollRide, 300);
   rideRaf = requestAnimationFrame(rideLoop);
 };
 
 async function pollRide(){
-  const r = ride; if (!r || r.done || r.busy) return;
+  const r = ride; if (!r || r.done || r.busy || r.prices.length > RIDE_STEPS) return;
   r.busy = true;
-  const { data, error } = await sb.rpc('chart_poll', { p_round: r.id, p_from: r.prices.length });
+  const { data } = await sb.rpc('chart_poll', { p_round: r.id, p_from: r.prices.length });
   r.busy = false;
-  if (error || ride !== r || r.done) return;
-  (data.prices || []).forEach(p => { r.held[r.prices.length - 1] = r.holding; r.prices.push(Number(p)); });
-  r.mult = Number(data.mult);
-  if (data.status === 'done') finishRide(data);
+  if (!data || ride !== r || r.done) return;
+  (data.prices || []).forEach(p => r.prices.push(Number(p)));
+  // stay in sync with the server clock: don't fall too far behind
+  const behind = data.k - 2 - r.cur;
+  if (behind > 0) r.t0 -= behind * STEP_MS;
+}
+
+// price at fractional step (smooth)
+function priceAt(r, x){
+  const i = Math.floor(x), f = x - i;
+  if (i >= r.prices.length - 1) return r.prices[r.prices.length - 1];
+  return r.prices[i] + (r.prices[i + 1] - r.prices[i]) * f;
 }
 
 function setHold(on){
   const r = ride; if (!r || r.done || r.holding === on) return;
-  r.holding = on;
+  const step = Math.min(RIDE_STEPS, Math.floor(r.cur));
+  if (r.holding) r.mult *= r.prices[step] / r.prices[r.holdStep];   // close the open span locally
+  r.holding = on; r.holdStep = step;
+  if (on) r.spans.push({ a: step, b: null }); else if (r.spans.length) r.spans[r.spans.length - 1].b = step;
   $('holdBtn').classList.toggle('on', on);
   $('holdBtn').textContent = on ? 'RIDING' : 'HOLD';
   $('rideMsg').textContent = on ? 'Riding' : 'Flat';
-  r.q = r.q.then(() => sb.rpc('chart_hold', { p_round: r.id, p_on: on })).then(({ data }) => {
-    if (!data || ride !== r || r.done) return;
-    r.mult = Number(data.mult);
-    if (data.status === 'done') finishRide(data);
+  r.q = r.q.then(() => sb.rpc('chart_hold', { p_round: r.id, p_on: on, p_step: step })).then(({ data }) => {
+    if (data && data.status === 'done' && ride === r && !r.done) finishRide(data);
   });
 }
 
-$('rideCash').onclick = () => {
-  const r = ride; if (!r || r.done) return;
-  $('rideCash').disabled = true;
-  r.q = r.q.then(() => sb.rpc('chart_cashout', { p_round: r.id })).then(({ data, error }) => {
+function cashOutRide(){
+  const r = ride; if (!r || r.done || r.cashing) return;
+  r.cashing = true; $('rideCash').disabled = true;
+  const step = Math.min(RIDE_STEPS, Math.floor(r.cur));
+  r.q = r.q.then(() => sb.rpc('chart_cashout', { p_round: r.id, p_step: step })).then(({ data, error }) => {
     $('rideCash').disabled = false;
-    if (error) return toast(error.message);
+    if (error) { r.cashing = false; return toast(error.message); }
     if (ride === r && !r.done) finishRide(data);
   });
-};
+}
+$('rideCash').onclick = cashOutRide;
+
+function liveMult(r){
+  return r.holding ? r.mult * priceAt(r, r.cur) / r.prices[r.holdStep] : r.mult;
+}
 
 function finishRide(d){
-  const r = ride; r.done = true; r.holding = false;
+  const r = ride; r.done = true;
+  if (r.holding && r.spans.length) r.spans[r.spans.length - 1].b = Math.floor(r.cur);
+  r.holding = false;
   clearInterval(ridePoll); cancelAnimationFrame(rideRaf);
   if (d.balance != null) setBalance(d.balance);
   const pay = Number(d.payout), diff = pay - r.bet;
-  r.mult = pay / r.bet;
   $('rideVal').textContent = fmt(pay);
   $('rideVal').className = 'mult ' + (diff >= 0 ? 'win' : 'lose');
   $('rideMsg').textContent = diff >= 0 ? `+${fmt(diff)}` : `−${fmt(-diff)}`;
@@ -647,9 +666,14 @@ function finishRide(d){
 }
 
 function rideLoop(){
-  if (!ride) return;
-  $('rideVal').textContent = fmt(ride.bet * ride.mult);
+  const r = ride; if (!r) return;
+  let cur = (performance.now() - r.t0) / STEP_MS;
+  const max = r.prices.length - 1;
+  if (cur > max) { r.t0 += (cur - max) * STEP_MS; cur = max; }  // wait for data instead of jumping
+  r.cur = Math.min(cur, RIDE_STEPS);
+  $('rideVal').textContent = fmt(r.bet * liveMult(r));
   drawRide();
+  if (r.cur >= RIDE_STEPS) return cashOutRide();
   rideRaf = requestAnimationFrame(rideLoop);
 }
 
@@ -667,25 +691,27 @@ function drawRide(){
   for (let s = 0; s <= 30; s += 10) ctx.fillText(s + 's', X(s * 5) - 8, h - pad.b + 8);
   if (!r) return;
 
-  const ps = r.prices;
-  let lo = Math.min(...ps, 100), hi = Math.max(...ps, 100);
+  const end = r.cur, last = Math.floor(end);
+  let lo = 100, hi = 100;
+  for (let i = 0; i <= last; i++) { lo = Math.min(lo, r.prices[i]); hi = Math.max(hi, r.prices[i]); }
+  const pe = priceAt(r, end); lo = Math.min(lo, pe); hi = Math.max(hi, pe);
   const span = Math.max(hi - lo, 8); lo -= span * 0.15; hi += span * 0.15;
   const Y = v => h - pad.b - ((v - lo) / (hi - lo)) * (h - pad.t - pad.b);
 
-  // start line
   ctx.strokeStyle = css('--grid'); ctx.setLineDash([4, 4]); ctx.lineWidth = 1;
   ctx.beginPath(); ctx.moveTo(pad.l, Y(100)); ctx.lineTo(w - pad.r, Y(100)); ctx.stroke(); ctx.setLineDash([]);
 
-  // path: thick + colored where you were holding
+  const heldAt = i => r.spans.some(s => i >= s.a && i < (s.b == null ? Infinity : s.b));
+  const win = css('--win'), lose = css('--lose'), mut = css('--muted');
   ctx.lineCap = 'round';
-  for (let i = 0; i < ps.length - 1; i++) {
-    const held = r.held[i];
-    ctx.strokeStyle = held ? (ps[i + 1] >= ps[i] ? css('--win') : css('--lose')) : css('--muted');
+  for (let i = 0; i <= last && i < RIDE_STEPS; i++) {
+    const x2 = Math.min(i + 1, end); if (x2 <= i) break;
+    const p1 = r.prices[i], p2 = priceAt(r, x2), held = heldAt(i);
+    ctx.strokeStyle = held ? (p2 >= p1 ? win : lose) : mut;
     ctx.lineWidth = held ? 4 : 2;
-    ctx.beginPath(); ctx.moveTo(X(i), Y(ps[i])); ctx.lineTo(X(i + 1), Y(ps[i + 1])); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(X(i), Y(p1)); ctx.lineTo(X(x2), Y(p2)); ctx.stroke();
   }
-  const li = ps.length - 1;
-  ctx.beginPath(); ctx.arc(X(li), Y(ps[li]), 6, 0, Math.PI * 2);
+  ctx.beginPath(); ctx.arc(X(end), Y(pe), 6, 0, Math.PI * 2);
   ctx.fillStyle = r.holding ? css('--ink') : css('--accent'); ctx.fill();
 }
 
