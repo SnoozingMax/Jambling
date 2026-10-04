@@ -36,11 +36,11 @@ begin
     s := (s * 48271) % 2147483647; u3 := s::float8 / 2147483647;
     if u3 < 0.004 then heat := 3; end if;                 -- wild phase
     heat := 1 + (heat - 1) * 0.97;
-    vol := heat * least(3, 1 + i::float8 / 600);          -- gets riskier over time
+    vol := heat * 2;                                       -- same intensity the whole round
     if u3 > 0.995 then                                    -- pump or dump
       v := v + case when u2 > 0.5 then 0.03 else -0.03 end;
     end if;
-    v := 0.88 * v + (u1 - 0.5) * 0.009 * vol - 0.002 * ln(p / 100);
+    v := 0.8 * v + (u1 - 0.5) * 0.009 * vol - 0.0007 * ln(p / 100);
     p := p * exp(v + (u2 - 0.5) * 0.035 * vol);
     arr := arr || p;
   end loop;
@@ -117,7 +117,7 @@ begin
 
   path := _ride_path(rd.seed, a);
   for i in 1 .. coalesce(array_length(h, 1), 0) / 2 loop
-    m := m * path[h[2*i] + 1] / path[h[2*i - 1] + 1];
+    m := m * 0.99 * path[h[2*i] + 1] / path[h[2*i - 1] + 1];   -- 1% fee per hold
   end loop;
   m := least(m, 25);
 

@@ -222,7 +222,7 @@ tr.me td{color:var(--accent)}
       <button class="go" id="rideStart">Start</button>
       <button class="holdbtn" id="holdBtn" hidden>HOLD</button>
       <button class="go cash" id="rideCash" hidden style="margin-top:10px">Stop</button>
-      <div class="hint">Hold to ride: while you hold, your bet moves with the chart. Let go to lock it in. Press Stop to cash out.</div>
+      <div class="hint">Hold to ride: while you hold, your bet moves with the chart. Let go to lock it in. Each hold costs 1%. Press Stop to cash out.</div>
     </div>
     <div class="card" style="padding:10px">
       <div class="graphbox holdzone" id="rideBox">
@@ -595,10 +595,10 @@ function ridePath(seed){
       const i = arr.length, u1 = R(), u2 = R(), u3 = R();
       if (u3 < 0.004) heat = 3;                      // wild phase
       heat = 1 + (heat - 1) * 0.97;
-      const vol = heat * Math.min(3, 1 + i / 600);   // gets riskier over time
+      const vol = heat * 2;                          // same intensity the whole round
       let ev = 0;
       if (u3 > 0.995) { ev = u2 > 0.5 ? 1 : -1; v += ev * 0.03; }  // pump or dump
-      v = 0.88 * v + (u1 - 0.5) * 0.009 * vol - 0.002 * Math.log(p / 100);
+      v = 0.8 * v + (u1 - 0.5) * 0.009 * vol - 0.0007 * Math.log(p / 100);
       p = p * Math.exp(v + (u2 - 0.5) * 0.035 * vol);
       arr.push(p); arr.ev.push(ev); arr.heat.push(heat);
     }
@@ -637,7 +637,7 @@ function rideMult(r){
   let m = 1;
   for (const sp of r.spans) {
     const end = sp.b == null ? r.cur : sp.b;
-    m *= priceAt(r, end) / r.path[sp.a];
+    m *= 0.99 * priceAt(r, end) / r.path[sp.a];   // 1% fee per hold
   }
   return Math.min(m, 25);
 }
