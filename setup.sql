@@ -219,9 +219,9 @@ declare
 begin
   for i in 1..n loop
     s := (s * 48271) % 2147483647;
-    v := 0.88 * v + (s::float8 / 2147483647 - 0.5) * 0.009;
+    v := 0.88 * v + (s::float8 / 2147483647 - 0.5) * 0.009 - 0.002 * ln(p / 100);  -- gentle pull back toward the start
     s := (s * 48271) % 2147483647;
-    p := p * exp(v + (s::float8 / 2147483647 - 0.5) * 0.016 - 0.0003);
+    p := p * exp(v + (s::float8 / 2147483647 - 0.5) * 0.016);
     arr := arr || p;
   end loop;
   return arr;
