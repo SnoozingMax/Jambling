@@ -26,6 +26,8 @@ declare
   v float8 := 0;
   p float8 := 100;
   heat float8 := 1;
+  ev_left int := 0;
+  ev_dir float8 := 0;
   vol float8;
   u1 float8; u2 float8; u3 float8;
   arr float8[] := array[100.0];
@@ -37,11 +39,17 @@ begin
     if u3 < 0.004 then heat := 3; end if;                 -- wild phase
     heat := 1 + (heat - 1) * 0.97;
     vol := heat * 2;                                       -- same intensity the whole round
-    if u3 > 0.995 then                                    -- pump or dump
-      v := v + case when u2 > 0.5 then 0.03 else -0.03 end;
+    if ev_left = 0 and u3 > 0.995 then                    -- pump or dump: sharp ~30% move over 0.4s
+      ev_left := 4; ev_dir := case when u2 > 0.5 then 1 else -1 end;
     end if;
-    v := 0.8 * v + (u1 - 0.5) * 0.009 * vol - 0.0007 * ln(p / 100);
-    p := p * exp(v + (u2 - 0.5) * 0.035 * vol);
+    if ev_left > 0 then
+      p := p * exp(ev_dir * 0.07);
+      ev_left := ev_left - 1;
+      v := 0;
+    else
+      v := 0.8 * v + (u1 - 0.5) * 0.009 * vol - 0.0007 * ln(p / 100);
+      p := p * exp(v + (u2 - 0.5) * 0.035 * vol);
+    end if;
     arr := arr || p;
   end loop;
   return arr;
