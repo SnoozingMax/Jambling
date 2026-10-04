@@ -85,6 +85,9 @@ canvas{width:100%;height:100%;display:block}
 .tag.up{background:var(--win);color:#fff}
 .tag.down{background:var(--lose);color:#fff}
 .tag.wild{background:var(--gold);color:#2a1d00}
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.6);display:grid;place-items:center;padding:16px;z-index:10}
+.modal-card{width:100%;max-width:360px}
+.modal-card h2{font-family:Fraunces;font-weight:600;font-size:24px;margin:0 0 16px}
 .hint{font-size:12px;color:var(--muted);margin-top:6px}
 
 /* board */
@@ -139,6 +142,7 @@ tr.me td{color:var(--accent)}
       <span class="who" id="who"></span>
       <div class="bal"><i></i><span id="balance">0.00</span></div>
       <button class="ghost daily" id="daily" disabled>Daily</button>
+      <button class="ghost" id="giftOpen">Gift</button>
       <button class="ghost" id="refill" hidden>Refill</button>
       <button class="ghost" id="logout">Sign out</button>
     </div>
@@ -242,6 +246,23 @@ tr.me td{color:var(--accent)}
   </div>
 </section>
 
+<div class="modal" id="giftModal" hidden>
+  <form class="card modal-card" id="giftForm">
+    <h2>Send a gift</h2>
+    <div class="field">
+      <label>To (username)</label>
+      <input id="giftTo" type="text" required maxlength="20" autocapitalize="off" spellcheck="false" autocomplete="off">
+    </div>
+    <div class="field">
+      <label>Amount</label>
+      <input id="giftAmt" type="number" min="0.01" step="0.01" required>
+      <div class="hint" id="giftHint"></div>
+    </div>
+    <button class="go" id="giftSend">Send</button>
+    <button type="button" class="ghost" id="giftCancel" style="width:100%;margin-top:8px;padding:10px">Cancel</button>
+  </form>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -305,11 +326,44 @@ sb.auth.onAuthStateChange((_event, session) => {
   if (user) loadProfile();
 });
 
+/* ---------- gifting ---------- */
+const giftable = () => Math.max(0, Math.floor((balance - 1000) * 100) / 100);
+function openGift(name){
+  $('giftTo').value = name || '';
+  $('giftAmt').value = '';
+  $('giftHint').textContent = `You can send up to ${fmt(giftable())} (coins above 1,000).`;
+  $('giftModal').hidden = false;
+  (name ? $('giftAmt') : $('giftTo')).focus();
+}
+$('giftOpen').onclick = () => openGift();
+$('giftCancel').onclick = () => { $('giftModal').hidden = true; };
+$('giftModal').onclick = e => { if (e.target === $('giftModal')) $('giftModal').hidden = true; };
+$('giftForm').onsubmit = async e => {
+  e.preventDefault();
+  $('giftSend').disabled = true;
+  const { data, error } = await sb.rpc('gift_coins', { p_to: $('giftTo').value.trim(), p_amount: parseFloat($('giftAmt').value) });
+  $('giftSend').disabled = false;
+  if (error) return toast(error.message);
+  setBalance(data.balance);
+  $('giftModal').hidden = true;
+  toast(`Sent ${fmt(data.amount)} to ${data.to}`);
+};
+async function checkGifts(){
+  if (!user) return;
+  const { data } = await sb.rpc('my_new_gifts');
+  if (!data || !data.length) return;
+  data.forEach((g, i) => setTimeout(() => toast(`${g.from} gifted you ${fmt(g.amount)} coins`), i * 2600));
+  const { data: p } = await sb.from('profiles').select('balance').eq('id', user.id).single();
+  if (p) setBalance(p.balance);
+}
+setInterval(checkGifts, 15000);
+
 async function loadProfile(){
   const { data, error } = await sb.from('profiles').select('username,balance').eq('id', user.id).single();
   if (error) return toast(error.message);
   $('who').textContent = data.username;
   setBalance(data.balance);
+  checkGifts();
   const nd = await sb.rpc('daily_next');
   nextDaily = nd.data ? new Date(nd.data).getTime() : 0;
   updateDaily();
@@ -777,6 +831,7 @@ async function loadBoard(){
     if (p.id === user.id) tr.className = 'me';
     tr.innerHTML = `<td>${i + 1}</td><td></td><td>${fmt(p.balance)}</td>`;
     tr.children[1].textContent = p.username; // safe from HTML injection
+    if (p.id !== user.id) { tr.style.cursor = 'pointer'; tr.title = 'Gift ' + p.username; tr.onclick = () => openGift(p.username); }
     $('board').appendChild(tr);
   });
 }
