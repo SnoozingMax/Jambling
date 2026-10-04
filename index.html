@@ -599,7 +599,7 @@ function ridePath(seed){
       let ev = 0;
       if (u3 > 0.995) { ev = u2 > 0.5 ? 1 : -1; v += ev * 0.03; }  // pump or dump
       v = 0.88 * v + (u1 - 0.5) * 0.009 * vol - 0.002 * Math.log(p / 100);
-      p = p * Math.exp(v + (u2 - 0.5) * 0.016 * vol);
+      p = p * Math.exp(v + (u2 - 0.5) * 0.035 * vol);
       arr.push(p); arr.ev.push(ev); arr.heat.push(heat);
     }
   };

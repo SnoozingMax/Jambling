@@ -231,7 +231,7 @@ begin
       v := v + case when u2 > 0.5 then 0.03 else -0.03 end;
     end if;
     v := 0.88 * v + (u1 - 0.5) * 0.009 * vol - 0.002 * ln(p / 100);
-    p := p * exp(v + (u2 - 0.5) * 0.016 * vol);
+    p := p * exp(v + (u2 - 0.5) * 0.035 * vol);
     arr := arr || p;
   end loop;
   return arr;
