@@ -29,6 +29,7 @@ declare
   vol float8;
   u1 float8; u2 float8; u3 float8;
   ev_left int := 0; ev_dir float8 := 0; d int := 0; cut int := -1; rug int := 0; base float8 := 0;
+  size float8 := 0; rr int := 1; w float8 := 1;
   k int; ev int;
   arr float8[] := array[100.0];
 begin
@@ -39,13 +40,17 @@ begin
     if u3 < 0.004 then heat := 3; end if;                 -- wild phase
     heat := 1 + (heat - 1) * 0.97;
     vol := heat * 2;
-    -- pump or dump: ~30% move over 0.8-2s, speeding up. half of pumps rug-pull partway
+    -- pump: +65% to +170% over 2.5-6s. dump: -33% to -50%. half of pumps rug-pull partway
     if ev_left = 0 and rug = 0 and u3 > 0.995 then
       ev_dir := case when u2 > 0.5 then 1 else -1 end;
-      d := 8 + floor(u1 * 13)::int;
+      d := 25 + floor(u1 * 36)::int;
+      if ev_dir > 0 then size := 0.5 + 0.5 * (u1 * 53 - floor(u1 * 53));
+      else size := 0.4 + 0.3 * (u1 * 53 - floor(u1 * 53)); end if;
+      rr := ceil(d::float8 / 4)::int;
+      w := (rr * (rr + 1))::float8 / 2 + (d - rr) * rr;
       ev_left := d; base := p;
       if ev_dir > 0 and (u1 * 97 - floor(u1 * 97)) < 0.5 then
-        cut := 2 + floor((u1 * 331 - floor(u1 * 331)) * (d - 2))::int;
+        cut := 3 + floor((u1 * 331 - floor(u1 * 331)) * (d - 3))::int;
       else
         cut := -1;
       end if;
@@ -54,14 +59,14 @@ begin
     if ev_left > 0 then
       k := d - ev_left + 1;
       if k = cut then
-        ev_left := 0; rug := 4;
+        ev_left := 0; rug := 3;
       else
-        p := p * exp(ev_dir * 0.27 * k / ((d * (d + 1))::float8 / 2));
+        p := p * exp(ev_dir * size * least(k, rr) / w + (u2 - 0.5) * 0.012);
         ev_left := ev_left - 1; v := 0; ev := 1;
       end if;
     end if;
     if rug > 0 and ev = 0 then
-      p := p * exp(ln(base * 0.88 / p) / rug);            -- rug pull: crash to 12% below where the pump started
+      p := p * exp(ln(base * 0.5 / p) / rug);             -- rug pull: crash to half of where the pump started
       rug := rug - 1; v := 0;
     elsif ev = 0 then
       v := 0.8 * v + (u1 - 0.5) * 0.009 * vol - 0.0007 * ln(p / 100);
