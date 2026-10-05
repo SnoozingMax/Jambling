@@ -218,9 +218,9 @@ declare
   heat float8 := 1;
   vol float8;
   u1 float8; u2 float8; u3 float8;
-  ev_left int := 0; ev_dir float8 := 0; d int := 0; base float8 := 100;
-  size float8 := 0; rr int := 1; w float8 := 1; wk int;
-  k int; ev int; mid boolean;
+  ev_left int := 0; ev_dir float8 := 0; d int := 0;
+  size float8 := 0; w float8 := 1; x float8; drift float8;
+  k int; ev int;
   arr float8[] := array[100.0];
 begin
   for i in 1..n loop
@@ -230,37 +230,34 @@ begin
     if u3 < 0.004 then heat := 3; end if;                 -- wild phase
     heat := 1 + (heat - 1) * 0.97;
     vol := heat * 2;
-    mid := false;
     if ev_left = 0 and u3 > 0.99 then
-      if u2 < 0.45 then                                   -- pump: +65% to +170% over 2.5-6s
+      if u2 < 0.45 then                                   -- hidden pump: +65% to +170% over 3-7s, swells in the middle
         ev_dir := 1;
-        d := 25 + floor(u1 * 36)::int;
+        d := 30 + floor(u1 * 41)::int;
         size := 0.5 + 0.5 * (u1 * 53 - floor(u1 * 53));
-        rr := ceil(d::float8 / 4)::int;
-        w := (rr * (rr + 1))::float8 / 2 + (d - rr) * rr;
-        ev_left := d; base := p;
-      else                                                -- dump: random size and length
+        w := 0;
+        for j in 1..d loop x := (j - 0.5) / d; w := w + x * (1 - x); end loop;
+      else                                                -- dump: random size and length, hits hardest first
         ev_dir := -1;
         d := 3 + floor((u1 * 13 - floor(u1 * 13)) * 18)::int;
         size := 0.25 + 0.45 * (u1 * 53 - floor(u1 * 53));
         w := (d * (d + 1))::float8 / 2;
-        ev_left := d;
       end if;
-    elsif ev_left > 0 and ev_dir > 0 and u3 < 0.012 then  -- surprise dump mid-pump: wipes the pump out
-      ev_dir := -1;
-      d := 3;
-      size := greatest(0, ln(p / base)) + 0.9 + 0.3 * (u1 * 53 - floor(u1 * 53));
-      w := (d * (d + 1))::float8 / 2;
       ev_left := d;
     end if;
+    ev := 0; drift := 0;
     if ev_left > 0 then
       k := d - ev_left + 1;
-      if ev_dir > 0 then wk := least(k, rr); else wk := d - k + 1; end if;   -- pumps build up, dumps hit hardest first
-      p := p * exp(ev_dir * size * wk / w + (u2 - 0.5) * 0.012);
-      ev_left := ev_left - 1; v := 0;
-    else
+      if ev_dir > 0 then
+        x := (k - 0.5) / d; drift := size * (x * (1 - x)) / w; ev := 1;
+      else
+        p := p * exp(-size * (d - k + 1) / w + (u2 - 0.5) * 0.012); v := 0; ev := -1;
+      end if;
+      ev_left := ev_left - 1;
+    end if;
+    if ev >= 0 then                                       -- normal chop keeps going during pumps, so they're hard to spot
       v := 0.8 * v + (u1 - 0.5) * 0.009 * vol - 0.0007 * ln(p / 100);
-      p := p * exp(v + (u2 - 0.5) * 0.035 * vol);
+      p := p * exp(v + (u2 - 0.5) * 0.035 * vol + drift);
     end if;
     arr := arr || p;
   end loop;
@@ -291,6 +288,7 @@ begin
   if auth.uid() is null then raise exception 'Not signed in'; end if;
   p_bet := round(p_bet, 2);
   if p_bet is null or p_bet <= 0 then raise exception 'Invalid bet'; end if;
+  if p_bet > 1000 then raise exception 'Max Ride bet is 1,000'; end if;
 
   -- a round left open (tab closed) is forfeited
   update ride_rounds set status = 'abandoned', payout = 0 where user_id = auth.uid() and status = 'live';

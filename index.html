@@ -228,7 +228,7 @@ tr.me td{color:var(--accent)}
     <div class="card">
       <div class="field">
         <label>Bet</label>
-        <input id="rideBet" type="number" min="0.01" step="0.01" value="10">
+        <input id="rideBet" type="number" min="0.01" max="1000" step="0.01" value="10">
         <div class="chips" data-for="rideBet">
           <button data-op="half">½</button><button data-op="double">2×</button><button data-op="max">Max</button>
         </div>
@@ -236,7 +236,7 @@ tr.me td{color:var(--accent)}
       <button class="go" id="rideStart">Start</button>
       <button class="holdbtn" id="holdBtn" hidden>HOLD</button>
       <button class="go cash" id="rideCash" hidden style="margin-top:10px">Stop</button>
-      <div class="hint">Hold to ride: while you hold, your bet moves with the chart. Let go to lock it in. Each hold costs 1%. Press Stop to cash out.</div>
+      <div class="hint">Hold to ride: while you hold, your bet moves with the chart. Let go to lock it in. Each hold costs 1%. Max bet 1,000. Press Stop to cash out.</div>
       <div class="warn">Closing or refreshing the tab during a round loses your bet.</div>
     </div>
     <div class="card" style="padding:10px">
@@ -457,7 +457,8 @@ document.querySelectorAll('.chips').forEach(c => c.onclick = e => {
   if (op === 'half') v = v / 2;
   if (op === 'double') v = v * 2;
   if (op === 'max') v = balance;
-  inp.value = (Math.floor(Math.min(v, balance) * 100) / 100).toFixed(2);
+  const cap = inp.id === 'rideBet' ? Math.min(balance, 1000) : balance;
+  inp.value = (Math.floor(Math.min(v, cap) * 100) / 100).toFixed(2);
 });
 
 /* ---------- coin flip ---------- */
@@ -686,7 +687,7 @@ window.addEventListener('resize', () => { if (!round && !ghost) drawGraph(1); })
 const STEP_MS = 100, WINDOW = 120; // 12s visible
 function ridePath(seed){
   let s = Number(seed), v = 0, p = 100, heat = 1;
-  let evLeft = 0, evDir = 0, D = 0, base = 100, size = 0, Rr = 1, W = 1;
+  let evLeft = 0, evDir = 0, D = 0, size = 0, W = 1;
   const arr = [100]; arr.ev = [0]; arr.heat = [1];
   const R = () => (s = (s * 48271) % 2147483647) / 2147483647;
   const fr = x => x - Math.floor(x);
@@ -697,35 +698,30 @@ function ridePath(seed){
       heat = 1 + (heat - 1) * 0.97;
       const vol = heat * 2;
       if (evLeft === 0 && u3 > 0.99) {
-        if (u2 < 0.45) {                             // pump: +65% to +170% over 2.5-6s
+        if (u2 < 0.45) {                             // hidden pump: +65% to +170% over 3-7s, swells in the middle
           evDir = 1;
-          D = 25 + Math.floor(u1 * 36);
+          D = 30 + Math.floor(u1 * 41);
           size = 0.5 + 0.5 * fr(u1 * 53);
-          Rr = Math.ceil(D / 4); W = (Rr * (Rr + 1)) / 2 + (D - Rr) * Rr;
-          evLeft = D; base = p;
-        } else {                                     // dump: random size and length
+          W = 0;
+          for (let j = 1; j <= D; j++) { const x = (j - 0.5) / D; W = W + x * (1 - x); }
+        } else {                                     // dump: random size and length, hits hardest first
           evDir = -1;
           D = 3 + Math.floor(fr(u1 * 13) * 18);
           size = 0.25 + 0.45 * fr(u1 * 53);
           W = (D * (D + 1)) / 2;
-          evLeft = D;
         }
-      } else if (evLeft > 0 && evDir > 0 && u3 < 0.012) {   // surprise dump mid-pump: wipes the pump out
-        evDir = -1;
-        D = 3;
-        size = Math.max(0, Math.log(p / base)) + 0.9 + 0.3 * fr(u1 * 53);
-        W = (D * (D + 1)) / 2;
         evLeft = D;
       }
-      let ev = 0;
+      let ev = 0, drift = 0;
       if (evLeft > 0) {
         const k = D - evLeft + 1;
-        const wk = evDir > 0 ? Math.min(k, Rr) : D - k + 1;   // pumps build up, dumps hit hardest first
-        p = p * Math.exp(evDir * size * wk / W + (u2 - 0.5) * 0.012);
-        evLeft--; v = 0; ev = evDir;
-      } else {
+        if (evDir > 0) { const x = (k - 0.5) / D; drift = size * (x * (1 - x)) / W; ev = 1; }
+        else { p = p * Math.exp(-size * (D - k + 1) / W + (u2 - 0.5) * 0.012); v = 0; ev = -1; }
+        evLeft--;
+      }
+      if (ev >= 0) {                                 // normal chop keeps going during pumps, so they're hard to spot
         v = 0.8 * v + (u1 - 0.5) * 0.009 * vol - 0.0007 * Math.log(p / 100);
-        p = p * Math.exp(v + (u2 - 0.5) * 0.035 * vol);
+        p = p * Math.exp(v + (u2 - 0.5) * 0.035 * vol + drift);
       }
       arr.push(p); arr.ev.push(ev); arr.heat.push(heat);
     }
@@ -738,6 +734,7 @@ const loadColors = () => { C = { win: css('--win'), lose: css('--lose'), mut: cs
 
 $('rideStart').onclick = async () => {
   const bet = readBet('rideBet'); if (!bet) return;
+  if (bet > 1000) return toast('Max Ride bet is 1,000');
   $('rideStart').disabled = true;
   const { data, error } = await sb.rpc('ride_start', { p_bet: bet });
   $('rideStart').disabled = false;
@@ -816,10 +813,10 @@ function rideLoop(){
   $('rideVal').className = 'mult ' + (val > r.bet + 0.004 ? 'win' : val < r.bet - 0.004 ? 'lose' : '');
   // flash PUMP / DUMP for ~1.5s after one happens, and WILD during wild phases
   const ci = Math.floor(r.cur);
-  for (let j = ci; j > ci - 10 && j > 0; j--) if (r.path.ev[j]) { r.flash = { t: j, ev: r.path.ev[j] }; break; }
+  for (let j = ci; j > ci - 10 && j > 0; j--) if (r.path.ev[j] < 0) { r.flash = { t: j, ev: r.path.ev[j] }; break; }   // pumps stay hidden
   const fl = r.flash && ci - r.flash.t < 10 ? r.flash : null;
   const tag = $('rideTag');
-  if (fl) { tag.textContent = fl.ev > 0 ? 'PUMP' : 'DUMP'; tag.className = 'tag ' + (fl.ev > 0 ? 'up' : 'down'); }
+  if (fl) { tag.textContent = 'DUMP'; tag.className = 'tag down'; }
   else if (r.path.heat[ci] > 1.6) { tag.textContent = 'WILD'; tag.className = 'tag wild'; }
   else tag.className = 'tag';
   $('rideMsg').textContent = r.holding ? 'Riding' : (r.spans.length ? 'Locked' : 'Hold to ride');
