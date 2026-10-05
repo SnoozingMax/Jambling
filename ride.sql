@@ -19,9 +19,12 @@ create table if not exists ride_rounds (
   payout numeric
 );
 alter table ride_rounds enable row level security;
+alter table ride_rounds add column if not exists boost_steps int not null default 0;
+alter table profiles add column if not exists boost_until timestamptz;
 
 -- the chart: momentum random walk. MUST match ridePath() in index.html
-create or replace function _ride_path(p_seed bigint, n int) returns float8[]
+drop function if exists _ride_path(bigint, int);
+create or replace function _ride_path(p_seed bigint, n int, p_boost int default 0) returns float8[]
 language plpgsql immutable as $$
 declare
   s bigint := p_seed;
@@ -42,6 +45,12 @@ begin
     if u3 < 0.004 then heat := 3; end if;                 -- wild phase
     heat := 1 + (heat - 1) * 0.97;
     vol := heat * 2;
+    if i <= p_boost then                                  -- admin boost: nonstop pump, no dumps
+      p := p * exp(0.006 + (u2 - 0.5) * 0.02);
+      ev_left := 0; v := 0;
+      arr := arr || p;
+      continue;
+    end if;
     if ev_left = 0 and u3 > 0.99 then
       if u2 < 0.45 then                                   -- hidden pump: +65% to +170% over 3-7s, swells in the middle
         ev_dir := 1;
@@ -91,7 +100,7 @@ begin
 end $$;
 
 -- bump this whenever the chart math changes; must match RIDE_VERSION in index.html
-create or replace function ride_version() returns int language sql immutable as $$ select 27 $$;
+create or replace function ride_version() returns int language sql immutable as $$ select 28 $$;
 
 -- pay out a round at step a (internal: never callable from the browser)
 create or replace function _ride_finish(p_id uuid, a int) returns json
@@ -110,7 +119,7 @@ begin
   h := rd.holds;
   if rd.holding then h := h || a; end if;
 
-  path := _ride_path(rd.seed, a);
+  path := _ride_path(rd.seed, a, rd.boost_steps);
   for i in 1 .. coalesce(array_length(h, 1), 0) / 2 loop
     m := m * 0.99 * path[h[2*i] + 1] / path[h[2*i - 1] + 1];   -- 1% fee per hold
   end loop;
@@ -144,6 +153,7 @@ language plpgsql security definer set search_path = public as $$
 declare
   bal numeric;
   rid uuid;
+  bs int;
   sd bigint := floor(random() * 2147483645)::bigint + 1;
 begin
   if auth.uid() is null then raise exception 'Not signed in'; end if;
@@ -157,8 +167,10 @@ begin
   select balance into bal from profiles where id = auth.uid() for update;
   if bal < p_bet then raise exception 'Not enough coins'; end if;
   update profiles set balance = balance - p_bet where id = auth.uid() returning balance into bal;
-  insert into ride_rounds (user_id, bet, seed) values (auth.uid(), p_bet, sd) returning id into rid;
-  return json_build_object('round_id', rid, 'seed', sd, 'balance', bal);
+  select greatest(0, floor(extract(epoch from (boost_until - clock_timestamp())) / 0.1))::int into bs
+    from profiles where id = auth.uid() and boost_until > clock_timestamp();
+  insert into ride_rounds (user_id, bet, seed, boost_steps) values (auth.uid(), p_bet, sd, coalesce(bs, 0)) returning id into rid;
+  return json_build_object('round_id', rid, 'seed', sd, 'balance', bal, 'boost_steps', coalesce(bs, 0));
 end $$;
 
 create or replace function ride_hold(p_round uuid, p_on boolean, p_step int) returns json

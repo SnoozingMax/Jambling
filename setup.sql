@@ -209,9 +209,12 @@ create table if not exists ride_rounds (
   payout numeric
 );
 alter table ride_rounds enable row level security;
+alter table ride_rounds add column if not exists boost_steps int not null default 0;
+alter table profiles add column if not exists boost_until timestamptz;
 
 -- the chart: momentum random walk. MUST match ridePath() in index.html
-create or replace function _ride_path(p_seed bigint, n int) returns float8[]
+drop function if exists _ride_path(bigint, int);
+create or replace function _ride_path(p_seed bigint, n int, p_boost int default 0) returns float8[]
 language plpgsql immutable as $$
 declare
   s bigint := p_seed;
@@ -232,6 +235,12 @@ begin
     if u3 < 0.004 then heat := 3; end if;                 -- wild phase
     heat := 1 + (heat - 1) * 0.97;
     vol := heat * 2;
+    if i <= p_boost then                                  -- admin boost: nonstop pump, no dumps
+      p := p * exp(0.006 + (u2 - 0.5) * 0.02);
+      ev_left := 0; v := 0;
+      arr := arr || p;
+      continue;
+    end if;
     if ev_left = 0 and u3 > 0.99 then
       if u2 < 0.45 then                                   -- hidden pump: +65% to +170% over 3-7s, swells in the middle
         ev_dir := 1;
@@ -281,7 +290,7 @@ begin
 end $$;
 
 -- bump this whenever the chart math changes; must match RIDE_VERSION in index.html
-create or replace function ride_version() returns int language sql immutable as $$ select 27 $$;
+create or replace function ride_version() returns int language sql immutable as $$ select 28 $$;
 
 -- pay out a round at step a (internal: never callable from the browser)
 create or replace function _ride_finish(p_id uuid, a int) returns json
@@ -300,7 +309,7 @@ begin
   h := rd.holds;
   if rd.holding then h := h || a; end if;
 
-  path := _ride_path(rd.seed, a);
+  path := _ride_path(rd.seed, a, rd.boost_steps);
   for i in 1 .. coalesce(array_length(h, 1), 0) / 2 loop
     m := m * 0.99 * path[h[2*i] + 1] / path[h[2*i - 1] + 1];   -- 1% fee per hold
   end loop;
@@ -334,6 +343,7 @@ language plpgsql security definer set search_path = public as $$
 declare
   bal numeric;
   rid uuid;
+  bs int;
   sd bigint := floor(random() * 2147483645)::bigint + 1;
 begin
   if auth.uid() is null then raise exception 'Not signed in'; end if;
@@ -347,8 +357,10 @@ begin
   select balance into bal from profiles where id = auth.uid() for update;
   if bal < p_bet then raise exception 'Not enough coins'; end if;
   update profiles set balance = balance - p_bet where id = auth.uid() returning balance into bal;
-  insert into ride_rounds (user_id, bet, seed) values (auth.uid(), p_bet, sd) returning id into rid;
-  return json_build_object('round_id', rid, 'seed', sd, 'balance', bal);
+  select greatest(0, floor(extract(epoch from (boost_until - clock_timestamp())) / 0.1))::int into bs
+    from profiles where id = auth.uid() and boost_until > clock_timestamp();
+  insert into ride_rounds (user_id, bet, seed, boost_steps) values (auth.uid(), p_bet, sd, coalesce(bs, 0)) returning id into rid;
+  return json_build_object('round_id', rid, 'seed', sd, 'balance', bal, 'boost_steps', coalesce(bs, 0));
 end $$;
 
 create or replace function ride_hold(p_round uuid, p_on boolean, p_step int) returns json
@@ -520,6 +532,40 @@ begin
   update profiles set balance = balance + payout where id = auth.uid() returning balance into bal;
 
   return json_build_object('won', true, 'multiplier', m, 'payout', payout, 'balance', bal, 'crash_point', rd.crash_point);
+end $$;
+
+notify pgrst, 'reload schema';
+
+-- ========== Admin ==========
+create table if not exists admins (user_id uuid primary key references profiles(id) on delete cascade);
+alter table admins enable row level security;   -- no policies: only functions read it
+insert into admins select id from profiles where username = 'max' on conflict do nothing;
+
+create or replace function is_admin() returns boolean
+language sql stable security definer set search_path = public as $$
+  select exists (select 1 from admins where user_id = auth.uid())
+$$;
+
+-- give a player 5 minutes of nonstop pump in Ride, for a price in coins
+create or replace function admin_boost(p_user text, p_cost numeric) returns json
+language plpgsql security definer set search_path = public as $$
+declare
+  them uuid; them_name text; bal numeric; until timestamptz;
+begin
+  if not is_admin() then raise exception 'Admins only'; end if;
+  p_cost := round(coalesce(p_cost, 0), 2);
+  if p_cost < 0 then raise exception 'Invalid price'; end if;
+  select id, username into them, them_name from profiles
+   where lower(username) = lower(trim(p_user)) order by created_at limit 1;
+  if them is null then raise exception 'No player named %', p_user; end if;
+
+  select balance into bal from profiles where id = them for update;
+  if bal < p_cost then raise exception '% only has % coins', them_name, bal; end if;
+  update profiles
+     set balance = balance - p_cost,
+         boost_until = greatest(coalesce(boost_until, clock_timestamp()), clock_timestamp()) + interval '5 minutes'
+   where id = them returning balance, boost_until into bal, until;
+  return json_build_object('user', them_name, 'balance', bal, 'until', until);
 end $$;
 
 notify pgrst, 'reload schema';

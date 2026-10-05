@@ -148,7 +148,9 @@ tr.me td{color:var(--accent)}
     <div class="right">
       <span class="who" id="who"></span>
       <span class="rb" id="rbBadge" hidden></span>
+      <span class="rb" id="boostBadge" hidden></span>
       <button class="ghost rebirth" id="rebirthBtn" hidden>Rebirth</button>
+      <button class="ghost" id="adminOpen" hidden>Admin</button>
       <div class="bal"><i></i><span id="balance">0.00</span></div>
       <button class="ghost daily" id="daily" disabled>Daily</button>
       <button class="ghost" id="giftOpen">Gift</button>
@@ -283,6 +285,23 @@ tr.me td{color:var(--accent)}
   </div>
 </div>
 
+<div class="modal" id="adminModal" hidden>
+  <form class="card modal-card" id="adminForm">
+    <h2>Admin: Boost</h2>
+    <p class="rb-text">Takes the price from their coins and gives them <b>5 minutes of nonstop pump</b> in Ride. Stacks if they already have one.</p>
+    <div class="field">
+      <label>Player</label>
+      <input id="adminUser" type="text" required maxlength="20" autocapitalize="off" spellcheck="false" autocomplete="off">
+    </div>
+    <div class="field">
+      <label>Price (coins)</label>
+      <input id="adminCost" type="number" min="0" step="0.01" required value="0">
+    </div>
+    <button class="go rebirth-go" id="adminSend">Boost 5 min</button>
+    <button type="button" class="ghost" id="adminCancel" style="width:100%;margin-top:8px;padding:10px">Close</button>
+  </form>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -294,7 +313,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 const K = 0.09; // growth rate, must match setup.sql
 const $ = id => document.getElementById(id);
-let user = null, balance = 0, rebirths = 0, accessToken = null;
+let user = null, balance = 0, rebirths = 0, accessToken = null, boostUntil = 0;
 const luck = () => 1 + 0.1 * rebirths;
 const boost = (bet, val) => val > bet ? bet + (val - bet) * luck() : val;   // profit x luck
 
@@ -354,6 +373,35 @@ sb.auth.onAuthStateChange((_event, session) => {
   if (user) loadProfile();
 });
 
+/* ---------- boost (from admin) ---------- */
+setInterval(() => {
+  const left = boostUntil - Date.now(), b = $('boostBadge');
+  if (left <= 0) { b.hidden = true; return; }
+  b.hidden = false;
+  b.textContent = `BOOST ${Math.floor(left / 60000)}:${String(Math.floor(left / 1000) % 60).padStart(2, '0')}`;
+}, 500);
+// pick up boosts given while you're online
+setInterval(async () => {
+  if (!user) return;
+  const { data } = await sb.from('profiles').select('boost_until').eq('id', user.id).single();
+  const t = data?.boost_until ? new Date(data.boost_until).getTime() : 0;
+  if (t > boostUntil && t > Date.now()) toast('You got a 5 minute BOOST! Start a Ride round.');
+  boostUntil = t;
+}, 15000);
+
+/* ---------- admin ---------- */
+$('adminOpen').onclick = () => { $('adminModal').hidden = false; $('adminUser').focus(); };
+$('adminCancel').onclick = () => { $('adminModal').hidden = true; };
+$('adminForm').onsubmit = async e => {
+  e.preventDefault();
+  $('adminSend').disabled = true;
+  const { data, error } = await sb.rpc('admin_boost', { p_user: $('adminUser').value.trim(), p_cost: parseFloat($('adminCost').value) || 0 });
+  $('adminSend').disabled = false;
+  if (error) return toast(error.message);
+  toast(`${data.user} boosted until ${new Date(data.until).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} (now has ${fmt(data.balance)})`);
+  if (data.user.toLowerCase() === $('who').textContent.toLowerCase()) { boostUntil = new Date(data.until).getTime(); loadProfile(); }
+};
+
 /* ---------- rebirth ---------- */
 $('rebirthBtn').onclick = () => {
   const next = rebirths + 1;
@@ -405,10 +453,12 @@ setInterval(checkGifts, 15000);
 async function loadProfile(){
   const { data: left } = await sb.rpc('ride_cleanup');
   if (left && left.payout != null) setTimeout(() => toast(`Your last Ride round was stopped: paid ${fmt(left.payout)}`), 800);
-  const { data, error } = await sb.from('profiles').select('username,balance,rebirths').eq('id', user.id).single();
+  const { data, error } = await sb.from('profiles').select('username,balance,rebirths,boost_until').eq('id', user.id).single();
   if (error) return toast(error.message);
   $('who').textContent = data.username;
   setRebirths(data.rebirths);
+  boostUntil = data.boost_until ? new Date(data.boost_until).getTime() : 0;
+  sb.rpc('is_admin').then(({ data: a }) => { $('adminOpen').hidden = !a; });
   setBalance(data.balance);
   checkGifts();
   const nd = await sb.rpc('daily_next');
@@ -688,8 +738,8 @@ window.addEventListener('resize', () => { if (!round && !ghost) drawGraph(1); })
 // The chart comes from a server seed, so it's drawn locally with zero lag.
 // MUST match _ride_path() in ride.sql.
 const STEP_MS = 100, WINDOW = 120; // 12s visible
-const RIDE_VERSION = 27;            // must match ride_version() in ride.sql
-function ridePath(seed){
+const RIDE_VERSION = 28;            // must match ride_version() in ride.sql
+function ridePath(seed, boost = 0){
   let s = Number(seed), v = 0, p = 100, heat = 1;
   let evLeft = 0, evDir = 0, D = 0, size = 0, W = 1;
   const arr = [100]; arr.ev = [0]; arr.heat = [1];
@@ -701,6 +751,12 @@ function ridePath(seed){
       if (u3 < 0.004) heat = 3;                      // wild phase
       heat = 1 + (heat - 1) * 0.97;
       const vol = heat * 2;
+      if (arr.length <= boost) {                     // admin boost: nonstop pump, no dumps
+        p = p * Math.exp(0.006 + (u2 - 0.5) * 0.02);
+        evLeft = 0; v = 0;
+        arr.push(p); arr.ev.push(2); arr.heat.push(heat);
+        continue;
+      }
       if (evLeft === 0 && u3 > 0.99) {
         if (u2 < 0.45) {                             // hidden pump: +65% to +170% over 3-7s, swells in the middle
           evDir = 1;
@@ -745,7 +801,7 @@ $('rideStart').onclick = async () => {
   if (error) return toast(error.message);
   setBalance(data.balance);
   loadColors();
-  ride = { id: data.round_id, bet, path: ridePath(data.seed), t0: performance.now(), cur: 0,
+  ride = { id: data.round_id, bet, path: ridePath(data.seed, data.boost_steps || 0), t0: performance.now(), cur: 0,
            spans: [], holding: false, done: false, q: Promise.resolve(), lo: Math.log(95), hi: Math.log(105) };
   lastRide = ride;
   $('rideStart').hidden = true; $('holdBtn').hidden = false; $('rideCash').hidden = false;
@@ -822,7 +878,8 @@ function rideLoop(){
   for (let j = ci; j > ci - 10 && j > 0; j--) if (r.path.ev[j]) { r.flash = { t: j, ev: r.path.ev[j] }; break; }
   const fl = r.flash && ci - r.flash.t < 10 ? r.flash : null;
   const tag = $('rideTag');
-  if (fl) { tag.textContent = fl.ev > 0 ? 'PUMP' : 'DUMP'; tag.className = 'tag ' + (fl.ev > 0 ? 'up' : 'down'); }
+  if (r.path.ev[ci] === 2) { tag.textContent = 'BOOST'; tag.className = 'tag wild'; }
+  else if (fl) { tag.textContent = fl.ev > 0 ? 'PUMP' : 'DUMP'; tag.className = 'tag ' + (fl.ev > 0 ? 'up' : 'down'); }
   else if (r.path.heat[ci] > 1.6) { tag.textContent = 'WILD'; tag.className = 'tag wild'; }
   else tag.className = 'tag';
   $('rideMsg').textContent = r.holding ? 'Riding' : (r.spans.length ? 'Locked' : 'Hold to ride');
