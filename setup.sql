@@ -288,7 +288,7 @@ begin
   if auth.uid() is null then raise exception 'Not signed in'; end if;
   p_bet := round(p_bet, 2);
   if p_bet is null or p_bet <= 0 then raise exception 'Invalid bet'; end if;
-  if p_bet > 1000 then raise exception 'Max Ride bet is 1,000'; end if;
+  if p_bet > 10000 then raise exception 'Max Ride bet is 10,000'; end if;
 
   -- a round left open (tab closed) is forfeited
   update ride_rounds set status = 'abandoned', payout = 0 where user_id = auth.uid() and status = 'live';
