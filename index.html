@@ -819,10 +819,10 @@ function rideLoop(){
   $('rideVal').className = 'mult ' + (val > r.bet + 0.004 ? 'win' : val < r.bet - 0.004 ? 'lose' : '');
   // flash PUMP / DUMP for ~1.5s after one happens, and WILD during wild phases
   const ci = Math.floor(r.cur);
-  for (let j = ci; j > ci - 10 && j > 0; j--) if (r.path.ev[j] < 0) { r.flash = { t: j, ev: r.path.ev[j] }; break; }   // pumps stay hidden
+  for (let j = ci; j > ci - 10 && j > 0; j--) if (r.path.ev[j]) { r.flash = { t: j, ev: r.path.ev[j] }; break; }
   const fl = r.flash && ci - r.flash.t < 10 ? r.flash : null;
   const tag = $('rideTag');
-  if (fl) { tag.textContent = 'DUMP'; tag.className = 'tag down'; }
+  if (fl) { tag.textContent = fl.ev > 0 ? 'PUMP' : 'DUMP'; tag.className = 'tag ' + (fl.ev > 0 ? 'up' : 'down'); }
   else if (r.path.heat[ci] > 1.6) { tag.textContent = 'WILD'; tag.className = 'tag wild'; }
   else tag.className = 'tag';
   $('rideMsg').textContent = r.holding ? 'Riding' : (r.spans.length ? 'Locked' : 'Hold to ride');
