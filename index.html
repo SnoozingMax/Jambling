@@ -686,7 +686,7 @@ window.addEventListener('resize', () => { if (!round && !ghost) drawGraph(1); })
 const STEP_MS = 100, WINDOW = 120; // 12s visible
 function ridePath(seed){
   let s = Number(seed), v = 0, p = 100, heat = 1;
-  let evLeft = 0, evDir = 0, D = 0, cut = -1, rug = 0, base = 0, size = 0, Rr = 1, W = 1;
+  let evLeft = 0, evDir = 0, D = 0, base = 100, size = 0, Rr = 1, W = 1;
   const arr = [100]; arr.ev = [0]; arr.heat = [1];
   const R = () => (s = (s * 48271) % 2147483647) / 2147483647;
   const fr = x => x - Math.floor(x);
@@ -696,25 +696,34 @@ function ridePath(seed){
       if (u3 < 0.004) heat = 3;                      // wild phase
       heat = 1 + (heat - 1) * 0.97;
       const vol = heat * 2;
-      // pump: +65% to +170% over 2.5-6s. dump: -33% to -50%. 40% of pumps rug-pull partway
-      if (evLeft === 0 && rug === 0 && u3 > 0.995) {
-        evDir = u2 > 0.5 ? 1 : -1;
-        D = 25 + Math.floor(u1 * 36);
-        size = evDir > 0 ? 0.5 + 0.5 * fr(u1 * 53) : 0.4 + 0.3 * fr(u1 * 53);
-        Rr = Math.ceil(D / 4); W = (Rr * (Rr + 1)) / 2 + (D - Rr) * Rr;
-        evLeft = D; base = p;
-        cut = (evDir > 0 && fr(u1 * 97) < 0.4) ? 3 + Math.floor(fr(u1 * 331) * (D - 3)) : -1;
+      if (evLeft === 0 && u3 > 0.99) {
+        if (u2 < 0.45) {                             // pump: +65% to +170% over 2.5-6s
+          evDir = 1;
+          D = 25 + Math.floor(u1 * 36);
+          size = 0.5 + 0.5 * fr(u1 * 53);
+          Rr = Math.ceil(D / 4); W = (Rr * (Rr + 1)) / 2 + (D - Rr) * Rr;
+          evLeft = D; base = p;
+        } else {                                     // dump: random size and length
+          evDir = -1;
+          D = 3 + Math.floor(fr(u1 * 13) * 18);
+          size = 0.25 + 0.45 * fr(u1 * 53);
+          W = (D * (D + 1)) / 2;
+          evLeft = D;
+        }
+      } else if (evLeft > 0 && evDir > 0 && u3 < 0.012) {   // surprise dump mid-pump: wipes the pump out
+        evDir = -1;
+        D = 3;
+        size = Math.max(0, Math.log(p / base)) + 0.9 + 0.3 * fr(u1 * 53);
+        W = (D * (D + 1)) / 2;
+        evLeft = D;
       }
       let ev = 0;
       if (evLeft > 0) {
         const k = D - evLeft + 1;
-        if (k === cut) { evLeft = 0; rug = 3; }
-        else { p = p * Math.exp(evDir * size * Math.min(k, Rr) / W + (u2 - 0.5) * 0.012); evLeft--; v = 0; ev = evDir; }
-      }
-      if (rug > 0 && ev === 0) {
-        p = p * Math.exp(Math.log(base * 0.4 / p) / rug);    // rug pull
-        rug--; v = 0; ev = -2;
-      } else if (ev === 0) {
+        const wk = evDir > 0 ? Math.min(k, Rr) : D - k + 1;   // pumps build up, dumps hit hardest first
+        p = p * Math.exp(evDir * size * wk / W + (u2 - 0.5) * 0.012);
+        evLeft--; v = 0; ev = evDir;
+      } else {
         v = 0.8 * v + (u1 - 0.5) * 0.009 * vol - 0.0007 * Math.log(p / 100);
         p = p * Math.exp(v + (u2 - 0.5) * 0.035 * vol);
       }
@@ -810,7 +819,7 @@ function rideLoop(){
   for (let j = ci; j > ci - 10 && j > 0; j--) if (r.path.ev[j]) { r.flash = { t: j, ev: r.path.ev[j] }; break; }
   const fl = r.flash && ci - r.flash.t < 10 ? r.flash : null;
   const tag = $('rideTag');
-  if (fl) { tag.textContent = fl.ev > 0 ? 'PUMP' : fl.ev === -2 ? 'RUG PULL' : 'DUMP'; tag.className = 'tag ' + (fl.ev > 0 ? 'up' : 'down'); }
+  if (fl) { tag.textContent = fl.ev > 0 ? 'PUMP' : 'DUMP'; tag.className = 'tag ' + (fl.ev > 0 ? 'up' : 'down'); }
   else if (r.path.heat[ci] > 1.6) { tag.textContent = 'WILD'; tag.className = 'tag wild'; }
   else tag.className = 'tag';
   $('rideMsg').textContent = r.holding ? 'Riding' : (r.spans.length ? 'Locked' : 'Hold to ride');
