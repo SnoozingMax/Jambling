@@ -88,6 +88,7 @@ canvas{width:100%;height:100%;display:block}
 .modal{position:fixed;inset:0;background:rgba(0,0,0,.6);display:grid;place-items:center;padding:16px;z-index:10}
 .modal-card{width:100%;max-width:360px}
 .modal-card h2{font-family:Fraunces;font-weight:600;font-size:24px;margin:0 0 16px}
+.warn{font-size:12px;color:var(--gold);margin-top:8px}
 .hint{font-size:12px;color:var(--muted);margin-top:6px}
 
 /* board */
@@ -203,6 +204,7 @@ tr.me td{color:var(--accent)}
       <label class="toggle"><input type="checkbox" id="ghostToggle" checked><span></span>Ghost after cash out</label>
       <button class="go" id="crashBtn">Launch</button>
       <div class="hint">Cash out before it crashes. Too late and you lose the bet.</div>
+      <div class="warn">Closing or refreshing the tab during a round loses your bet.</div>
     </div>
     <div class="card" style="padding:10px">
       <div class="graphbox">
@@ -227,6 +229,7 @@ tr.me td{color:var(--accent)}
       <button class="holdbtn" id="holdBtn" hidden>HOLD</button>
       <button class="go cash" id="rideCash" hidden style="margin-top:10px">Stop</button>
       <div class="hint">Hold to ride: while you hold, your bet moves with the chart. Let go to lock it in. Each hold costs 1%. Press Stop to cash out.</div>
+      <div class="warn">Closing or refreshing the tab during a round loses your bet.</div>
     </div>
     <div class="card" style="padding:10px">
       <div class="graphbox holdzone" id="rideBox">
@@ -833,6 +836,9 @@ document.addEventListener('keydown', e => { if (e.code === 'Space' && ride && !$
 document.addEventListener('keyup', e => { if (e.code === 'Space' && ride) { e.preventDefault(); setHold(false); } });
 window.addEventListener('blur', () => setHold(false));
 window.addEventListener('resize', drawRide);
+
+// browser warning if you try to leave mid-round
+window.addEventListener('beforeunload', e => { if (ride || round) { e.preventDefault(); e.returnValue = ''; } });
 
 /* ---------- leaderboard ---------- */
 async function loadBoard(){
