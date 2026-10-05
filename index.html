@@ -89,6 +89,12 @@ canvas{width:100%;height:100%;display:block}
 .modal-card{width:100%;max-width:360px}
 .modal-card h2{font-family:Fraunces;font-weight:600;font-size:24px;margin:0 0 16px}
 .warn{font-size:12px;color:var(--gold);margin-top:8px}
+.rb{font:600 13px "IBM Plex Mono",monospace;color:var(--gold)}
+.rebirth{border-color:var(--gold);color:var(--paper);background:var(--gold);font-weight:600}
+.rb-text{color:var(--muted);margin:0 0 18px;line-height:1.5}
+.rb-text b{color:var(--ink)}
+.rebirth-go{background:var(--gold);color:#2a1d00}
+.lb-rb{font:600 12px "IBM Plex Mono",monospace;color:var(--gold);margin-left:8px}
 .hint{font-size:12px;color:var(--muted);margin-top:6px}
 
 /* board */
@@ -141,6 +147,8 @@ tr.me td{color:var(--accent)}
     <div class="logo">Jambling</div>
     <div class="right">
       <span class="who" id="who"></span>
+      <span class="rb" id="rbBadge" hidden></span>
+      <button class="ghost rebirth" id="rebirthBtn" hidden>Rebirth</button>
       <div class="bal"><i></i><span id="balance">0.00</span></div>
       <button class="ghost daily" id="daily" disabled>Daily</button>
       <button class="ghost" id="giftOpen">Gift</button>
@@ -266,6 +274,15 @@ tr.me td{color:var(--accent)}
   </form>
 </div>
 
+<div class="modal" id="rbModal" hidden>
+  <div class="card modal-card">
+    <h2>Rebirth?</h2>
+    <p class="rb-text" id="rbText"></p>
+    <button class="go rebirth-go" id="rbYes">Rebirth</button>
+    <button type="button" class="ghost" id="rbNo" style="width:100%;margin-top:8px;padding:10px">Not yet</button>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -277,10 +294,17 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 const K = 0.09; // growth rate, must match setup.sql
 const $ = id => document.getElementById(id);
-let user = null, balance = 0;
+let user = null, balance = 0, rebirths = 0;
+const luck = () => 1 + 0.1 * rebirths;
+const boost = (bet, val) => val > bet ? bet + (val - bet) * luck() : val;   // profit x luck
 
 const fmt = n => Number(n).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
-function setBalance(b){ balance = Number(b); $('balance').textContent = fmt(balance); $('refill').hidden = balance >= 10; }
+function setBalance(b){ balance = Number(b); $('balance').textContent = fmt(balance); $('refill').hidden = balance >= 10; $('rebirthBtn').hidden = balance < 100000; }
+function setRebirths(n){
+  rebirths = Number(n) || 0;
+  $('rbBadge').hidden = !rebirths;
+  $('rbBadge').textContent = `▲${rebirths} · +${rebirths * 10}% wins`;
+}
 let toastT;
 function toast(msg){ const t = $('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), 2400); }
 function readBet(id){
@@ -329,6 +353,22 @@ sb.auth.onAuthStateChange((_event, session) => {
   if (user) loadProfile();
 });
 
+/* ---------- rebirth ---------- */
+$('rebirthBtn').onclick = () => {
+  const next = rebirths + 1;
+  $('rbText').innerHTML = `Your coins reset to <b>1,000</b>.<br>You become <b>▲${next}</b>: <b>+${next * 10}%</b> on all winnings, forever.`;
+  $('rbModal').hidden = false;
+};
+$('rbNo').onclick = () => { $('rbModal').hidden = true; };
+$('rbYes').onclick = async () => {
+  $('rbYes').disabled = true;
+  const { data, error } = await sb.rpc('rebirth');
+  $('rbYes').disabled = false; $('rbModal').hidden = true;
+  if (error) return toast(error.message);
+  setBalance(data.balance); setRebirths(data.rebirths);
+  toast(`Rebirth ▲${data.rebirths}! Winnings now +${data.rebirths * 10}%`);
+};
+
 /* ---------- gifting ---------- */
 const giftable = () => Math.max(0, Math.floor((balance - 1000) * 100) / 100);
 function openGift(name){
@@ -362,9 +402,10 @@ async function checkGifts(){
 setInterval(checkGifts, 15000);
 
 async function loadProfile(){
-  const { data, error } = await sb.from('profiles').select('username,balance').eq('id', user.id).single();
+  const { data, error } = await sb.from('profiles').select('username,balance,rebirths').eq('id', user.id).single();
   if (error) return toast(error.message);
   $('who').textContent = data.username;
+  setRebirths(data.rebirths);
   setBalance(data.balance);
   checkGifts();
   const nd = await sb.rpc('daily_next');
@@ -439,7 +480,7 @@ $('flipBtn').onclick = async () => {
   setTimeout(() => {
     setBalance(data.balance);
     const r = $('coinResult');
-    r.textContent = data.won ? `${data.result}! +${fmt(bet)}` : `${data.result}. −${fmt(bet)}`;
+    r.textContent = data.won ? `${data.result}! +${fmt(data.delta ?? bet)}` : `${data.result}. −${fmt(bet)}`;
     r.className = 'result ' + (data.won ? 'win' : 'lose');
     flipping = false; $('flipBtn').disabled = false;
   }, 1550);
@@ -539,7 +580,7 @@ function tick(){
   const m = Math.exp(K * (performance.now() - round.t0) / 1000);
   drawGraph(m);
   $('mult').textContent = m.toFixed(2) + '×';
-  $('crashBtn').textContent = 'Cash out ' + fmt(round.bet * m);
+  $('crashBtn').textContent = 'Cash out ' + fmt(boost(round.bet, round.bet * m));
   const auto = parseFloat($('autoCash').value);
   if (auto > 1 && m >= auto) cashOut();
   raf = requestAnimationFrame(tick);
@@ -761,7 +802,7 @@ function finishRide(d){
 function rideLoop(){
   const r = ride; if (!r) return;
   r.cur = (performance.now() - r.t0) / STEP_MS;
-  const val = r.bet * rideMult(r);
+  const val = boost(r.bet, r.bet * rideMult(r));
   $('rideVal').textContent = fmt(val);
   $('rideVal').className = 'mult ' + (val > r.bet + 0.004 ? 'win' : val < r.bet - 0.004 ? 'lose' : '');
   // flash PUMP / DUMP for ~1.5s after one happens, and WILD during wild phases
@@ -845,7 +886,7 @@ window.addEventListener('beforeunload', e => { if (ride || round) { e.preventDef
 
 /* ---------- leaderboard ---------- */
 async function loadBoard(){
-  const { data, error } = await sb.from('profiles').select('id,username,balance').order('balance', { ascending: false }).limit(10);
+  const { data, error } = await sb.from('profiles').select('id,username,balance,rebirths').order('rebirths', { ascending: false }).order('balance', { ascending: false }).limit(10);
   if (error) return toast(error.message);
   $('board').innerHTML = '';
   data.forEach((p, i) => {
@@ -853,6 +894,7 @@ async function loadBoard(){
     if (p.id === user.id) tr.className = 'me';
     tr.innerHTML = `<td>${i + 1}</td><td></td><td>${fmt(p.balance)}</td>`;
     tr.children[1].textContent = p.username; // safe from HTML injection
+    if (p.rebirths) { const b = document.createElement('span'); b.className = 'lb-rb'; b.textContent = '▲' + p.rebirths; tr.children[1].appendChild(b); }
     if (p.id !== user.id) { tr.style.cursor = 'pointer'; tr.title = 'Gift ' + p.username; tr.onclick = () => openGift(p.username); }
     $('board').appendChild(tr);
   });
