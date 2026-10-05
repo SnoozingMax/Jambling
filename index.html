@@ -453,12 +453,12 @@ setInterval(checkGifts, 15000);
 async function loadProfile(){
   const { data: left } = await sb.rpc('ride_cleanup');
   if (left && left.payout != null) setTimeout(() => toast(`Your last Ride round was stopped: paid ${fmt(left.payout)}`), 800);
-  const { data, error } = await sb.from('profiles').select('username,balance,rebirths,boost_until').eq('id', user.id).single();
+  sb.rpc('is_admin').then(({ data: a }) => { $('adminOpen').hidden = !a; });   // checked first so nothing else can hide it
+  const { data, error } = await sb.from('profiles').select('*').eq('id', user.id).single();
   if (error) return toast(error.message);
   $('who').textContent = data.username;
-  setRebirths(data.rebirths);
+  setRebirths(data.rebirths || 0);
   boostUntil = data.boost_until ? new Date(data.boost_until).getTime() : 0;
-  sb.rpc('is_admin').then(({ data: a }) => { $('adminOpen').hidden = !a; });
   setBalance(data.balance);
   checkGifts();
   const nd = await sb.rpc('daily_next');
