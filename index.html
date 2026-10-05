@@ -286,20 +286,21 @@ tr.me td{color:var(--accent)}
 </div>
 
 <div class="modal" id="adminModal" hidden>
-  <form class="card modal-card" id="adminForm">
-    <h2>Admin: Boost</h2>
-    <p class="rb-text">Takes the price from their coins and gives them <b>5 minutes of nonstop pump</b> in Ride. Stacks if they already have one.</p>
+  <div class="card modal-card">
+    <h2>Admin</h2>
     <div class="field">
       <label>Player</label>
-      <input id="adminUser" type="text" required maxlength="20" autocapitalize="off" spellcheck="false" autocomplete="off">
+      <input id="adminUser" type="text" maxlength="20" autocapitalize="off" spellcheck="false" autocomplete="off">
     </div>
+    <button type="button" class="go rebirth-go" id="adminBoost">Boost 5 min (free)</button>
+    <p class="hint" style="margin:6px 0 18px">Nonstop pump in Ride for 5 minutes. Stacks.</p>
     <div class="field">
-      <label>Price (coins)</label>
-      <input id="adminCost" type="number" min="0" step="0.01" required value="0">
+      <label>Take coins</label>
+      <input id="adminCost" type="number" min="0.01" step="0.01" placeholder="Amount">
     </div>
-    <button class="go rebirth-go" id="adminSend">Boost 5 min</button>
+    <button type="button" class="go" id="adminTake">Take coins</button>
     <button type="button" class="ghost" id="adminCancel" style="width:100%;margin-top:8px;padding:10px">Close</button>
-  </form>
+  </div>
 </div>
 
 <div class="toast" id="toast"></div>
@@ -392,14 +393,26 @@ setInterval(async () => {
 /* ---------- admin ---------- */
 $('adminOpen').onclick = () => { $('adminModal').hidden = false; $('adminUser').focus(); };
 $('adminCancel').onclick = () => { $('adminModal').hidden = true; };
-$('adminForm').onsubmit = async e => {
-  e.preventDefault();
-  $('adminSend').disabled = true;
-  const { data, error } = await sb.rpc('admin_boost', { p_user: $('adminUser').value.trim(), p_cost: parseFloat($('adminCost').value) || 0 });
-  $('adminSend').disabled = false;
+const adminName = () => { const n = $('adminUser').value.trim(); if (!n) toast('Enter a player'); return n; };
+$('adminBoost').onclick = async () => {
+  const n = adminName(); if (!n) return;
+  $('adminBoost').disabled = true;
+  const { data, error } = await sb.rpc('admin_boost', { p_user: n });
+  $('adminBoost').disabled = false;
   if (error) return toast(error.message);
-  toast(`${data.user} boosted until ${new Date(data.until).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} (now has ${fmt(data.balance)})`);
-  if (data.user.toLowerCase() === $('who').textContent.toLowerCase()) { boostUntil = new Date(data.until).getTime(); loadProfile(); }
+  toast(`${data.user} boosted until ${new Date(data.until).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`);
+  if (data.user.toLowerCase() === $('who').textContent.toLowerCase()) boostUntil = new Date(data.until).getTime();
+};
+$('adminTake').onclick = async () => {
+  const n = adminName(); if (!n) return;
+  const amt = parseFloat($('adminCost').value);
+  if (!(amt > 0)) return toast('Enter an amount');
+  $('adminTake').disabled = true;
+  const { data, error } = await sb.rpc('admin_take', { p_user: n, p_amount: amt });
+  $('adminTake').disabled = false;
+  if (error) return toast(error.message);
+  toast(`Took ${fmt(data.took)} from ${data.user} (now ${fmt(data.balance)})`);
+  if (data.user.toLowerCase() === $('who').textContent.toLowerCase()) setBalance(data.balance);
 };
 
 /* ---------- rebirth ---------- */
