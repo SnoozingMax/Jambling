@@ -342,6 +342,7 @@ begin
   m := least(m, 25);
 
   pay := round((rd.bet * m)::numeric, 2);
+  if pay > rd.bet then pay := round(rd.bet + (pay - rd.bet) * (1 + 0.1 * coalesce((select rebirths from profiles where id = auth.uid()), 0)), 2); end if;  -- rebirth luck
   update ride_rounds set status = 'done', holds = h, holding = false, last_step = a, mult = m, payout = pay where id = rd.id;
   update profiles set balance = balance + pay where id = auth.uid() returning balance into bal;
   return json_build_object('payout', pay, 'mult', m, 'balance', bal, 'step', a);
