@@ -212,7 +212,7 @@ tr.me td{color:var(--accent)}
       <label class="toggle"><input type="checkbox" id="ghostToggle" checked><span></span>Ghost after cash out</label>
       <button class="go" id="crashBtn">Launch</button>
       <div class="hint">Cash out before it crashes. Too late and you lose the bet.</div>
-      <div class="warn">Closing or refreshing the tab during a round loses your bet.</div>
+      <div class="warn">Closing the tab mid-round cashes you out at that moment.</div>
     </div>
     <div class="card" style="padding:10px">
       <div class="graphbox">
@@ -237,7 +237,7 @@ tr.me td{color:var(--accent)}
       <button class="holdbtn" id="holdBtn" hidden>HOLD</button>
       <button class="go cash" id="rideCash" hidden style="margin-top:10px">Stop</button>
       <div class="hint">Hold to ride: while you hold, your bet moves with the chart. Let go to lock it in. Each hold costs 1%. Max bet 10,000. Press Stop to cash out.</div>
-      <div class="warn">Closing or refreshing the tab during a round loses your bet.</div>
+      <div class="warn">Closing the tab mid-round stops your bet (like pressing Stop).</div>
     </div>
     <div class="card" style="padding:10px">
       <div class="graphbox holdzone" id="rideBox">
@@ -294,7 +294,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 const K = 0.09; // growth rate, must match setup.sql
 const $ = id => document.getElementById(id);
-let user = null, balance = 0, rebirths = 0;
+let user = null, balance = 0, rebirths = 0, accessToken = null;
 const luck = () => 1 + 0.1 * rebirths;
 const boost = (bet, val) => val > bet ? bet + (val - bet) * luck() : val;   // profit x luck
 
@@ -348,6 +348,7 @@ $('logout').onclick = () => sb.auth.signOut();
 
 sb.auth.onAuthStateChange((_event, session) => {
   user = session?.user || null;
+  accessToken = session?.access_token || null;
   $('auth').hidden = !!user;
   $('app').hidden = !user;
   if (user) loadProfile();
@@ -402,6 +403,8 @@ async function checkGifts(){
 setInterval(checkGifts, 15000);
 
 async function loadProfile(){
+  const { data: left } = await sb.rpc('ride_cleanup');
+  if (left && left.payout != null) setTimeout(() => toast(`Your last Ride round was stopped: paid ${fmt(left.payout)}`), 800);
   const { data, error } = await sb.from('profiles').select('username,balance,rebirths').eq('id', user.id).single();
   if (error) return toast(error.message);
   $('who').textContent = data.username;
@@ -685,6 +688,7 @@ window.addEventListener('resize', () => { if (!round && !ghost) drawGraph(1); })
 // The chart comes from a server seed, so it's drawn locally with zero lag.
 // MUST match _ride_path() in ride.sql.
 const STEP_MS = 100, WINDOW = 120; // 12s visible
+const RIDE_VERSION = 27;            // must match ride_version() in ride.sql
 function ridePath(seed){
   let s = Number(seed), v = 0, p = 100, heat = 1;
   let evLeft = 0, evDir = 0, D = 0, size = 0, W = 1;
@@ -704,10 +708,10 @@ function ridePath(seed){
           size = 0.5 + 0.5 * fr(u1 * 53);
           W = 0;
           for (let j = 1; j <= D; j++) { const x = (j - 0.5) / D; W = W + x * (1 - x); }
-        } else {                                     // dump: random size and length, hits hardest first
+        } else {                                     // dump: -14% to -33%, random length, hits hardest first
           evDir = -1;
-          D = 3 + Math.floor(fr(u1 * 13) * 18);
-          size = 0.25 + 0.45 * fr(u1 * 53);
+          D = 5 + Math.floor(fr(u1 * 13) * 18);
+          size = 0.15 + 0.25 * fr(u1 * 53);
           W = (D * (D + 1)) / 2;
         }
         evLeft = D;
@@ -736,7 +740,7 @@ $('rideStart').onclick = async () => {
   const bet = readBet('rideBet'); if (!bet) return;
   if (bet > 10000) return toast('Max Ride bet is 10,000');
   $('rideStart').disabled = true;
-  const { data, error } = await sb.rpc('ride_start', { p_bet: bet });
+  const { data, error } = await sb.rpc('ride_start', { p_bet: bet, p_ver: RIDE_VERSION });
   $('rideStart').disabled = false;
   if (error) return toast(error.message);
   setBalance(data.balance);
@@ -794,6 +798,8 @@ function finishRide(d){
   cancelAnimationFrame(rideRaf);
   setBalance(d.balance);
   const pay = Number(d.payout), diff = pay - r.bet;
+  const shown = boost(r.bet, r.bet * rideMult(r));
+  if (Math.abs(pay - shown) > Math.max(0.05, shown * 0.01)) toast(`Server paid ${fmt(pay)} (screen showed ${fmt(shown)})`);
   $('rideVal').textContent = fmt(pay);
   $('rideVal').className = 'mult ' + (diff >= 0 ? 'win' : 'lose');
   $('rideMsg').textContent = diff >= 0 ? `+${fmt(diff)}` : `−${fmt(-diff)}`;
@@ -887,8 +893,26 @@ document.addEventListener('keyup', e => { if (e.code === 'Space' && ride) { e.pr
 window.addEventListener('blur', () => setHold(false));
 window.addEventListener('resize', drawRide);
 
-// browser warning if you try to leave mid-round
-window.addEventListener('beforeunload', e => { if (ride || round) { e.preventDefault(); e.returnValue = ''; } });
+// leaving the page mid-round: stop the bet (Ride) / cash out (Rocket) instead of losing it
+function rpcOnLeave(fn, args){
+  if (!accessToken) return;
+  try {
+    fetch(`${SUPABASE_URL}/rest/v1/rpc/${fn}`, {
+      method: 'POST', keepalive: true,
+      headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + accessToken, 'Content-Type': 'application/json' },
+      body: JSON.stringify(args)
+    });
+  } catch {}
+}
+let leftAlready = false;
+function onLeave(){
+  if (leftAlready) return; leftAlready = true;
+  if (ride && !ride.done) rpcOnLeave('ride_stop', { p_round: ride.id, p_step: Math.floor(ride.cur) });
+  if (round && !round.done) rpcOnLeave('crash_cashout', { p_round: round.id });
+}
+window.addEventListener('pagehide', onLeave);
+window.addEventListener('beforeunload', onLeave);
+window.addEventListener('pageshow', () => { leftAlready = false; });
 
 /* ---------- leaderboard ---------- */
 async function loadBoard(){

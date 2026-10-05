@@ -75,37 +75,4 @@ begin
   return json_build_object('won', true, 'multiplier', m, 'payout', payout, 'balance', bal, 'crash_point', rd.crash_point);
 end $$;
 
--- ride: profit x luck
-create or replace function ride_stop(p_round uuid, p_step int) returns json
-language plpgsql security definer set search_path = public as $$
-declare
-  rd ride_rounds;
-  a int;
-  h int[];
-  path float8[];
-  m float8 := 1;
-  pay numeric;
-  bal numeric;
-begin
-  select * into rd from ride_rounds where id = p_round and user_id = auth.uid() for update;
-  if not found then raise exception 'Round not found'; end if;
-  if rd.status <> 'live' then raise exception 'Round over'; end if;
-
-  a := _ride_clamp(rd, p_step);
-  h := rd.holds;
-  if rd.holding then h := h || a; end if;
-
-  path := _ride_path(rd.seed, a);
-  for i in 1 .. coalesce(array_length(h, 1), 0) / 2 loop
-    m := m * 0.99 * path[h[2*i] + 1] / path[h[2*i - 1] + 1];   -- 1% fee per hold
-  end loop;
-  m := least(m, 25);
-
-  pay := round((rd.bet * m)::numeric, 2);
-  if pay > rd.bet then pay := round(rd.bet + (pay - rd.bet) * _luck(auth.uid()), 2); end if;
-  update ride_rounds set status = 'done', holds = h, holding = false, last_step = a, mult = m, payout = pay where id = rd.id;
-  update profiles set balance = balance + pay where id = auth.uid() returning balance into bal;
-  return json_build_object('payout', pay, 'mult', m, 'balance', bal, 'step', a);
-end $$;
-
 notify pgrst, 'reload schema';

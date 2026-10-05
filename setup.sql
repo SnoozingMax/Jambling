@@ -193,6 +193,8 @@ begin
 end $$;
 
 -- ========== Ride ==========
+alter table profiles add column if not exists rebirths int not null default 0;
+
 create table if not exists ride_rounds (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references profiles(id) on delete cascade,
@@ -237,10 +239,10 @@ begin
         size := 0.5 + 0.5 * (u1 * 53 - floor(u1 * 53));
         w := 0;
         for j in 1..d loop x := (j - 0.5) / d; w := w + x * (1 - x); end loop;
-      else                                                -- dump: random size and length, hits hardest first
+      else                                                -- dump: -14% to -33%, random length, hits hardest first
         ev_dir := -1;
-        d := 3 + floor((u1 * 13 - floor(u1 * 13)) * 18)::int;
-        size := 0.25 + 0.45 * (u1 * 53 - floor(u1 * 53));
+        d := 5 + floor((u1 * 13 - floor(u1 * 13)) * 18)::int;
+        size := 0.15 + 0.25 * (u1 * 53 - floor(u1 * 53));
         w := (d * (d + 1))::float8 / 2;
       end if;
       ev_left := d;
@@ -278,7 +280,56 @@ begin
   return greatest(least(coalesce(p_step, k), k + 2), k - 15, rd.last_step);
 end $$;
 
-create or replace function ride_start(p_bet numeric) returns json
+-- bump this whenever the chart math changes; must match RIDE_VERSION in index.html
+create or replace function ride_version() returns int language sql immutable as $$ select 27 $$;
+
+-- pay out a round at step a (internal: never callable from the browser)
+create or replace function _ride_finish(p_id uuid, a int) returns json
+language plpgsql security definer set search_path = public as $$
+declare
+  rd ride_rounds;
+  h int[];
+  path float8[];
+  m float8 := 1;
+  pay numeric;
+  bal numeric;
+begin
+  select * into rd from ride_rounds where id = p_id for update;
+  if rd.status <> 'live' then return json_build_object('payout', rd.payout); end if;
+  a := greatest(a, rd.last_step);
+  h := rd.holds;
+  if rd.holding then h := h || a; end if;
+
+  path := _ride_path(rd.seed, a);
+  for i in 1 .. coalesce(array_length(h, 1), 0) / 2 loop
+    m := m * 0.99 * path[h[2*i] + 1] / path[h[2*i - 1] + 1];   -- 1% fee per hold
+  end loop;
+  m := least(m, 25);
+
+  pay := round((rd.bet * m)::numeric, 2);
+  if pay > rd.bet then pay := round(rd.bet + (pay - rd.bet) * (1 + 0.1 * coalesce((select rebirths from profiles where id = rd.user_id), 0)), 2); end if;  -- rebirth luck
+  update ride_rounds set status = 'done', holds = h, holding = false, last_step = a, mult = m, payout = pay where id = rd.id;
+  update profiles set balance = balance + pay where id = rd.user_id returning balance into bal;
+  return json_build_object('payout', pay, 'mult', m, 'balance', bal, 'step', a, 'bet', rd.bet);
+end $$;
+revoke execute on function _ride_finish(uuid, int) from public, anon, authenticated;
+
+-- settle rounds left open (tab closed): stops the bet instead of losing it.
+-- if you were holding, the hold counts until you left (max 5s after your last action).
+create or replace function ride_cleanup() returns json
+language plpgsql security definer set search_path = public as $$
+declare
+  rd ride_rounds;
+  out json := null;
+begin
+  for rd in select * from ride_rounds where user_id = auth.uid() and status = 'live' loop
+    out := _ride_finish(rd.id, case when rd.holding then least(_ride_k(rd), rd.last_step + 50) else rd.last_step end);
+  end loop;
+  return out;
+end $$;
+
+drop function if exists ride_start(numeric);
+create or replace function ride_start(p_bet numeric, p_ver int) returns json
 language plpgsql security definer set search_path = public as $$
 declare
   bal numeric;
@@ -286,12 +337,12 @@ declare
   sd bigint := floor(random() * 2147483645)::bigint + 1;
 begin
   if auth.uid() is null then raise exception 'Not signed in'; end if;
+  if p_ver is distinct from ride_version() then raise exception 'Ride was updated. Refresh the page.'; end if;
   p_bet := round(p_bet, 2);
   if p_bet is null or p_bet <= 0 then raise exception 'Invalid bet'; end if;
   if p_bet > 10000 then raise exception 'Max Ride bet is 10,000'; end if;
 
-  -- a round left open (tab closed) is forfeited
-  update ride_rounds set status = 'abandoned', payout = 0 where user_id = auth.uid() and status = 'live';
+  perform ride_cleanup();
 
   select balance into bal from profiles where id = auth.uid() for update;
   if bal < p_bet then raise exception 'Not enough coins'; end if;
@@ -318,34 +369,28 @@ create or replace function ride_stop(p_round uuid, p_step int) returns json
 language plpgsql security definer set search_path = public as $$
 declare
   rd ride_rounds;
-  a int;
-  h int[];
-  path float8[];
-  m float8 := 1;
-  pay numeric;
-  bal numeric;
 begin
-  select * into rd from ride_rounds where id = p_round and user_id = auth.uid() for update;
+  select * into rd from ride_rounds where id = p_round and user_id = auth.uid();
   if not found then raise exception 'Round not found'; end if;
   if rd.status <> 'live' then raise exception 'Round over'; end if;
-
-  a := _ride_clamp(rd, p_step);
-  h := rd.holds;
-  if rd.holding then h := h || a; end if;
-
-  path := _ride_path(rd.seed, a);
-  for i in 1 .. coalesce(array_length(h, 1), 0) / 2 loop
-    m := m * 0.99 * path[h[2*i] + 1] / path[h[2*i - 1] + 1];   -- 1% fee per hold
-  end loop;
-  m := least(m, 25);
-
-  pay := round((rd.bet * m)::numeric, 2);
-  if pay > rd.bet then pay := round(rd.bet + (pay - rd.bet) * (1 + 0.1 * coalesce((select rebirths from profiles where id = auth.uid()), 0)), 2); end if;  -- rebirth luck
-  update ride_rounds set status = 'done', holds = h, holding = false, last_step = a, mult = m, payout = pay where id = rd.id;
-  update profiles set balance = balance + pay where id = auth.uid() returning balance into bal;
-  return json_build_object('payout', pay, 'mult', m, 'balance', bal, 'step', a);
+  return _ride_finish(rd.id, _ride_clamp(rd, p_step));
 end $$;
 
+notify pgrst, 'reload schema';
+
+-- clean up the previous Ride version
+drop function if exists chart_poll(uuid, int);
+drop function if exists chart_hold(uuid, boolean, int);
+drop function if exists chart_cashout(uuid, int);
+drop function if exists chart_start(numeric);
+drop function if exists _chart_finish(uuid, int);
+drop function if exists _chart_settle(uuid, int);
+drop function if exists _chart_k(chart_rounds);
+drop function if exists chart_poll(uuid, int);
+drop function if exists chart_hold(uuid, boolean);
+drop function if exists chart_cashout(uuid);
+drop function if exists _chart_finish(uuid);
+drop function if exists _chart_settle(uuid);
 
 -- ========== Gifting ==========
 create table if not exists gifts (
@@ -475,39 +520,6 @@ begin
   update profiles set balance = balance + payout where id = auth.uid() returning balance into bal;
 
   return json_build_object('won', true, 'multiplier', m, 'payout', payout, 'balance', bal, 'crash_point', rd.crash_point);
-end $$;
-
--- ride: profit x luck
-create or replace function ride_stop(p_round uuid, p_step int) returns json
-language plpgsql security definer set search_path = public as $$
-declare
-  rd ride_rounds;
-  a int;
-  h int[];
-  path float8[];
-  m float8 := 1;
-  pay numeric;
-  bal numeric;
-begin
-  select * into rd from ride_rounds where id = p_round and user_id = auth.uid() for update;
-  if not found then raise exception 'Round not found'; end if;
-  if rd.status <> 'live' then raise exception 'Round over'; end if;
-
-  a := _ride_clamp(rd, p_step);
-  h := rd.holds;
-  if rd.holding then h := h || a; end if;
-
-  path := _ride_path(rd.seed, a);
-  for i in 1 .. coalesce(array_length(h, 1), 0) / 2 loop
-    m := m * 0.99 * path[h[2*i] + 1] / path[h[2*i - 1] + 1];   -- 1% fee per hold
-  end loop;
-  m := least(m, 25);
-
-  pay := round((rd.bet * m)::numeric, 2);
-  if pay > rd.bet then pay := round(rd.bet + (pay - rd.bet) * _luck(auth.uid()), 2); end if;
-  update ride_rounds set status = 'done', holds = h, holding = false, last_step = a, mult = m, payout = pay where id = rd.id;
-  update profiles set balance = balance + pay where id = auth.uid() returning balance into bal;
-  return json_build_object('payout', pay, 'mult', m, 'balance', bal, 'step', a);
 end $$;
 
 notify pgrst, 'reload schema';
