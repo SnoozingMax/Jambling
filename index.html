@@ -696,14 +696,14 @@ function ridePath(seed){
       if (u3 < 0.004) heat = 3;                      // wild phase
       heat = 1 + (heat - 1) * 0.97;
       const vol = heat * 2;
-      // pump: +65% to +170% over 2.5-6s. dump: -33% to -50%. half of pumps rug-pull partway
+      // pump: +65% to +170% over 2.5-6s. dump: -33% to -50%. 40% of pumps rug-pull partway
       if (evLeft === 0 && rug === 0 && u3 > 0.995) {
         evDir = u2 > 0.5 ? 1 : -1;
         D = 25 + Math.floor(u1 * 36);
         size = evDir > 0 ? 0.5 + 0.5 * fr(u1 * 53) : 0.4 + 0.3 * fr(u1 * 53);
         Rr = Math.ceil(D / 4); W = (Rr * (Rr + 1)) / 2 + (D - Rr) * Rr;
         evLeft = D; base = p;
-        cut = (evDir > 0 && fr(u1 * 97) < 0.5) ? 3 + Math.floor(fr(u1 * 331) * (D - 3)) : -1;
+        cut = (evDir > 0 && fr(u1 * 97) < 0.4) ? 3 + Math.floor(fr(u1 * 331) * (D - 3)) : -1;
       }
       let ev = 0;
       if (evLeft > 0) {
@@ -712,7 +712,7 @@ function ridePath(seed){
         else { p = p * Math.exp(evDir * size * Math.min(k, Rr) / W + (u2 - 0.5) * 0.012); evLeft--; v = 0; ev = evDir; }
       }
       if (rug > 0 && ev === 0) {
-        p = p * Math.exp(Math.log(base * 0.5 / p) / rug);    // rug pull
+        p = p * Math.exp(Math.log(base * 0.4 / p) / rug);    // rug pull
         rug--; v = 0; ev = -2;
       } else if (ev === 0) {
         v = 0.8 * v + (u1 - 0.5) * 0.009 * vol - 0.0007 * Math.log(p / 100);

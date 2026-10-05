@@ -230,7 +230,7 @@ begin
     if u3 < 0.004 then heat := 3; end if;                 -- wild phase
     heat := 1 + (heat - 1) * 0.97;
     vol := heat * 2;
-    -- pump: +65% to +170% over 2.5-6s. dump: -33% to -50%. half of pumps rug-pull partway
+    -- pump: +65% to +170% over 2.5-6s. dump: -33% to -50%. 40% of pumps rug-pull partway
     if ev_left = 0 and rug = 0 and u3 > 0.995 then
       ev_dir := case when u2 > 0.5 then 1 else -1 end;
       d := 25 + floor(u1 * 36)::int;
@@ -239,7 +239,7 @@ begin
       rr := ceil(d::float8 / 4)::int;
       w := (rr * (rr + 1))::float8 / 2 + (d - rr) * rr;
       ev_left := d; base := p;
-      if ev_dir > 0 and (u1 * 97 - floor(u1 * 97)) < 0.5 then
+      if ev_dir > 0 and (u1 * 97 - floor(u1 * 97)) < 0.4 then
         cut := 3 + floor((u1 * 331 - floor(u1 * 331)) * (d - 3))::int;
       else
         cut := -1;
@@ -256,7 +256,7 @@ begin
       end if;
     end if;
     if rug > 0 and ev = 0 then
-      p := p * exp(ln(base * 0.5 / p) / rug);             -- rug pull: crash to half of where the pump started
+      p := p * exp(ln(base * 0.4 / p) / rug);             -- rug pull: crash to 60% below where the pump started
       rug := rug - 1; v := 0;
     elsif ev = 0 then
       v := 0.8 * v + (u1 - 0.5) * 0.009 * vol - 0.0007 * ln(p / 100);
