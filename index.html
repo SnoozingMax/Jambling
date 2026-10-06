@@ -95,6 +95,18 @@ canvas{width:100%;height:100%;display:block}
 .rb-text b{color:var(--ink)}
 .rebirth-go{background:var(--gold);color:#2a1d00}
 .lb-rb{font:600 12px "IBM Plex Mono",monospace;color:var(--gold);margin-left:8px}
+.bj-table{display:flex;flex-direction:column;justify-content:space-between;min-height:340px;gap:14px}
+.bj-label{font:600 12px "IBM Plex Mono",monospace;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px}
+.bj-label span{color:var(--ink);margin-left:6px}
+.bj-cards{display:flex;gap:10px;flex-wrap:wrap;min-height:112px}
+.pcard{width:78px;height:112px;border-radius:10px;background:#f4f1ea;color:#17140f;display:flex;flex-direction:column;justify-content:space-between;padding:8px 9px;font:600 20px Inter,sans-serif;box-shadow:0 6px 16px rgba(0,0,0,.35);animation:deal .25s ease-out}
+.pcard .s{font-size:28px;align-self:flex-end;line-height:1}
+.pcard.red{color:#c8261c}
+.pcard.back{background:repeating-linear-gradient(45deg,var(--accent) 0 8px,#c93f26 8px 16px);border:4px solid #f4f1ea}
+@keyframes deal{from{transform:translateY(-14px);opacity:0}to{transform:none;opacity:1}}
+.bj-msg{font-family:Fraunces;font-size:24px;font-weight:600;text-align:center;min-height:32px}
+.bj-acts{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+.bj-acts .go{padding:14px 0}
 .hint{font-size:12px;color:var(--muted);margin-top:6px}
 
 /* board */
@@ -154,7 +166,6 @@ tr.me td{color:var(--accent)}
       <div class="bal"><i></i><span id="balance">0.00</span></div>
       <button class="ghost daily" id="daily" disabled>Daily</button>
       <button class="ghost" id="giftOpen">Gift</button>
-      <button class="ghost" id="refill" hidden>Refill</button>
       <button class="ghost" id="logout">Sign out</button>
     </div>
   </header>
@@ -163,6 +174,7 @@ tr.me td{color:var(--accent)}
     <button data-tab="coin" class="on">Coin Flip</button>
     <button data-tab="crash">Rocket</button>
     <button data-tab="ride">Ride</button>
+    <button data-tab="bj">Blackjack</button>
     <button data-tab="board">Leaderboard</button>
   </nav>
 
@@ -251,6 +263,31 @@ tr.me td{color:var(--accent)}
     </div>
   </div>
 
+  <!-- blackjack -->
+  <div id="tab-bj" class="game" hidden>
+    <div class="card">
+      <div class="field">
+        <label>Bet</label>
+        <input id="bjBet" type="number" min="0.01" step="0.01" value="10">
+        <div class="chips" data-for="bjBet">
+          <button data-op="half">½</button><button data-op="double">2×</button><button data-op="max">Max</button>
+        </div>
+      </div>
+      <button class="go" id="bjDeal">Deal</button>
+      <div class="bj-acts" id="bjActs" hidden>
+        <button class="go cash" id="bjHit">Hit</button>
+        <button class="go" id="bjStand" style="background:var(--line);color:var(--ink)">Stand</button>
+        <button class="go" id="bjDouble" style="background:var(--gold);color:#2a1d00">Double</button>
+      </div>
+      <div class="hint">Get closer to 21 than the dealer without going over. Blackjack pays 3:2. Dealer stands on 17. Double = double your bet for exactly one more card.</div>
+    </div>
+    <div class="card bj-table">
+      <div class="bj-row"><div class="bj-label">Dealer <span id="bjDT"></span></div><div class="bj-cards" id="bjDealer"></div></div>
+      <div class="bj-msg" id="bjMsg"></div>
+      <div class="bj-row"><div class="bj-label">You <span id="bjPT"></span></div><div class="bj-cards" id="bjPlayer"></div></div>
+    </div>
+  </div>
+
   <!-- leaderboard -->
   <div id="tab-board" hidden>
     <div class="card">
@@ -294,6 +331,10 @@ tr.me td{color:var(--accent)}
     </div>
     <button type="button" class="go rebirth-go" id="adminBoost">Boost 5 min (free)</button>
     <p class="hint" style="margin:6px 0 18px">Nonstop pump in Ride for 5 minutes. Stacks.</p>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:0 0 18px">
+      <button type="button" class="go" id="adminBan" style="background:var(--lose)">Ban</button>
+      <button type="button" class="go" id="adminUnban" style="background:var(--line);color:var(--ink)">Unban</button>
+    </div>
     <div class="field">
       <label>Take coins</label>
       <input id="adminCost" type="number" min="0.01" step="0.01" placeholder="Amount">
@@ -319,7 +360,7 @@ const luck = () => 1 + 0.1 * rebirths;
 const boost = (bet, val) => val > bet ? bet + (val - bet) * luck() : val;   // profit x luck
 
 const fmt = n => Number(n).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
-function setBalance(b){ balance = Number(b); $('balance').textContent = fmt(balance); $('refill').hidden = balance >= 10; $('rebirthBtn').hidden = balance < 100000; }
+function setBalance(b){ balance = Number(b); $('balance').textContent = fmt(balance); $('rebirthBtn').hidden = balance < 100000; }
 function setRebirths(n){
   rebirths = Number(n) || 0;
   $('rbBadge').hidden = !rebirths;
@@ -415,6 +456,63 @@ $('adminTake').onclick = async () => {
   if (data.user.toLowerCase() === $('who').textContent.toLowerCase()) setBalance(data.balance);
 };
 
+
+/* ---------- blackjack ---------- */
+let bj = null;
+const SUITS = ['♠', '♥', '♦', '♣'], RANKS = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
+function cardEl(c){
+  const d = document.createElement('div');
+  if (c == null) { d.className = 'pcard back'; return d; }
+  const suit = Math.floor(c / 13);
+  d.className = 'pcard' + (suit === 1 || suit === 2 ? ' red' : '');
+  d.innerHTML = `<span>${RANKS[c % 13]}</span><span class="s">${SUITS[suit]}</span>`;
+  return d;
+}
+function showBJ(v){
+  bj = v;
+  const draw = (el, cards, hidden) => { el.innerHTML = ''; cards.forEach(c => el.appendChild(cardEl(c))); if (hidden) el.appendChild(cardEl(null)); };
+  draw($('bjPlayer'), v ? v.player : [], false);
+  draw($('bjDealer'), v ? v.dealer : [], v && v.hidden);
+  $('bjPT').textContent = v ? v.player_total : '';
+  $('bjDT').textContent = v ? v.dealer_total + (v.hidden ? ' + ?' : '') : '';
+  const live = v && v.status === 'live';
+  $('bjActs').hidden = !live; $('bjDeal').hidden = live;
+  $('bjDouble').disabled = !(live && v.can_double);
+  const m = $('bjMsg');
+  if (!v) { m.textContent = ''; m.className = 'bj-msg'; return; }
+  if (v.balance != null) setBalance(v.balance);
+  if (live) { m.textContent = ''; m.className = 'bj-msg'; return; }
+  const p = Number(v.payout), b = Number(v.bet);
+  const label = { blackjack: 'Blackjack!', win: 'You win', push: 'Push', lose: 'Dealer wins', bust: 'Bust' }[v.result] || '';
+  m.textContent = p > b ? `${label} +${fmt(p - b)}` : p === b ? `${label} · bet back` : `${label} −${fmt(b)}`;
+  m.className = 'bj-msg ' + (p > b ? 'win' : p < b ? 'lose' : '');
+}
+async function bjCall(fn, args, btn){
+  if (btn) btn.disabled = true;
+  const { data, error } = await sb.rpc(fn, args);
+  if (btn) btn.disabled = false;
+  if (error) return toast(error.message);
+  showBJ(data);
+}
+$('bjDeal').onclick = () => { const bet = readBet('bjBet'); if (bet) bjCall('bj_start', { p_bet: bet }, $('bjDeal')); };
+$('bjHit').onclick = () => bj && bjCall('bj_hit', { p_id: bj.id }, $('bjHit'));
+$('bjStand').onclick = () => bj && bjCall('bj_stand', { p_id: bj.id }, $('bjStand'));
+$('bjDouble').onclick = () => bj && bjCall('bj_double', { p_id: bj.id }, $('bjDouble'));
+async function resumeBJ(){
+  const { data } = await sb.rpc('bj_current');
+  if (data) { showBJ(data); toast('Your blackjack hand is still waiting'); }
+}
+
+/* ---------- admin: ban ---------- */
+async function adminBan(on){
+  const n = adminName(); if (!n) return;
+  const { data, error } = await sb.rpc('admin_ban', { p_user: n, p_ban: on });
+  if (error) return toast(error.message);
+  toast(`${data.user} ${data.banned ? 'banned' : 'unbanned'}`);
+}
+$('adminBan').onclick = () => adminBan(true);
+$('adminUnban').onclick = () => adminBan(false);
+
 /* ---------- rebirth ---------- */
 $('rebirthBtn').onclick = () => {
   const next = rebirths + 1;
@@ -472,6 +570,8 @@ async function loadProfile(){
   $('who').textContent = data.username;
   setRebirths(data.rebirths || 0);
   boostUntil = data.boost_until ? new Date(data.boost_until).getTime() : 0;
+  if (data.banned) { toast('This account is banned.'); setTimeout(() => sb.auth.signOut(), 1500); return; }
+  resumeBJ();
   setBalance(data.balance);
   checkGifts();
   const nd = await sb.rpc('daily_next');
@@ -501,16 +601,11 @@ $('daily').onclick = async () => {
   toast(`+${DAILY_AMOUNT} coins`);
 };
 
-$('refill').onclick = async () => {
-  const { data, error } = await sb.rpc('claim_refill');
-  if (error) return toast(error.message);
-  setBalance(data.balance); toast('Refilled to 1,000');
-};
 
 /* ---------- tabs ---------- */
 document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
   document.querySelectorAll('nav button').forEach(x => x.classList.toggle('on', x === b));
-  ['coin', 'crash', 'ride', 'board'].forEach(t => $('tab-' + t).hidden = t !== b.dataset.tab);
+  ['coin', 'crash', 'ride', 'bj', 'board'].forEach(t => $('tab-' + t).hidden = t !== b.dataset.tab);
   if (b.dataset.tab === 'board') loadBoard();
   if (b.dataset.tab === 'ride') drawRide();
   if (b.dataset.tab === 'crash' && !round && !ghost) drawGraph(1);
@@ -986,7 +1081,7 @@ window.addEventListener('pageshow', () => { leftAlready = false; });
 
 /* ---------- leaderboard ---------- */
 async function loadBoard(){
-  const { data, error } = await sb.from('profiles').select('id,username,balance,rebirths').order('rebirths', { ascending: false }).order('balance', { ascending: false }).limit(10);
+  const { data, error } = await sb.from('profiles').select('id,username,balance,rebirths').eq('banned', false).order('rebirths', { ascending: false }).order('balance', { ascending: false }).limit(10);
   if (error) return toast(error.message);
   $('board').innerHTML = '';
   data.forEach((p, i) => {
