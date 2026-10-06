@@ -1081,7 +1081,9 @@ window.addEventListener('pageshow', () => { leftAlready = false; });
 
 /* ---------- leaderboard ---------- */
 async function loadBoard(){
-  const { data, error } = await sb.from('profiles').select('id,username,balance,rebirths').eq('banned', false).order('rebirths', { ascending: false }).order('balance', { ascending: false }).limit(10);
+  const q = () => sb.from('profiles').select('id,username,balance,rebirths').order('rebirths', { ascending: false }).order('balance', { ascending: false }).limit(10);
+  let { data, error } = await q().eq('banned', false);
+  if (error) ({ data, error } = await q());   // works even before ban.sql is run
   if (error) return toast(error.message);
   $('board').innerHTML = '';
   data.forEach((p, i) => {
