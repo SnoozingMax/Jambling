@@ -166,6 +166,7 @@ tr.me td{color:var(--accent)}
       <div class="bal"><i></i><span id="balance">0.00</span></div>
       <button class="ghost daily" id="daily" disabled>Daily</button>
       <button class="ghost" id="giftOpen">Gift</button>
+      <button class="ghost" id="refill" hidden>Refill</button>
       <button class="ghost" id="logout">Sign out</button>
     </div>
   </header>
@@ -360,7 +361,7 @@ const luck = () => 1 + 0.1 * rebirths;
 const boost = (bet, val) => val > bet ? bet + (val - bet) * luck() : val;   // profit x luck
 
 const fmt = n => Number(n).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
-function setBalance(b){ balance = Number(b); $('balance').textContent = fmt(balance); $('rebirthBtn').hidden = balance < 100000; }
+function setBalance(b){ balance = Number(b); $('balance').textContent = fmt(balance); $('refill').hidden = balance >= 10; $('rebirthBtn').hidden = balance < 100000; }
 function setRebirths(n){
   rebirths = Number(n) || 0;
   $('rbBadge').hidden = !rebirths;
@@ -512,6 +513,14 @@ async function adminBan(on){
 }
 $('adminBan').onclick = () => adminBan(true);
 $('adminUnban').onclick = () => adminBan(false);
+
+/* ---------- refill ---------- */
+$('refill').onclick = async () => {
+  if ((ride && !ride.done) || round || (bj && bj.status === 'live')) return toast('Finish your current game before refilling');
+  const { data, error } = await sb.rpc('claim_refill');
+  if (error) return toast(error.message);
+  setBalance(data.balance); toast('Refilled to 100');
+};
 
 /* ---------- rebirth ---------- */
 $('rebirthBtn').onclick = () => {
