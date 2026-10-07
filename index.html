@@ -119,6 +119,8 @@ canvas{width:100%;height:100%;display:block}
 .card-wrap{display:flex;flex-direction:column}
 .notice{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:16px 0 0;padding:12px 14px;border-radius:12px;background:rgba(232,178,58,.12);border:1px solid var(--gold);color:var(--ink);font-weight:500}
 .notice .ghost{border-color:var(--gold);color:var(--gold);white-space:nowrap}
+.admin-status{margin:0 0 14px;padding:10px 12px;border-radius:10px;font-size:14px;font-weight:600;background:rgba(47,191,107,.14);color:var(--win);border:1px solid var(--win)}
+.admin-status.err{background:rgba(255,77,69,.14);color:var(--lose);border-color:var(--lose)}
 .hint{font-size:12px;color:var(--muted);margin-top:6px}
 
 /* board */
@@ -137,7 +139,7 @@ tr.me td{color:var(--accent)}
 .msg{color:var(--lose);font-size:14px;min-height:20px;margin-top:10px}
 
 /* toast */
-.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(20px);background:var(--ink);color:var(--paper);padding:10px 16px;border-radius:10px;opacity:0;transition:.2s;pointer-events:none;font-size:14px}
+.toast{position:fixed;z-index:100;left:50%;bottom:24px;transform:translateX(-50%) translateY(20px);background:var(--ink);color:var(--paper);padding:10px 16px;border-radius:10px;opacity:0;transition:.2s;pointer-events:none;font-size:14px}
 .toast.show{opacity:1;transform:translateX(-50%)}
 [hidden]{display:none!important}
 </style>
@@ -363,6 +365,7 @@ tr.me td{color:var(--accent)}
 <div class="modal" id="adminModal" hidden>
   <div class="card modal-card">
     <h2>Admin</h2>
+    <div class="admin-status" id="adminStatus" hidden></div>
     <div class="field">
       <label>Player</label>
       <input id="adminUser" type="text" maxlength="20" autocapitalize="off" spellcheck="false" autocomplete="off">
@@ -421,6 +424,13 @@ function setRebirths(n){
   $('rbBadge').textContent = `▲${rebirths} · +${rebirths * 10}% wins`;
 }
 let toastT;
+// while the admin panel is open, results also show inside it (green = done, red = didn't work)
+function adminStatus(msg, ok){
+  if ($('adminModal').hidden) return;
+  const el = $('adminStatus'); el.hidden = false;
+  el.className = 'admin-status' + (ok ? '' : ' err');
+  el.textContent = (ok ? '✓ ' : '✗ ') + msg + ' · ' + new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' });
+}
 function toast(msg){ const t = $('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), 2400); }
 function readBet(id){
   const v = Math.round(parseFloat($(id).value) * 100) / 100;
@@ -488,14 +498,14 @@ setInterval(async () => {
 /* ---------- admin ---------- */
 $('adminOpen').onclick = () => { $('adminModal').hidden = false; $('adminUser').focus(); };
 $('adminCancel').onclick = () => { $('adminModal').hidden = true; };
-const adminName = () => { const n = $('adminUser').value.trim(); if (!n) toast('Enter a player'); return n; };
+const adminName = () => { const n = $('adminUser').value.trim(); if (!n) { adminStatus('Enter a player name first', false); toast('Enter a player'); } return n; };
 $('adminBoost').onclick = async () => {
   const n = adminName(); if (!n) return;
   $('adminBoost').disabled = true;
   const { data, error } = await sb.rpc('admin_boost', { p_user: n });
   $('adminBoost').disabled = false;
-  if (error) return toast(error.message);
-  toast(`${data.user} boosted until ${new Date(data.until).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`);
+  if (error) { adminStatus(error.message, false); return toast(error.message); }
+  { const _m = `${data.user} boosted until ${new Date(data.until).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`; adminStatus(_m, true); toast(_m); }
   if (data.user.toLowerCase() === $('who').textContent.toLowerCase()) boostUntil = new Date(data.until).getTime();
 };
 $('adminTake').onclick = async () => {
@@ -505,8 +515,8 @@ $('adminTake').onclick = async () => {
   $('adminTake').disabled = true;
   const { data, error } = await sb.rpc('admin_take', { p_user: n, p_amount: amt });
   $('adminTake').disabled = false;
-  if (error) return toast(error.message);
-  toast(`Took ${fmt(data.took)} from ${data.user} (now ${fmt(data.balance)})`);
+  if (error) { adminStatus(error.message, false); return toast(error.message); }
+  { const _m = `Took ${fmt(data.took)} from ${data.user} (now ${fmt(data.balance)})`; adminStatus(_m, true); toast(_m); }
   if (data.user.toLowerCase() === $('who').textContent.toLowerCase()) setBalance(data.balance);
 };
 
@@ -562,7 +572,7 @@ async function bjCall(fn, args, btn){
   if (btn) btn.disabled = true;
   const { data, error } = await sb.rpc(fn, args);
   if (btn) btn.disabled = false;
-  if (error) return toast(error.message);
+  if (error) { adminStatus(error.message, false); return toast(error.message); }
   showBJ(data);
 }
 $('bjDeal').onclick = () => { const bet = readBet('bjBet'); if (bet) bjCall('bj_start', { p_bet: bet }, $('bjDeal')); };
@@ -578,8 +588,8 @@ async function resumeBJ(){
 async function adminBan(on){
   const n = adminName(); if (!n) return;
   const { data, error } = await sb.rpc('admin_ban', { p_user: n, p_ban: on });
-  if (error) return toast(error.message);
-  toast(`${data.user} ${data.banned ? 'banned' : 'unbanned'}`);
+  if (error) { adminStatus(error.message, false); return toast(error.message); }
+  { const _m = `${data.user} ${data.banned ? 'banned' : 'unbanned'}`; adminStatus(_m, true); toast(_m); }
 }
 $('adminBan').onclick = () => adminBan(true);
 $('adminUnban').onclick = () => adminBan(false);
@@ -588,7 +598,7 @@ $('adminUnban').onclick = () => adminBan(false);
 $('refill').onclick = async () => {
   if ((ride && !ride.done) || round || (bj && bj.status === 'live')) return toast('Finish your current game before refilling');
   const { data, error } = await sb.rpc('claim_refill');
-  if (error) return toast(error.message);
+  if (error) { adminStatus(error.message, false); return toast(error.message); }
   setBalance(data.balance); toast('Refilled to 100');
 };
 
@@ -607,15 +617,15 @@ $('renameForm').onsubmit = async e => {
   $('renameSend').disabled = true;
   const { data, error } = await sb.rpc('rename_me', { p_new: $('renameNew').value.trim() });
   $('renameSend').disabled = false;
-  if (error) return toast(error.message);
+  if (error) { adminStatus(error.message, false); return toast(error.message); }
   $('renameModal').hidden = true;
   $('who').textContent = data.new;
-  toast(`You're now ${data.new}. Log in with that name next time.`);
+  { const _m = `You're now ${data.new}. Log in with that name next time.`; adminStatus(_m, true); toast(_m); }
 };
 $('adminNoticeSave').onclick = async () => {
   const { data, error } = await sb.rpc('admin_set_notice', { p_text: $('adminNotice').value });
-  if (error) return toast(error.message);
-  toast(data.text ? 'Notice updated' : 'Notice hidden');
+  if (error) { adminStatus(error.message, false); return toast(error.message); }
+  { const _m = data.text ? 'Notice updated' : 'Notice hidden'; adminStatus(_m, true); toast(_m); }
   loadNotice();
 };
 
@@ -1265,15 +1275,15 @@ async function loadPast(){
 $('adminRename').onclick = async () => {
   const n = adminName(); if (!n) return;
   const { data, error } = await sb.rpc('admin_rename', { p_user: n, p_new: $('adminNewName').value.trim() });
-  if (error) return toast(error.message);
-  toast(`${data.old} is now ${data.new} (they log in with the new name)`);
+  if (error) { adminStatus(error.message, false); return toast(error.message); }
+  { const _m = `${data.old} is now ${data.new} (they log in with the new name)`; adminStatus(_m, true); toast(_m); }
   if (data.old.toLowerCase() === $('who').textContent.toLowerCase()) $('who').textContent = data.new;
 };
 $('adminTakeRb').onclick = async () => {
   const n = adminName(); if (!n) return;
   const { data, error } = await sb.rpc('admin_take_rebirths', { p_user: n, p_n: parseInt($('adminRb').value) });
-  if (error) return toast(error.message);
-  toast(`${data.user} now has ▲${data.rebirths}`);
+  if (error) { adminStatus(error.message, false); return toast(error.message); }
+  { const _m = `${data.user} now has ▲${data.rebirths}`; adminStatus(_m, true); toast(_m); }
   if (data.user.toLowerCase() === $('who').textContent.toLowerCase()) setRebirths(data.rebirths);
 };
 let delArmed = 0;
@@ -1282,8 +1292,8 @@ $('adminDelete').onclick = async () => {
   if (Date.now() - delArmed > 4000) { delArmed = Date.now(); $('adminDelete').textContent = `Tap again to delete ${n}`; setTimeout(() => { $('adminDelete').textContent = 'Delete account'; }, 4000); return; }
   delArmed = 0; $('adminDelete').textContent = 'Delete account';
   const { data, error } = await sb.rpc('admin_delete', { p_user: n });
-  if (error) return toast(error.message);
-  toast(`Deleted ${data.user}`);
+  if (error) { adminStatus(error.message, false); return toast(error.message); }
+  { const _m = `Deleted ${data.user}`; adminStatus(_m, true); toast(_m); }
   if (!$('tab-board').hidden) loadBoard();
 };
 let seasonArmed = 0;
@@ -1291,8 +1301,8 @@ $('adminSeason').onclick = async () => {
   if (Date.now() - seasonArmed > 4000) { seasonArmed = Date.now(); $('adminSeason').textContent = 'Tap again to reset everyone'; setTimeout(() => { $('adminSeason').textContent = 'Start new season'; }, 4000); return; }
   seasonArmed = 0; $('adminSeason').textContent = 'Start new season';
   const { data, error } = await sb.rpc('admin_new_season');
-  if (error) return toast(error.message);
-  toast(`Season ${data.season} saved (${data.players} players). Everyone reset.`);
+  if (error) { adminStatus(error.message, false); return toast(error.message); }
+  { const _m = `Season ${data.season} saved (${data.players} players). Everyone reset.`; adminStatus(_m, true); toast(_m); }
   loadProfile();
 };
 
