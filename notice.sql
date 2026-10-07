@@ -5,7 +5,7 @@ alter table site_notice enable row level security;
 drop policy if exists "notice readable" on site_notice;
 create policy "notice readable" on site_notice for select to anon, authenticated using (true);
 insert into site_notice (id, text)
-values (1, 'Change your username to your real name, or your account will be banned.')
+values (1, 'Change your username to your real name by Tuesday, Oct 13, or your account will be banned.')
 on conflict (id) do update set text = excluded.text;
 
 create or replace function admin_set_notice(p_text text) returns json
