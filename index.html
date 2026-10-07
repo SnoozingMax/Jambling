@@ -390,6 +390,7 @@ tr.me td{color:var(--accent)}
     </div>
     <button type="button" class="go" id="modBad" style="background:#6b4bd6">Bad luck 1 min</button>
     <p class="hint" id="modLeft" style="margin:6px 0 0"></p>
+    <button type="button" class="ghost" id="modClearBad" style="width:100%;margin-top:12px;padding:10px">Remove bad luck</button>
     <button type="button" class="ghost" id="modClose" style="width:100%;margin-top:14px;padding:10px">Close</button>
   </div>
 </div>
@@ -428,6 +429,10 @@ tr.me td{color:var(--accent)}
     <p class="hint" style="margin:6px 0 18px">Nonstop pump in Ride for 5 minutes. Stacks.</p>
     <button type="button" class="go" id="adminBad" style="background:#6b4bd6">Bad luck 1 min</button>
     <p class="hint" style="margin:6px 0 18px">Rug pulls in Ride, loses every coin flip, bad blackjack deals, Rocket crashes at 1.01×. Stacks.</p>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:0 0 18px">
+      <button type="button" class="ghost" id="adminClearBoost" style="padding:10px">Remove boost</button>
+      <button type="button" class="ghost" id="adminClearBad" style="padding:10px">Remove bad luck</button>
+    </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:0 0 18px">
       <button type="button" class="ghost" id="adminMod" style="padding:10px">Make mod</button>
       <button type="button" class="ghost" id="adminUnmod" style="padding:10px">Remove mod</button>
@@ -806,6 +811,16 @@ async function setMod(on){
   if (error) { adminStatus(error.message, false); return toast(error.message); }
   const m = `${data.user} is ${data.mod ? 'now a mod' : 'no longer a mod'}`; adminStatus(m, true); toast(m);
 }
+async function clearEffect(name, kind, report){
+  if (!name) return report('Enter a player name first', false);
+  const { data, error } = await sb.rpc('clear_effect', { p_user: name, p_kind: kind });
+  if (error) return report(error.message, false);
+  report(`Removed ${kind === 'boost' ? 'boost' : 'bad luck'} from ${data.user}` + (Number(data.refunded) > 0 ? ` · refunded ${fmt(data.refunded)} from rounds in progress` : ''), true);
+}
+const adminReport = (m, ok) => { adminStatus(m, ok); toast(m); };
+$('adminClearBoost').onclick = () => clearEffect($('adminUser').value.trim(), 'boost', adminReport);
+$('adminClearBad').onclick = () => clearEffect($('adminUser').value.trim(), 'bad', adminReport);
+$('modClearBad').onclick = () => clearEffect($('modUser').value.trim(), 'bad', (m, ok) => { modStatus(m, ok); toast(m); });
 $('adminMod').onclick = () => setMod(true);
 $('adminUnmod').onclick = () => setMod(false);
 
@@ -1270,7 +1285,10 @@ $('rideCash').onclick = () => {
   const step = Math.floor(r.cur);
   r.q = r.q.then(() => sb.rpc('ride_stop', { p_round: r.id, p_step: step })).then(({ data, error }) => {
     $('rideCash').disabled = false;
-    if (error) { r.stopping = false; return toast(error.message); }
+    if (error) {
+      if (/Round over/.test(error.message)) { toast('This round was cancelled by an admin and your bet was refunded'); r.done = true; ride = null; $('rideStart').hidden = false; $('holdBtn').hidden = true; $('rideCash').hidden = true; loadProfile(); return; }
+      r.stopping = false; return toast(error.message);
+    }
     finishRide(data);
   });
 };
