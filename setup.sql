@@ -233,10 +233,10 @@ begin
       continue;
     end if;
     if ev_left = 0 and rug = 0 and u3 > 0.99 then
-      if u2 < 0.45 then                                   -- pump: +49% to +123% over 3-7s. ~1 in 3 rug-pulls partway
+      if u2 < 0.45 then                                   -- pump: +65% to +170% over 3-7s. ~1 in 3 rug-pulls partway
         ev_dir := 1;
         d := 30 + floor(u1 * 41)::int;
-        size := 0.4 + 0.4 * (u1 * 53 - floor(u1 * 53));
+        size := 0.5 + 0.5 * (u1 * 53 - floor(u1 * 53));
         w := 0;
         for j in 1..d loop x := (j - 0.5) / d; w := w + x * (1 - x); end loop;
         base := p;
@@ -297,7 +297,7 @@ begin
 end $$;
 
 -- bump this whenever the chart math changes; must match RIDE_VERSION in index.html
-create or replace function ride_version() returns int language sql immutable as $$ select 30 $$;
+create or replace function ride_version() returns int language sql immutable as $$ select 31 $$;
 
 -- pay out a round at step a (internal: never callable from the browser)
 create or replace function _ride_finish(p_id uuid, a int) returns json

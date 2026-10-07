@@ -1091,7 +1091,7 @@ window.addEventListener('resize', () => { if (!round && !ghost) drawGraph(1); })
 // The chart comes from a server seed, so it's drawn locally with zero lag.
 // MUST match _ride_path() in ride.sql.
 const STEP_MS = 100, WINDOW = 120; // 12s visible
-const RIDE_VERSION = 30;            // must match ride_version() in ride.sql
+const RIDE_VERSION = 31;            // must match ride_version() in ride.sql
 function ridePath(seed, boost = 0){
   let s = Number(seed), v = 0, p = 100, heat = 1;
   let evLeft = 0, evDir = 0, D = 0, size = 0, W = 1, cut = -1, rug = 0, base = 100;
@@ -1111,10 +1111,10 @@ function ridePath(seed, boost = 0){
         continue;
       }
       if (evLeft === 0 && rug === 0 && u3 > 0.99) {
-        if (u2 < 0.45) {                             // pump: +49% to +123% over 3-7s. ~1 in 3 rug-pulls partway
+        if (u2 < 0.45) {                             // pump: +65% to +170% over 3-7s. ~1 in 3 rug-pulls partway
           evDir = 1;
           D = 30 + Math.floor(u1 * 41);
-          size = 0.4 + 0.4 * fr(u1 * 53);
+          size = 0.5 + 0.5 * fr(u1 * 53);
           W = 0;
           for (let j = 1; j <= D; j++) { const x = (j - 0.5) / D; W = W + x * (1 - x); }
           base = p;
