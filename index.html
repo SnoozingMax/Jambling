@@ -666,7 +666,9 @@ $('adminUnban').onclick = () => adminBan(false);
 
 /* ---------- refill ---------- */
 $('refill').onclick = async () => {
-  if ((ride && !ride.done) || round || (bj && bj.status === 'live') || (pvp && pvp.status === 'live')) return toast('Finish your current game before refilling');
+  if (ride && !ride.done) return toast('Stop your Ride round first');
+  if (round) return toast('Cash out or let your Rocket crash first');
+  if (bj && bj.status === 'live') return toast('Finish your Blackjack hand first');
   const { data, error } = await sb.rpc('claim_refill');
   if (error) { adminStatus(error.message, false); return toast(error.message); }
   setBalance(data.balance); toast('Refilled to 100');
