@@ -47,7 +47,7 @@ begin
     heat := 1 + (heat - 1) * 0.97;
     vol := heat * 2;
     if i <= p_boost then                                  -- admin boost: fast nonstop pump (~+22%/s), no dumps
-      p := p * exp(0.02 + (u2 - 0.5) * 0.02);
+      p := least(p * exp(0.02 + (u2 - 0.5) * 0.02), 1e200);
       ev_left := 0; rug := 0; v := 0;
       arr := arr || p;
       continue;
@@ -96,6 +96,7 @@ begin
       v := 0.8 * v + (u1 - 0.5) * 0.009 * vol - 0.0007 * ln(p / 100);
       p := p * exp(v + (u2 - 0.5) * 0.035 * vol + drift);
     end if;
+    p := least(greatest(p, 1e-200), 1e200);                -- never overflow
     arr := arr || p;
   end loop;
   return arr;
@@ -116,7 +117,7 @@ begin
 end $$;
 
 -- bump this whenever the chart math changes; must match RIDE_VERSION in index.html
-create or replace function ride_version() returns int language sql immutable as $$ select 29 $$;
+create or replace function ride_version() returns int language sql immutable as $$ select 30 $$;
 
 -- pay out a round at step a (internal: never callable from the browser)
 create or replace function _ride_finish(p_id uuid, a int) returns json
@@ -139,6 +140,8 @@ begin
   for i in 1 .. coalesce(array_length(h, 1), 0) / 2 loop
     m := m * 0.99 * path[h[2*i] + 1] / path[h[2*i - 1] + 1];   -- 1% fee per hold
   end loop;
+  if m <> m then m := 1; end if;                                -- NaN: give the bet back
+  m := least(m, 1e15);                                          -- overflow guard
 
   pay := round((rd.bet * m)::numeric, 2);
   if pay > rd.bet then pay := round(rd.bet + (pay - rd.bet) * (1 + 0.1 * coalesce((select rebirths from profiles where id = rd.user_id), 0)), 2); end if;  -- rebirth luck

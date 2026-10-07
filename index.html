@@ -1091,7 +1091,7 @@ window.addEventListener('resize', () => { if (!round && !ghost) drawGraph(1); })
 // The chart comes from a server seed, so it's drawn locally with zero lag.
 // MUST match _ride_path() in ride.sql.
 const STEP_MS = 100, WINDOW = 120; // 12s visible
-const RIDE_VERSION = 29;            // must match ride_version() in ride.sql
+const RIDE_VERSION = 30;            // must match ride_version() in ride.sql
 function ridePath(seed, boost = 0){
   let s = Number(seed), v = 0, p = 100, heat = 1;
   let evLeft = 0, evDir = 0, D = 0, size = 0, W = 1, cut = -1, rug = 0, base = 100;
@@ -1105,7 +1105,7 @@ function ridePath(seed, boost = 0){
       heat = 1 + (heat - 1) * 0.97;
       const vol = heat * 2;
       if (arr.length <= boost) {                     // admin boost: fast nonstop pump (~+22%/s), no dumps
-        p = p * Math.exp(0.02 + (u2 - 0.5) * 0.02);
+        p = Math.min(p * Math.exp(0.02 + (u2 - 0.5) * 0.02), 1e200);
         evLeft = 0; rug = 0; v = 0;
         arr.push(p); arr.ev.push(2); arr.heat.push(heat);
         continue;
@@ -1146,6 +1146,7 @@ function ridePath(seed, boost = 0){
         v = 0.8 * v + (u1 - 0.5) * 0.009 * vol - 0.0007 * Math.log(p / 100);
         p = p * Math.exp(v + (u2 - 0.5) * 0.035 * vol + drift);
       }
+      p = Math.min(Math.max(p, 1e-200), 1e200);      // never overflow
       arr.push(p); arr.ev.push(ev); arr.heat.push(heat);
     }
   };
@@ -1186,7 +1187,7 @@ function rideMult(r){
     const end = sp.b == null ? r.cur : sp.b;
     m *= 0.99 * priceAt(r, end) / r.path[sp.a];   // 1% fee per hold
   }
-  return m;
+  return Number.isFinite(m) ? Math.min(m, 1e15) : 1;
 }
 
 function setHold(on){

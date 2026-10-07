@@ -180,7 +180,7 @@ declare
 begin
   if auth.uid() is null then raise exception 'Not signed in'; end if;
   if exists (select 1 from crash_rounds where user_id = auth.uid() and status = 'live'
-               and exp(0.09 * extract(epoch from clock_timestamp() - started_at)) < crash_point)
+               and extract(epoch from clock_timestamp() - started_at) < ln(crash_point) / 0.09)
      or exists (select 1 from ride_rounds where user_id = auth.uid() and status = 'live')
      or exists (select 1 from bj_hands where user_id = auth.uid() and status = 'live')
      or exists (select 1 from pvp_matches where (a = auth.uid() or b = auth.uid()) and status in ('pending', 'live')) then

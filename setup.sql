@@ -227,7 +227,7 @@ begin
     heat := 1 + (heat - 1) * 0.97;
     vol := heat * 2;
     if i <= p_boost then                                  -- admin boost: fast nonstop pump (~+22%/s), no dumps
-      p := p * exp(0.02 + (u2 - 0.5) * 0.02);
+      p := least(p * exp(0.02 + (u2 - 0.5) * 0.02), 1e200);
       ev_left := 0; rug := 0; v := 0;
       arr := arr || p;
       continue;
@@ -276,6 +276,7 @@ begin
       v := 0.8 * v + (u1 - 0.5) * 0.009 * vol - 0.0007 * ln(p / 100);
       p := p * exp(v + (u2 - 0.5) * 0.035 * vol + drift);
     end if;
+    p := least(greatest(p, 1e-200), 1e200);                -- never overflow
     arr := arr || p;
   end loop;
   return arr;
@@ -296,7 +297,7 @@ begin
 end $$;
 
 -- bump this whenever the chart math changes; must match RIDE_VERSION in index.html
-create or replace function ride_version() returns int language sql immutable as $$ select 29 $$;
+create or replace function ride_version() returns int language sql immutable as $$ select 30 $$;
 
 -- pay out a round at step a (internal: never callable from the browser)
 create or replace function _ride_finish(p_id uuid, a int) returns json
@@ -319,6 +320,8 @@ begin
   for i in 1 .. coalesce(array_length(h, 1), 0) / 2 loop
     m := m * 0.99 * path[h[2*i] + 1] / path[h[2*i - 1] + 1];   -- 1% fee per hold
   end loop;
+  if m <> m then m := 1; end if;                                -- NaN: give the bet back
+  m := least(m, 1e15);                                          -- overflow guard
 
   pay := round((rd.bet * m)::numeric, 2);
   if pay > rd.bet then pay := round(rd.bet + (pay - rd.bet) * (1 + 0.1 * coalesce((select rebirths from profiles where id = rd.user_id), 0)), 2); end if;  -- rebirth luck
@@ -1156,7 +1159,7 @@ declare
 begin
   if auth.uid() is null then raise exception 'Not signed in'; end if;
   if exists (select 1 from crash_rounds where user_id = auth.uid() and status = 'live'
-               and exp(0.09 * extract(epoch from clock_timestamp() - started_at)) < crash_point)
+               and extract(epoch from clock_timestamp() - started_at) < ln(crash_point) / 0.09)
      or exists (select 1 from ride_rounds where user_id = auth.uid() and status = 'live')
      or exists (select 1 from bj_hands where user_id = auth.uid() and status = 'live')
      or exists (select 1 from pvp_matches where (a = auth.uid() or b = auth.uid()) and status in ('pending', 'live')) then
@@ -1168,3 +1171,35 @@ begin
 end $$;
 
 notify pgrst, 'reload schema';
+
+-- ========== Safety ==========
+-- 2) a balance can never be saved as NaN or infinity: keep the old value instead
+create or replace function _sane_balance() returns trigger
+language plpgsql as $$
+begin
+  if new.balance = 'NaN'::numeric or new.balance = 'Infinity'::numeric or new.balance = '-Infinity'::numeric then
+    new.balance := coalesce(old.balance, 0);
+  end if;
+  return new;
+end $$;
+drop trigger if exists sane_balance on profiles;
+create trigger sane_balance before insert or update on profiles
+for each row execute function _sane_balance();
+
+-- 3) boosts stack up to 30 minutes max (much longer and the chart number overflows)
+create or replace function admin_boost(p_user text) returns json
+language plpgsql security definer set search_path = public as $$
+declare
+  them uuid; them_name text; until timestamptz;
+begin
+  if not is_admin() then raise exception 'Admins only'; end if;
+  select id, username into them, them_name from profiles
+   where lower(username) = lower(trim(p_user)) order by created_at limit 1;
+  if them is null then raise exception 'No player named %', p_user; end if;
+  update profiles
+     set boost_until = least(greatest(coalesce(boost_until, clock_timestamp()), clock_timestamp()) + interval '5 minutes',
+                             clock_timestamp() + interval '30 minutes')
+   where id = them returning boost_until into until;
+  return json_build_object('user', them_name, 'until', until);
+end $$;
+
