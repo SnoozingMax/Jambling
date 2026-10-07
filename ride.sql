@@ -35,7 +35,8 @@ declare
   u1 float8; u2 float8; u3 float8;
   ev_left int := 0; ev_dir float8 := 0; d int := 0;
   size float8 := 0; w float8 := 1; x float8; drift float8;
-  k int; ev int;
+  cut int := -1; rug int := 0; base float8 := 100;
+  k int; ev int; done boolean;
   arr float8[] := array[100.0];
 begin
   for i in 1..n loop
@@ -45,19 +46,25 @@ begin
     if u3 < 0.004 then heat := 3; end if;                 -- wild phase
     heat := 1 + (heat - 1) * 0.97;
     vol := heat * 2;
-    if i <= p_boost then                                  -- admin boost: nonstop pump, no dumps
-      p := p * exp(0.006 + (u2 - 0.5) * 0.02);
-      ev_left := 0; v := 0;
+    if i <= p_boost then                                  -- admin boost: fast nonstop pump (~+22%/s), no dumps
+      p := p * exp(0.02 + (u2 - 0.5) * 0.02);
+      ev_left := 0; rug := 0; v := 0;
       arr := arr || p;
       continue;
     end if;
-    if ev_left = 0 and u3 > 0.99 then
-      if u2 < 0.45 then                                   -- hidden pump: +65% to +170% over 3-7s, swells in the middle
+    if ev_left = 0 and rug = 0 and u3 > 0.99 then
+      if u2 < 0.45 then                                   -- pump: +49% to +123% over 3-7s. ~1 in 3 rug-pulls partway
         ev_dir := 1;
         d := 30 + floor(u1 * 41)::int;
-        size := 0.5 + 0.5 * (u1 * 53 - floor(u1 * 53));
+        size := 0.4 + 0.4 * (u1 * 53 - floor(u1 * 53));
         w := 0;
         for j in 1..d loop x := (j - 0.5) / d; w := w + x * (1 - x); end loop;
+        base := p;
+        if (u1 * 97 - floor(u1 * 97)) < 0.35 then
+          cut := 3 + floor((u1 * 331 - floor(u1 * 331)) * (d - 3))::int;
+        else
+          cut := -1;
+        end if;
       else                                                -- dump: -14% to -33%, random length, hits hardest first
         ev_dir := -1;
         d := 5 + floor((u1 * 13 - floor(u1 * 13)) * 18)::int;
@@ -66,17 +73,26 @@ begin
       end if;
       ev_left := d;
     end if;
-    ev := 0; drift := 0;
+    ev := 0; drift := 0; done := false;
     if ev_left > 0 then
       k := d - ev_left + 1;
       if ev_dir > 0 then
-        x := (k - 0.5) / d; drift := size * (x * (1 - x)) / w; ev := 1;
+        if k = cut then
+          ev_left := 0; rug := 3;
+        else
+          x := (k - 0.5) / d; drift := size * (x * (1 - x)) / w; ev := 1;
+          ev_left := ev_left - 1;
+        end if;
       else
         p := p * exp(-size * (d - k + 1) / w + (u2 - 0.5) * 0.012); v := 0; ev := -1;
+        ev_left := ev_left - 1; done := true;
       end if;
-      ev_left := ev_left - 1;
     end if;
-    if ev >= 0 then                                       -- normal chop keeps going during pumps, so they're hard to spot
+    if not done and rug > 0 and ev = 0 then              -- rug pull: crash to half of where the pump started
+      p := p * exp(ln(base * 0.5 / p) / rug);
+      rug := rug - 1; v := 0; done := true;
+    end if;
+    if not done then                                      -- normal chop keeps going during pumps
       v := 0.8 * v + (u1 - 0.5) * 0.009 * vol - 0.0007 * ln(p / 100);
       p := p * exp(v + (u2 - 0.5) * 0.035 * vol + drift);
     end if;
@@ -100,7 +116,7 @@ begin
 end $$;
 
 -- bump this whenever the chart math changes; must match RIDE_VERSION in index.html
-create or replace function ride_version() returns int language sql immutable as $$ select 28 $$;
+create or replace function ride_version() returns int language sql immutable as $$ select 29 $$;
 
 -- pay out a round at step a (internal: never callable from the browser)
 create or replace function _ride_finish(p_id uuid, a int) returns json
@@ -123,7 +139,6 @@ begin
   for i in 1 .. coalesce(array_length(h, 1), 0) / 2 loop
     m := m * 0.99 * path[h[2*i] + 1] / path[h[2*i - 1] + 1];   -- 1% fee per hold
   end loop;
-  m := least(m, 25);
 
   pay := round((rd.bet * m)::numeric, 2);
   if pay > rd.bet then pay := round(rd.bet + (pay - rd.bet) * (1 + 0.1 * coalesce((select rebirths from profiles where id = rd.user_id), 0)), 2); end if;  -- rebirth luck

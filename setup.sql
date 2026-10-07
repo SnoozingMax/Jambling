@@ -215,7 +215,8 @@ declare
   u1 float8; u2 float8; u3 float8;
   ev_left int := 0; ev_dir float8 := 0; d int := 0;
   size float8 := 0; w float8 := 1; x float8; drift float8;
-  k int; ev int;
+  cut int := -1; rug int := 0; base float8 := 100;
+  k int; ev int; done boolean;
   arr float8[] := array[100.0];
 begin
   for i in 1..n loop
@@ -225,19 +226,25 @@ begin
     if u3 < 0.004 then heat := 3; end if;                 -- wild phase
     heat := 1 + (heat - 1) * 0.97;
     vol := heat * 2;
-    if i <= p_boost then                                  -- admin boost: nonstop pump, no dumps
-      p := p * exp(0.006 + (u2 - 0.5) * 0.02);
-      ev_left := 0; v := 0;
+    if i <= p_boost then                                  -- admin boost: fast nonstop pump (~+22%/s), no dumps
+      p := p * exp(0.02 + (u2 - 0.5) * 0.02);
+      ev_left := 0; rug := 0; v := 0;
       arr := arr || p;
       continue;
     end if;
-    if ev_left = 0 and u3 > 0.99 then
-      if u2 < 0.45 then                                   -- hidden pump: +65% to +170% over 3-7s, swells in the middle
+    if ev_left = 0 and rug = 0 and u3 > 0.99 then
+      if u2 < 0.45 then                                   -- pump: +49% to +123% over 3-7s. ~1 in 3 rug-pulls partway
         ev_dir := 1;
         d := 30 + floor(u1 * 41)::int;
-        size := 0.5 + 0.5 * (u1 * 53 - floor(u1 * 53));
+        size := 0.4 + 0.4 * (u1 * 53 - floor(u1 * 53));
         w := 0;
         for j in 1..d loop x := (j - 0.5) / d; w := w + x * (1 - x); end loop;
+        base := p;
+        if (u1 * 97 - floor(u1 * 97)) < 0.35 then
+          cut := 3 + floor((u1 * 331 - floor(u1 * 331)) * (d - 3))::int;
+        else
+          cut := -1;
+        end if;
       else                                                -- dump: -14% to -33%, random length, hits hardest first
         ev_dir := -1;
         d := 5 + floor((u1 * 13 - floor(u1 * 13)) * 18)::int;
@@ -246,17 +253,26 @@ begin
       end if;
       ev_left := d;
     end if;
-    ev := 0; drift := 0;
+    ev := 0; drift := 0; done := false;
     if ev_left > 0 then
       k := d - ev_left + 1;
       if ev_dir > 0 then
-        x := (k - 0.5) / d; drift := size * (x * (1 - x)) / w; ev := 1;
+        if k = cut then
+          ev_left := 0; rug := 3;
+        else
+          x := (k - 0.5) / d; drift := size * (x * (1 - x)) / w; ev := 1;
+          ev_left := ev_left - 1;
+        end if;
       else
         p := p * exp(-size * (d - k + 1) / w + (u2 - 0.5) * 0.012); v := 0; ev := -1;
+        ev_left := ev_left - 1; done := true;
       end if;
-      ev_left := ev_left - 1;
     end if;
-    if ev >= 0 then                                       -- normal chop keeps going during pumps, so they're hard to spot
+    if not done and rug > 0 and ev = 0 then              -- rug pull: crash to half of where the pump started
+      p := p * exp(ln(base * 0.5 / p) / rug);
+      rug := rug - 1; v := 0; done := true;
+    end if;
+    if not done then                                      -- normal chop keeps going during pumps
       v := 0.8 * v + (u1 - 0.5) * 0.009 * vol - 0.0007 * ln(p / 100);
       p := p * exp(v + (u2 - 0.5) * 0.035 * vol + drift);
     end if;
@@ -280,7 +296,7 @@ begin
 end $$;
 
 -- bump this whenever the chart math changes; must match RIDE_VERSION in index.html
-create or replace function ride_version() returns int language sql immutable as $$ select 28 $$;
+create or replace function ride_version() returns int language sql immutable as $$ select 29 $$;
 
 -- pay out a round at step a (internal: never callable from the browser)
 create or replace function _ride_finish(p_id uuid, a int) returns json
@@ -303,7 +319,6 @@ begin
   for i in 1 .. coalesce(array_length(h, 1), 0) / 2 loop
     m := m * 0.99 * path[h[2*i] + 1] / path[h[2*i - 1] + 1];   -- 1% fee per hold
   end loop;
-  m := least(m, 25);
 
   pay := round((rd.bet * m)::numeric, 2);
   if pay > rd.bet then pay := round(rd.bet + (pay - rd.bet) * (1 + 0.1 * coalesce((select rebirths from profiles where id = rd.user_id), 0)), 2); end if;  -- rebirth luck
@@ -573,7 +588,6 @@ end $$;
 notify pgrst, 'reload schema';
 
 -- ========== Blackjack ==========
-
 drop function if exists claim_refill();
 
 create table if not exists bj_hands (
@@ -589,6 +603,11 @@ create table if not exists bj_hands (
   created_at timestamptz not null default now()
 );
 alter table bj_hands enable row level security;   -- no policies: only functions touch it
+-- your card values: an ace stays null until you pick 1 or 11 (then it's locked)
+alter table bj_hands add column if not exists pvals int[];
+-- hands from before this update: refund and close
+update profiles p set balance = p.balance + h.bet from bj_hands h where h.user_id = p.id and h.status = 'live' and h.pvals is null;
+update bj_hands set status = 'done', result = 'void', payout = bet where status = 'live' and pvals is null;
 
 -- card c: rank = c % 13 (0 = A, 1..9 = 2..10, 10..12 = J Q K)
 create or replace function _bj_total(cards int[]) returns int
@@ -606,20 +625,32 @@ begin
   return t;
 end $$;
 
+create or replace function _bj_val(c int) returns int language sql immutable as $$
+  select case when c % 13 = 0 then null when c % 13 >= 9 then 10 else c % 13 + 1 end
+$$;
+create or replace function _bj_sum(v int[]) returns int language sql immutable as $$
+  select coalesce(sum(x), 0)::int from unnest(v) x
+$$;
+create or replace function _bj_pending(v int[]) returns int[] language sql immutable as $$
+  select coalesce(array_agg(i order by i), '{}') from generate_subscripts(v, 1) i where v[i] is null
+$$;
+
 -- what the browser is allowed to see
 create or replace function _bj_view(h bj_hands) returns json
 language plpgsql stable security definer set search_path = public as $$
 declare
   bal numeric;
   dview int[];
+  pend int[] := _bj_pending(h.pvals);
 begin
   select balance into bal from profiles where id = h.user_id;
   dview := case when h.status = 'live' then h.dealer[1:1] else h.dealer end;
   return json_build_object(
     'id', h.id, 'bet', h.bet, 'status', h.status, 'result', h.result, 'payout', h.payout,
-    'player', h.player, 'dealer', dview, 'hidden', h.status = 'live',
-    'player_total', _bj_total(h.player), 'dealer_total', _bj_total(dview),
-    'can_double', h.status = 'live' and array_length(h.player, 1) = 2 and bal >= h.bet,
+    'player', h.player, 'pvals', h.pvals, 'pending', pend,
+    'dealer', dview, 'hidden', h.status = 'live',
+    'player_total', _bj_sum(h.pvals), 'dealer_total', _bj_total(dview),
+    'can_double', h.status = 'live' and array_length(h.player, 1) = 2 and bal >= h.bet and cardinality(pend) = 0,
     'balance', bal);
 end $$;
 
@@ -631,7 +662,7 @@ declare
 begin
   select * into h from bj_hands where id = p_id for update;
   if h.status <> 'live' then return h; end if;
-  pt := _bj_total(h.player);
+  pt := _bj_sum(h.pvals);
   res := p_result;
   if res is null then
     if pt > 21 then res := 'bust';
@@ -655,10 +686,23 @@ end $$;
 revoke execute on function _bj_settle(uuid, text) from public, anon, authenticated;
 revoke execute on function _bj_view(bj_hands) from public, anon, authenticated;
 
+-- after any change: bust, or auto-stand on 21 (only once every ace is chosen)
+create or replace function _bj_check(p_id uuid) returns bj_hands
+language plpgsql security definer set search_path = public as $$
+declare h bj_hands;
+begin
+  select * into h from bj_hands where id = p_id;
+  if h.status <> 'live' or cardinality(_bj_pending(h.pvals)) > 0 then return h; end if;
+  if _bj_sum(h.pvals) > 21 then return _bj_settle(h.id, 'bust'); end if;
+  if _bj_sum(h.pvals) = 21 then return _bj_settle(h.id); end if;
+  return h;
+end $$;
+revoke execute on function _bj_check(uuid) from public, anon, authenticated;
+
 create or replace function bj_start(p_bet numeric) returns json
 language plpgsql security definer set search_path = public as $$
 declare
-  bal numeric; h bj_hands; d int[]; pt int; dt int;
+  bal numeric; h bj_hands; d int[]; dt int; is_bj boolean;
 begin
   if auth.uid() is null then raise exception 'Not signed in'; end if;
   if exists (select 1 from bj_hands where user_id = auth.uid() and status = 'live') then
@@ -671,61 +715,79 @@ begin
   update profiles set balance = balance - p_bet where id = auth.uid();
 
   select array_agg(c order by random()) into d from generate_series(0, 51) c;
-  insert into bj_hands (user_id, bet, deck, player, dealer)
-    values (auth.uid(), p_bet, d[5:], array[d[1], d[3]], array[d[2], d[4]]) returning * into h;
+  insert into bj_hands (user_id, bet, deck, player, dealer, pvals)
+    values (auth.uid(), p_bet, d[5:], array[d[1], d[3]], array[d[2], d[4]], array[_bj_val(d[1]), _bj_val(d[3])])
+    returning * into h;
 
-  pt := _bj_total(h.player); dt := _bj_total(h.dealer);
-  if pt = 21 or dt = 21 then
-    h := _bj_settle(h.id, case when pt = 21 and dt = 21 then 'push' when pt = 21 then 'blackjack' else 'lose' end);
+  is_bj := _bj_total(h.player) = 21;          -- ace + ten is always blackjack
+  dt := _bj_total(h.dealer);
+  if is_bj then
+    update bj_hands set pvals = array[coalesce(pvals[1], 11), coalesce(pvals[2], 11)] where id = h.id;
+    h := _bj_settle(h.id, case when dt = 21 then 'push' else 'blackjack' end);
+  elsif dt = 21 then
+    h := _bj_settle(h.id, 'lose');
   end if;
   return _bj_view(h);
 end $$;
 
-create or replace function bj_hit(p_id uuid) returns json
+-- pick 1 or 11 for one of your aces (locked once picked)
+create or replace function bj_ace(p_id uuid, p_idx int, p_val int) returns json
 language plpgsql security definer set search_path = public as $$
-declare
-  h bj_hands;
+declare h bj_hands;
 begin
   select * into h from bj_hands where id = p_id and user_id = auth.uid() for update;
   if not found or h.status <> 'live' then raise exception 'No hand in play'; end if;
-  update bj_hands set player = player || deck[1], deck = deck[2:] where id = h.id returning * into h;
-  if _bj_total(h.player) > 21 then h := _bj_settle(h.id, 'bust');
-  elsif _bj_total(h.player) = 21 then h := _bj_settle(h.id); end if;   -- auto-stand on 21
-  return _bj_view(h);
+  if p_val not in (1, 11) then raise exception 'Ace must be 1 or 11'; end if;
+  if p_idx is null or p_idx < 1 or p_idx > cardinality(h.player) or h.player[p_idx] % 13 <> 0 then raise exception 'That card isn''t an ace'; end if;
+  if h.pvals[p_idx] is not null then raise exception 'That ace is already locked'; end if;
+  h.pvals[p_idx] := p_val;
+  update bj_hands set pvals = h.pvals where id = h.id;
+  return _bj_view(_bj_check(h.id));
+end $$;
+
+create or replace function bj_hit(p_id uuid) returns json
+language plpgsql security definer set search_path = public as $$
+declare h bj_hands;
+begin
+  select * into h from bj_hands where id = p_id and user_id = auth.uid() for update;
+  if not found or h.status <> 'live' then raise exception 'No hand in play'; end if;
+  if cardinality(_bj_pending(h.pvals)) > 0 then raise exception 'Pick 1 or 11 for your ace first'; end if;
+  update bj_hands set player = player || deck[1], pvals = pvals || _bj_val(deck[1]), deck = deck[2:] where id = h.id;
+  return _bj_view(_bj_check(h.id));
 end $$;
 
 create or replace function bj_stand(p_id uuid) returns json
 language plpgsql security definer set search_path = public as $$
-declare
-  h bj_hands;
+declare h bj_hands;
 begin
   select * into h from bj_hands where id = p_id and user_id = auth.uid();
   if not found or h.status <> 'live' then raise exception 'No hand in play'; end if;
-  h := _bj_settle(h.id);
-  return _bj_view(h);
+  if cardinality(_bj_pending(h.pvals)) > 0 then raise exception 'Pick 1 or 11 for your ace first'; end if;
+  return _bj_view(_bj_settle(h.id));
 end $$;
 
 create or replace function bj_double(p_id uuid) returns json
 language plpgsql security definer set search_path = public as $$
 declare
-  h bj_hands; bal numeric;
+  h bj_hands; bal numeric; c int; v int;
 begin
   select * into h from bj_hands where id = p_id and user_id = auth.uid() for update;
   if not found or h.status <> 'live' then raise exception 'No hand in play'; end if;
   if array_length(h.player, 1) <> 2 then raise exception 'You can only double on your first two cards'; end if;
+  if cardinality(_bj_pending(h.pvals)) > 0 then raise exception 'Pick 1 or 11 for your ace first'; end if;
   select balance into bal from profiles where id = auth.uid() for update;
   if bal < h.bet then raise exception 'Not enough coins to double'; end if;
   update profiles set balance = balance - h.bet where id = auth.uid();
-  update bj_hands set bet = bet * 2, player = player || deck[1], deck = deck[2:] where id = h.id;
-  h := _bj_settle(h.id, case when _bj_total((select player from bj_hands where id = h.id)) > 21 then 'bust' end);
-  return _bj_view(h);
+  c := h.deck[1];
+  v := coalesce(_bj_val(c), case when _bj_sum(h.pvals) + 11 <= 21 then 11 else 1 end);   -- an ace on a double picks the best value
+  update bj_hands set bet = bet * 2, player = player || c, pvals = pvals || v, deck = deck[2:] where id = h.id;
+  return _bj_view(_bj_settle(h.id, case when _bj_sum(h.pvals) + v > 21 then 'bust' end));
 end $$;
 
 -- resume a hand after closing the tab
 create or replace function bj_current() returns json
 language plpgsql security definer set search_path = public as $$
-declare
-  h bj_hands;
+declare h bj_hands;
 begin
   select * into h from bj_hands where user_id = auth.uid() and status = 'live' order by created_at desc limit 1;
   if not found then return null; end if;
@@ -784,6 +846,77 @@ begin
   update profiles set balance = 100 where id = auth.uid() and balance < 10 returning balance into bal;
   if bal is null then raise exception 'Refill only works under 10 coins'; end if;
   return json_build_object('balance', bal);
+end $$;
+
+notify pgrst, 'reload schema';
+
+-- ========== Seasons ==========
+-- ---------- seasons ----------
+create table if not exists seasons (id serial primary key, ended_at timestamptz not null default now());
+create table if not exists season_results (
+  season_id int not null references seasons(id) on delete cascade,
+  user_id uuid, username text not null, balance numeric not null, rebirths int not null, rank int not null
+);
+alter table seasons enable row level security;
+alter table season_results enable row level security;
+drop policy if exists "seasons readable" on seasons;
+create policy "seasons readable" on seasons for select to authenticated using (true);
+drop policy if exists "season results readable" on season_results;
+create policy "season results readable" on season_results for select to authenticated using (true);
+
+-- end the season: save everyone's final standing, then reset everyone
+create or replace function admin_new_season() returns json
+language plpgsql security definer set search_path = public as $$
+declare sid int; n int;
+begin
+  if not is_admin() then raise exception 'Admins only'; end if;
+  insert into seasons default values returning id into sid;
+  insert into season_results (season_id, user_id, username, balance, rebirths, rank)
+    select sid, id, username, balance, rebirths, row_number() over (order by rebirths desc, balance desc)
+      from profiles where not banned;
+  get diagnostics n = row_count;
+  -- end anything in progress
+  update crash_rounds set status = 'crashed' where status = 'live';
+  update ride_rounds set status = 'abandoned', payout = 0 where status = 'live';
+  update bj_hands set status = 'done', result = 'void', payout = 0 where status = 'live';
+  update profiles set balance = 1000, rebirths = 0, boost_until = null where true;
+  return json_build_object('season', sid, 'players', n);
+end $$;
+
+-- ---------- admin: rename (login name changes too) ----------
+create or replace function admin_rename(p_user text, p_new text) returns json
+language plpgsql security definer set search_path = public, auth as $$
+declare them uuid; old_name text; new_email text;
+begin
+  if not is_admin() then raise exception 'Admins only'; end if;
+  p_new := trim(p_new);
+  if p_new !~ '^[A-Za-z0-9_]{3,20}$' then raise exception 'New name: 3-20 letters, numbers, or _'; end if;
+  select id, username into them, old_name from profiles where lower(username) = lower(trim(p_user)) order by created_at limit 1;
+  if them is null then raise exception 'No player named %', p_user; end if;
+  if exists (select 1 from profiles where lower(username) = lower(p_new) and id <> them) then raise exception 'That name is taken'; end if;
+  new_email := lower(p_new) || '@users.jambling.app';
+  update profiles set username = p_new where id = them;
+  -- accounts made with username + passcode log in with this hidden email
+  if (select email from auth.users where id = them) like '%@users.jambling.app' then
+    if exists (select 1 from auth.users where email = new_email and id <> them) then raise exception 'That name is taken'; end if;
+    update auth.users set email = new_email where id = them;
+    update auth.identities set identity_data = identity_data || jsonb_build_object('email', new_email)
+      where user_id = them and provider = 'email';
+  end if;
+  return json_build_object('old', old_name, 'new', p_new);
+end $$;
+
+-- ---------- admin: take rebirths ----------
+create or replace function admin_take_rebirths(p_user text, p_n int) returns json
+language plpgsql security definer set search_path = public as $$
+declare them uuid; them_name text; rb int;
+begin
+  if not is_admin() then raise exception 'Admins only'; end if;
+  if p_n is null or p_n <= 0 then raise exception 'Enter how many'; end if;
+  select id, username into them, them_name from profiles where lower(username) = lower(trim(p_user)) order by created_at limit 1;
+  if them is null then raise exception 'No player named %', p_user; end if;
+  update profiles set rebirths = greatest(0, rebirths - p_n) where id = them returning rebirths into rb;
+  return json_build_object('user', them_name, 'rebirths', rb);
 end $$;
 
 notify pgrst, 'reload schema';

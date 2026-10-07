@@ -86,7 +86,7 @@ canvas{width:100%;height:100%;display:block}
 .tag.down{background:var(--lose);color:#fff}
 .tag.wild{background:var(--gold);color:#2a1d00}
 .modal{position:fixed;inset:0;background:rgba(0,0,0,.6);display:grid;place-items:center;padding:16px;z-index:10}
-.modal-card{width:100%;max-width:360px}
+.modal-card{width:100%;max-width:380px;max-height:90vh;overflow:auto}
 .modal-card h2{font-family:Fraunces;font-weight:600;font-size:24px;margin:0 0 16px}
 .warn{font-size:12px;color:var(--gold);margin-top:8px}
 .rb{font:600 13px "IBM Plex Mono",monospace;color:var(--gold)}
@@ -107,6 +107,16 @@ canvas{width:100%;height:100%;display:block}
 .bj-msg{font-family:Fraunces;font-size:24px;font-weight:600;text-align:center;min-height:32px}
 .bj-acts{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
 .bj-acts .go{padding:14px 0}
+.seg{display:flex;gap:6px;margin:0 0 14px;flex-wrap:wrap}
+.seg button{padding:8px 14px;border-radius:999px;border:1px solid var(--line);background:var(--field);color:var(--muted);font-weight:600;cursor:pointer}
+.seg button.on{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+.seg.small button{padding:5px 11px;font-size:13px}
+.past-mine{margin:0 0 12px;padding:10px 12px;border-radius:10px;background:var(--field);font-size:14px;color:var(--muted)}
+.past-mine b{color:var(--ink)}
+.ace-pick{display:flex;gap:4px;margin-top:6px}
+.ace-pick button{flex:1;padding:4px 0;border-radius:6px;border:0;background:var(--gold);color:#2a1d00;font:700 13px Inter,sans-serif;cursor:pointer}
+.ace-val{display:block;margin-top:6px;text-align:center;font:600 11px "IBM Plex Mono",monospace;color:var(--gold)}
+.card-wrap{display:flex;flex-direction:column}
 .hint{font-size:12px;color:var(--muted);margin-top:6px}
 
 /* board */
@@ -291,7 +301,14 @@ tr.me td{color:var(--accent)}
 
   <!-- leaderboard -->
   <div id="tab-board" hidden>
+    <div class="seg" id="boardSeg">
+      <button data-b="money" class="on">Money</button>
+      <button data-b="rebirths">Rebirths</button>
+      <button data-b="past">Past seasons</button>
+    </div>
     <div class="card">
+      <div id="pastPick" class="seg small" hidden></div>
+      <div id="pastMine" class="past-mine" hidden></div>
       <table><tbody id="board"></tbody></table>
     </div>
   </div>
@@ -337,11 +354,21 @@ tr.me td{color:var(--accent)}
       <button type="button" class="go" id="adminUnban" style="background:var(--line);color:var(--ink)">Unban</button>
     </div>
     <div class="field">
+      <label>Rename to</label>
+      <div style="display:flex;gap:8px"><input id="adminNewName" type="text" maxlength="20" autocapitalize="off" spellcheck="false" autocomplete="off" placeholder="New name"><button type="button" class="ghost" id="adminRename" style="white-space:nowrap">Rename</button></div>
+    </div>
+    <div class="field">
+      <label>Take rebirths</label>
+      <div style="display:flex;gap:8px"><input id="adminRb" type="number" min="1" step="1" placeholder="How many"><button type="button" class="ghost" id="adminTakeRb" style="white-space:nowrap">Take</button></div>
+    </div>
+    <div class="field">
       <label>Take coins</label>
       <input id="adminCost" type="number" min="0.01" step="0.01" placeholder="Amount">
     </div>
     <button type="button" class="go" id="adminTake">Take coins</button>
-    <button type="button" class="ghost" id="adminCancel" style="width:100%;margin-top:8px;padding:10px">Close</button>
+    <button type="button" class="go" id="adminSeason" style="margin-top:18px;background:var(--lose)">Start new season</button>
+    <p class="hint" style="margin:6px 0 0">Saves everyone's final coins, rebirths and rank to Past seasons, then resets everyone to 1,000 coins and 0 rebirths.</p>
+    <button type="button" class="ghost" id="adminCancel" style="width:100%;margin-top:12px;padding:10px">Close</button>
   </div>
 </div>
 
@@ -472,17 +499,34 @@ function cardEl(c){
 function showBJ(v){
   bj = v;
   const draw = (el, cards, hidden) => { el.innerHTML = ''; cards.forEach(c => el.appendChild(cardEl(c))); if (hidden) el.appendChild(cardEl(null)); };
-  draw($('bjPlayer'), v ? v.player : [], false);
+  // your cards: aces get a 1 / 11 picker, locked once chosen
+  const pe = $('bjPlayer'); pe.innerHTML = '';
+  (v ? v.player : []).forEach((c, i) => {
+    const w = document.createElement('div'); w.className = 'card-wrap'; w.appendChild(cardEl(c));
+    if (c % 13 === 0 && v.pvals) {
+      const val = v.pvals[i];
+      if (val == null && v.status === 'live') {
+        const pk = document.createElement('div'); pk.className = 'ace-pick';
+        [1, 11].forEach(n => { const b = document.createElement('button'); b.textContent = n; b.onclick = () => bjCall('bj_ace', { p_id: v.id, p_idx: i + 1, p_val: n }); pk.appendChild(b); });
+        w.appendChild(pk);
+      } else if (val != null) {
+        const t = document.createElement('span'); t.className = 'ace-val'; t.textContent = '= ' + val; w.appendChild(t);
+      }
+    }
+    pe.appendChild(w);
+  });
   draw($('bjDealer'), v ? v.dealer : [], v && v.hidden);
   $('bjPT').textContent = v ? v.player_total : '';
   $('bjDT').textContent = v ? v.dealer_total + (v.hidden ? ' + ?' : '') : '';
   const live = v && v.status === 'live';
   $('bjActs').hidden = !live; $('bjDeal').hidden = live;
+  const picking = live && v.pending && v.pending.length > 0;
+  $('bjHit').disabled = picking; $('bjStand').disabled = picking;
   $('bjDouble').disabled = !(live && v.can_double);
   const m = $('bjMsg');
   if (!v) { m.textContent = ''; m.className = 'bj-msg'; return; }
   if (v.balance != null) setBalance(v.balance);
-  if (live) { m.textContent = ''; m.className = 'bj-msg'; return; }
+  if (live) { m.textContent = picking ? 'Pick 1 or 11 for your ace' : ''; m.className = 'bj-msg'; return; }
   const p = Number(v.payout), b = Number(v.bet);
   const label = { blackjack: 'Blackjack!', win: 'You win', push: 'Push', lose: 'Dealer wins', bust: 'Bust' }[v.result] || '';
   m.textContent = p > b ? `${label} +${fmt(p - b)}` : p === b ? `${label} · bet back` : `${label} −${fmt(b)}`;
@@ -855,10 +899,10 @@ window.addEventListener('resize', () => { if (!round && !ghost) drawGraph(1); })
 // The chart comes from a server seed, so it's drawn locally with zero lag.
 // MUST match _ride_path() in ride.sql.
 const STEP_MS = 100, WINDOW = 120; // 12s visible
-const RIDE_VERSION = 28;            // must match ride_version() in ride.sql
+const RIDE_VERSION = 29;            // must match ride_version() in ride.sql
 function ridePath(seed, boost = 0){
   let s = Number(seed), v = 0, p = 100, heat = 1;
-  let evLeft = 0, evDir = 0, D = 0, size = 0, W = 1;
+  let evLeft = 0, evDir = 0, D = 0, size = 0, W = 1, cut = -1, rug = 0, base = 100;
   const arr = [100]; arr.ev = [0]; arr.heat = [1];
   const R = () => (s = (s * 48271) % 2147483647) / 2147483647;
   const fr = x => x - Math.floor(x);
@@ -868,19 +912,21 @@ function ridePath(seed, boost = 0){
       if (u3 < 0.004) heat = 3;                      // wild phase
       heat = 1 + (heat - 1) * 0.97;
       const vol = heat * 2;
-      if (arr.length <= boost) {                     // admin boost: nonstop pump, no dumps
-        p = p * Math.exp(0.006 + (u2 - 0.5) * 0.02);
-        evLeft = 0; v = 0;
+      if (arr.length <= boost) {                     // admin boost: fast nonstop pump (~+22%/s), no dumps
+        p = p * Math.exp(0.02 + (u2 - 0.5) * 0.02);
+        evLeft = 0; rug = 0; v = 0;
         arr.push(p); arr.ev.push(2); arr.heat.push(heat);
         continue;
       }
-      if (evLeft === 0 && u3 > 0.99) {
-        if (u2 < 0.45) {                             // hidden pump: +65% to +170% over 3-7s, swells in the middle
+      if (evLeft === 0 && rug === 0 && u3 > 0.99) {
+        if (u2 < 0.45) {                             // pump: +49% to +123% over 3-7s. ~1 in 3 rug-pulls partway
           evDir = 1;
           D = 30 + Math.floor(u1 * 41);
-          size = 0.5 + 0.5 * fr(u1 * 53);
+          size = 0.4 + 0.4 * fr(u1 * 53);
           W = 0;
           for (let j = 1; j <= D; j++) { const x = (j - 0.5) / D; W = W + x * (1 - x); }
+          base = p;
+          cut = fr(u1 * 97) < 0.35 ? 3 + Math.floor(fr(u1 * 331) * (D - 3)) : -1;
         } else {                                     // dump: -14% to -33%, random length, hits hardest first
           evDir = -1;
           D = 5 + Math.floor(fr(u1 * 13) * 18);
@@ -889,14 +935,22 @@ function ridePath(seed, boost = 0){
         }
         evLeft = D;
       }
-      let ev = 0, drift = 0;
+      let ev = 0, drift = 0, done = false;
       if (evLeft > 0) {
         const k = D - evLeft + 1;
-        if (evDir > 0) { const x = (k - 0.5) / D; drift = size * (x * (1 - x)) / W; ev = 1; }
-        else { p = p * Math.exp(-size * (D - k + 1) / W + (u2 - 0.5) * 0.012); v = 0; ev = -1; }
-        evLeft--;
+        if (evDir > 0) {
+          if (k === cut) { evLeft = 0; rug = 3; }
+          else { const x = (k - 0.5) / D; drift = size * (x * (1 - x)) / W; ev = 1; evLeft--; }
+        } else {
+          p = p * Math.exp(-size * (D - k + 1) / W + (u2 - 0.5) * 0.012); v = 0; ev = -1;
+          evLeft--; done = true;
+        }
       }
-      if (ev >= 0) {                                 // normal chop keeps going during pumps, so they're hard to spot
+      if (!done && rug > 0 && ev === 0) {            // rug pull: crash to half of where the pump started
+        p = p * Math.exp(Math.log(base * 0.5 / p) / rug);
+        rug--; v = 0; ev = -2; done = true;
+      }
+      if (!done) {                                   // normal chop keeps going during pumps
         v = 0.8 * v + (u1 - 0.5) * 0.009 * vol - 0.0007 * Math.log(p / 100);
         p = p * Math.exp(v + (u2 - 0.5) * 0.035 * vol + drift);
       }
@@ -940,7 +994,7 @@ function rideMult(r){
     const end = sp.b == null ? r.cur : sp.b;
     m *= 0.99 * priceAt(r, end) / r.path[sp.a];   // 1% fee per hold
   }
-  return Math.min(m, 25);
+  return m;
 }
 
 function setHold(on){
@@ -996,7 +1050,7 @@ function rideLoop(){
   const fl = r.flash && ci - r.flash.t < 10 ? r.flash : null;
   const tag = $('rideTag');
   if (r.path.ev[ci] === 2) { tag.textContent = 'BOOST'; tag.className = 'tag wild'; }
-  else if (fl) { tag.textContent = fl.ev > 0 ? 'PUMP' : 'DUMP'; tag.className = 'tag ' + (fl.ev > 0 ? 'up' : 'down'); }
+  else if (fl) { tag.textContent = fl.ev > 0 ? 'PUMP' : fl.ev === -2 ? 'RUG PULL' : 'DUMP'; tag.className = 'tag ' + (fl.ev > 0 ? 'up' : 'down'); }
   else if (r.path.heat[ci] > 1.6) { tag.textContent = 'WILD'; tag.className = 'tag wild'; }
   else tag.className = 'tag';
   $('rideMsg').textContent = r.holding ? 'Riding' : (r.spans.length ? 'Locked' : 'Hold to ride');
@@ -1089,22 +1143,94 @@ window.addEventListener('beforeunload', onLeave);
 window.addEventListener('pageshow', () => { leftAlready = false; });
 
 /* ---------- leaderboard ---------- */
+// 10700 -> 10.7k  (leaderboard only)
+function short(n){
+  n = Number(n);
+  const u = [[1e12, 't'], [1e9, 'b'], [1e6, 'm'], [1e3, 'k']];
+  for (const [v, l] of u) if (Math.abs(n) >= v) { const x = n / v; return (x >= 100 ? x.toFixed(0) : x.toFixed(1).replace(/\.0$/, '')) + l; }
+  return n.toFixed(0);
+}
+let boardMode = 'money', pastSeason = null;
+document.querySelectorAll('#boardSeg button').forEach(b => b.onclick = () => {
+  boardMode = b.dataset.b;
+  document.querySelectorAll('#boardSeg button').forEach(x => x.classList.toggle('on', x === b));
+  loadBoard();
+});
+function boardRow(i, p, isMe, right){
+  const tr = document.createElement('tr');
+  if (isMe) tr.className = 'me';
+  tr.innerHTML = `<td>${i + 1}</td><td></td><td></td>`;
+  tr.children[1].textContent = p.username;   // safe from HTML injection
+  if (p.rebirths && boardMode !== 'rebirths') { const b = document.createElement('span'); b.className = 'lb-rb'; b.textContent = '▲' + p.rebirths; tr.children[1].appendChild(b); }
+  tr.children[2].textContent = right;
+  return tr;
+}
 async function loadBoard(){
-  const q = () => sb.from('profiles').select('id,username,balance,rebirths').order('rebirths', { ascending: false }).order('balance', { ascending: false }).limit(10);
-  let { data, error } = await q().eq('banned', false);
-  if (error) ({ data, error } = await q());   // works even before ban.sql is run
-  if (error) return toast(error.message);
   $('board').innerHTML = '';
+  $('pastPick').hidden = boardMode !== 'past';
+  $('pastMine').hidden = true;
+  if (boardMode === 'past') return loadPast();
+  const q = (hideBanned) => {
+    let x = sb.from('profiles').select('id,username,balance,rebirths');
+    if (hideBanned) x = x.eq('banned', false);
+    x = boardMode === 'rebirths'
+      ? x.order('rebirths', { ascending: false }).order('balance', { ascending: false })
+      : x.order('balance', { ascending: false });
+    return x.limit(50);
+  };
+  let { data, error } = await q(true);
+  if (error) ({ data, error } = await q(false));   // works even before ban.sql is run
+  if (error) return toast(error.message);
   data.forEach((p, i) => {
-    const tr = document.createElement('tr');
-    if (p.id === user.id) tr.className = 'me';
-    tr.innerHTML = `<td>${i + 1}</td><td></td><td>${fmt(p.balance)}</td>`;
-    tr.children[1].textContent = p.username; // safe from HTML injection
-    if (p.rebirths) { const b = document.createElement('span'); b.className = 'lb-rb'; b.textContent = '▲' + p.rebirths; tr.children[1].appendChild(b); }
+    const tr = boardRow(i, p, p.id === user.id, boardMode === 'rebirths' ? '▲' + (p.rebirths || 0) : short(p.balance));
     if (p.id !== user.id) { tr.style.cursor = 'pointer'; tr.title = 'Gift ' + p.username; tr.onclick = () => openGift(p.username); }
     $('board').appendChild(tr);
   });
 }
+async function loadPast(){
+  const { data: seasons, error } = await sb.from('seasons').select('id,ended_at').order('id', { ascending: false });
+  if (error) return toast(error.message);
+  const pick = $('pastPick'); pick.innerHTML = '';
+  if (!seasons.length) { $('board').innerHTML = '<tr><td></td><td>No past seasons yet</td><td></td></tr>'; return; }
+  if (!pastSeason || !seasons.some(x => x.id === pastSeason)) pastSeason = seasons[0].id;
+  seasons.forEach(x => {
+    const b = document.createElement('button');
+    b.textContent = 'Season ' + x.id; b.className = x.id === pastSeason ? 'on' : '';
+    b.onclick = () => { pastSeason = x.id; loadPast(); };
+    pick.appendChild(b);
+  });
+  const { data: rows, error: e2 } = await sb.from('season_results').select('user_id,username,balance,rebirths,rank').eq('season_id', pastSeason).order('rank').limit(200);
+  if (e2) return toast(e2.message);
+  $('board').innerHTML = '';
+  const mine = rows.find(r => r.user_id === user.id);
+  if (mine) { $('pastMine').hidden = false; $('pastMine').innerHTML = `You finished <b>#${mine.rank}</b> with <b>${short(mine.balance)}</b> coins and <b>▲${mine.rebirths}</b>`; }
+  rows.slice(0, 50).forEach((r, i) => $('board').appendChild(boardRow(r.rank - 1, r, r.user_id === user.id, short(r.balance))));
+}
+
+/* ---------- admin: rename / rebirths / season ---------- */
+$('adminRename').onclick = async () => {
+  const n = adminName(); if (!n) return;
+  const { data, error } = await sb.rpc('admin_rename', { p_user: n, p_new: $('adminNewName').value.trim() });
+  if (error) return toast(error.message);
+  toast(`${data.old} is now ${data.new} (they log in with the new name)`);
+  if (data.old.toLowerCase() === $('who').textContent.toLowerCase()) $('who').textContent = data.new;
+};
+$('adminTakeRb').onclick = async () => {
+  const n = adminName(); if (!n) return;
+  const { data, error } = await sb.rpc('admin_take_rebirths', { p_user: n, p_n: parseInt($('adminRb').value) });
+  if (error) return toast(error.message);
+  toast(`${data.user} now has ▲${data.rebirths}`);
+  if (data.user.toLowerCase() === $('who').textContent.toLowerCase()) setRebirths(data.rebirths);
+};
+let seasonArmed = 0;
+$('adminSeason').onclick = async () => {
+  if (Date.now() - seasonArmed > 4000) { seasonArmed = Date.now(); $('adminSeason').textContent = 'Tap again to reset everyone'; setTimeout(() => { $('adminSeason').textContent = 'Start new season'; }, 4000); return; }
+  seasonArmed = 0; $('adminSeason').textContent = 'Start new season';
+  const { data, error } = await sb.rpc('admin_new_season');
+  if (error) return toast(error.message);
+  toast(`Season ${data.season} saved (${data.players} players). Everyone reset.`);
+  loadProfile();
+};
 
 renderAuth();
 </script>
