@@ -366,7 +366,8 @@ tr.me td{color:var(--accent)}
       <input id="adminCost" type="number" min="0.01" step="0.01" placeholder="Amount">
     </div>
     <button type="button" class="go" id="adminTake">Take coins</button>
-    <button type="button" class="go" id="adminSeason" style="margin-top:18px;background:var(--lose)">Start new season</button>
+    <button type="button" class="go" id="adminDelete" style="margin-top:18px;background:var(--line);color:var(--lose)">Delete account</button>
+    <button type="button" class="go" id="adminSeason" style="margin-top:8px;background:var(--lose)">Start new season</button>
     <p class="hint" style="margin:6px 0 0">Saves everyone's final coins, rebirths and rank to Past seasons, then resets everyone to 1,000 coins and 0 rebirths.</p>
     <button type="button" class="ghost" id="adminCancel" style="width:100%;margin-top:12px;padding:10px">Close</button>
   </div>
@@ -1221,6 +1222,16 @@ $('adminTakeRb').onclick = async () => {
   if (error) return toast(error.message);
   toast(`${data.user} now has ▲${data.rebirths}`);
   if (data.user.toLowerCase() === $('who').textContent.toLowerCase()) setRebirths(data.rebirths);
+};
+let delArmed = 0;
+$('adminDelete').onclick = async () => {
+  const n = adminName(); if (!n) return;
+  if (Date.now() - delArmed > 4000) { delArmed = Date.now(); $('adminDelete').textContent = `Tap again to delete ${n}`; setTimeout(() => { $('adminDelete').textContent = 'Delete account'; }, 4000); return; }
+  delArmed = 0; $('adminDelete').textContent = 'Delete account';
+  const { data, error } = await sb.rpc('admin_delete', { p_user: n });
+  if (error) return toast(error.message);
+  toast(`Deleted ${data.user}`);
+  if (!$('tab-board').hidden) loadBoard();
 };
 let seasonArmed = 0;
 $('adminSeason').onclick = async () => {
