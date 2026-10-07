@@ -16,6 +16,7 @@ create table if not exists bj_hands (
   created_at timestamptz not null default now()
 );
 alter table bj_hands enable row level security;   -- no policies: only functions touch it
+alter table profiles add column if not exists badluck_until timestamptz;
 -- your card values: an ace stays null until you pick 1 or 11 (then it's locked)
 alter table bj_hands add column if not exists pvals int[];
 -- hands from before this update: refund and close
@@ -128,6 +129,16 @@ begin
   update profiles set balance = balance - p_bet where id = auth.uid();
 
   select array_agg(c order by random()) into d from generate_series(0, 51) c;
+  -- bad luck: you get 16, dealer gets 20, and the next cards are all 10s
+  if (select badluck_until > clock_timestamp() from profiles where id = auth.uid()) then
+    declare tens int[] := array(select c from unnest(d) c where c % 13 >= 9);
+            six int := (select c from unnest(d) c where c % 13 = 5 limit 1);
+            picked int[];
+    begin
+      picked := array[tens[1], tens[2], six, tens[3]];
+      d := picked || array(select c from unnest(d) c where not (c = any(picked)) order by (c % 13 >= 9) desc, random());
+    end;
+  end if;
   insert into bj_hands (user_id, bet, deck, player, dealer, pvals)
     values (auth.uid(), p_bet, d[5:], array[d[1], d[3]], array[d[2], d[4]], array[_bj_val(d[1]), _bj_val(d[3])])
     returning * into h;

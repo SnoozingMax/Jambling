@@ -20,11 +20,14 @@ create table if not exists ride_rounds (
 );
 alter table ride_rounds enable row level security;
 alter table ride_rounds add column if not exists boost_steps int not null default 0;
+alter table ride_rounds add column if not exists bad_steps int not null default 0;
+alter table profiles add column if not exists badluck_until timestamptz;
 alter table profiles add column if not exists boost_until timestamptz;
 
 -- the chart: momentum random walk. MUST match ridePath() in index.html
 drop function if exists _ride_path(bigint, int);
-create or replace function _ride_path(p_seed bigint, n int, p_boost int default 0) returns float8[]
+drop function if exists _ride_path(bigint, int, int);
+create or replace function _ride_path(p_seed bigint, n int, p_boost int default 0, p_bad int default 0) returns float8[]
 language plpgsql immutable as $$
 declare
   s bigint := p_seed;
@@ -46,6 +49,16 @@ begin
     if u3 < 0.004 then heat := 3; end if;                 -- wild phase
     heat := 1 + (heat - 1) * 0.97;
     vol := heat * 2;
+    if i <= p_bad then                                    -- bad luck: little pump, then rug pull, forever
+      k := (i - 1) % 10;
+      if k < 6 then p := p * exp(0.01 + (u2 - 0.5) * 0.006);
+      elsif k < 9 then p := p * exp(ln(0.6) / 3);
+      end if;
+      ev_left := 0; rug := 0; v := 0;
+      p := least(greatest(p, 1e-200), 1e200);
+      arr := arr || p;
+      continue;
+    end if;
     if i <= p_boost then                                  -- admin boost: fast nonstop pump (~+22%/s), no dumps
       p := least(p * exp(0.02 + (u2 - 0.5) * 0.02), 1e200);
       ev_left := 0; rug := 0; v := 0;
@@ -117,7 +130,7 @@ begin
 end $$;
 
 -- bump this whenever the chart math changes; must match RIDE_VERSION in index.html
-create or replace function ride_version() returns int language sql immutable as $$ select 31 $$;
+create or replace function ride_version() returns int language sql immutable as $$ select 32 $$;
 
 -- pay out a round at step a (internal: never callable from the browser)
 create or replace function _ride_finish(p_id uuid, a int) returns json
@@ -136,7 +149,7 @@ begin
   h := rd.holds;
   if rd.holding then h := h || a; end if;
 
-  path := _ride_path(rd.seed, a, rd.boost_steps);
+  path := _ride_path(rd.seed, a, rd.boost_steps, rd.bad_steps);
   for i in 1 .. coalesce(array_length(h, 1), 0) / 2 loop
     m := m * 0.99 * path[h[2*i] + 1] / path[h[2*i - 1] + 1];   -- 1% fee per hold
   end loop;
@@ -172,6 +185,7 @@ declare
   bal numeric;
   rid uuid;
   bs int;
+  bad int;
   sd bigint := floor(random() * 2147483645)::bigint + 1;
 begin
   if auth.uid() is null then raise exception 'Not signed in'; end if;
@@ -187,8 +201,10 @@ begin
   update profiles set balance = balance - p_bet where id = auth.uid() returning balance into bal;
   select greatest(0, floor(extract(epoch from (boost_until - clock_timestamp())) / 0.1))::int into bs
     from profiles where id = auth.uid() and boost_until > clock_timestamp();
-  insert into ride_rounds (user_id, bet, seed, boost_steps) values (auth.uid(), p_bet, sd, coalesce(bs, 0)) returning id into rid;
-  return json_build_object('round_id', rid, 'seed', sd, 'balance', bal, 'boost_steps', coalesce(bs, 0));
+  select greatest(0, floor(extract(epoch from (badluck_until - clock_timestamp())) / 0.1))::int into bad
+    from profiles where id = auth.uid() and badluck_until > clock_timestamp();
+  insert into ride_rounds (user_id, bet, seed, boost_steps, bad_steps) values (auth.uid(), p_bet, sd, coalesce(bs, 0), coalesce(bad, 0)) returning id into rid;
+  return json_build_object('round_id', rid, 'seed', sd, 'balance', bal, 'boost_steps', coalesce(bs, 0), 'bad_steps', coalesce(bad, 0));
 end $$;
 
 create or replace function ride_hold(p_round uuid, p_on boolean, p_step int) returns json

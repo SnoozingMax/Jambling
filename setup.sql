@@ -200,11 +200,14 @@ create table if not exists ride_rounds (
 );
 alter table ride_rounds enable row level security;
 alter table ride_rounds add column if not exists boost_steps int not null default 0;
+alter table ride_rounds add column if not exists bad_steps int not null default 0;
+alter table profiles add column if not exists badluck_until timestamptz;
 alter table profiles add column if not exists boost_until timestamptz;
 
 -- the chart: momentum random walk. MUST match ridePath() in index.html
 drop function if exists _ride_path(bigint, int);
-create or replace function _ride_path(p_seed bigint, n int, p_boost int default 0) returns float8[]
+drop function if exists _ride_path(bigint, int, int);
+create or replace function _ride_path(p_seed bigint, n int, p_boost int default 0, p_bad int default 0) returns float8[]
 language plpgsql immutable as $$
 declare
   s bigint := p_seed;
@@ -226,6 +229,16 @@ begin
     if u3 < 0.004 then heat := 3; end if;                 -- wild phase
     heat := 1 + (heat - 1) * 0.97;
     vol := heat * 2;
+    if i <= p_bad then                                    -- bad luck: little pump, then rug pull, forever
+      k := (i - 1) % 10;
+      if k < 6 then p := p * exp(0.01 + (u2 - 0.5) * 0.006);
+      elsif k < 9 then p := p * exp(ln(0.6) / 3);
+      end if;
+      ev_left := 0; rug := 0; v := 0;
+      p := least(greatest(p, 1e-200), 1e200);
+      arr := arr || p;
+      continue;
+    end if;
     if i <= p_boost then                                  -- admin boost: fast nonstop pump (~+22%/s), no dumps
       p := least(p * exp(0.02 + (u2 - 0.5) * 0.02), 1e200);
       ev_left := 0; rug := 0; v := 0;
@@ -297,7 +310,7 @@ begin
 end $$;
 
 -- bump this whenever the chart math changes; must match RIDE_VERSION in index.html
-create or replace function ride_version() returns int language sql immutable as $$ select 31 $$;
+create or replace function ride_version() returns int language sql immutable as $$ select 32 $$;
 
 -- pay out a round at step a (internal: never callable from the browser)
 create or replace function _ride_finish(p_id uuid, a int) returns json
@@ -316,7 +329,7 @@ begin
   h := rd.holds;
   if rd.holding then h := h || a; end if;
 
-  path := _ride_path(rd.seed, a, rd.boost_steps);
+  path := _ride_path(rd.seed, a, rd.boost_steps, rd.bad_steps);
   for i in 1 .. coalesce(array_length(h, 1), 0) / 2 loop
     m := m * 0.99 * path[h[2*i] + 1] / path[h[2*i - 1] + 1];   -- 1% fee per hold
   end loop;
@@ -352,6 +365,7 @@ declare
   bal numeric;
   rid uuid;
   bs int;
+  bad int;
   sd bigint := floor(random() * 2147483645)::bigint + 1;
 begin
   if auth.uid() is null then raise exception 'Not signed in'; end if;
@@ -367,8 +381,10 @@ begin
   update profiles set balance = balance - p_bet where id = auth.uid() returning balance into bal;
   select greatest(0, floor(extract(epoch from (boost_until - clock_timestamp())) / 0.1))::int into bs
     from profiles where id = auth.uid() and boost_until > clock_timestamp();
-  insert into ride_rounds (user_id, bet, seed, boost_steps) values (auth.uid(), p_bet, sd, coalesce(bs, 0)) returning id into rid;
-  return json_build_object('round_id', rid, 'seed', sd, 'balance', bal, 'boost_steps', coalesce(bs, 0));
+  select greatest(0, floor(extract(epoch from (badluck_until - clock_timestamp())) / 0.1))::int into bad
+    from profiles where id = auth.uid() and badluck_until > clock_timestamp();
+  insert into ride_rounds (user_id, bet, seed, boost_steps, bad_steps) values (auth.uid(), p_bet, sd, coalesce(bs, 0), coalesce(bad, 0)) returning id into rid;
+  return json_build_object('round_id', rid, 'seed', sd, 'balance', bal, 'boost_steps', coalesce(bs, 0), 'bad_steps', coalesce(bad, 0));
 end $$;
 
 create or replace function ride_hold(p_round uuid, p_on boolean, p_step int) returns json
@@ -606,6 +622,7 @@ create table if not exists bj_hands (
   created_at timestamptz not null default now()
 );
 alter table bj_hands enable row level security;   -- no policies: only functions touch it
+alter table profiles add column if not exists badluck_until timestamptz;
 -- your card values: an ace stays null until you pick 1 or 11 (then it's locked)
 alter table bj_hands add column if not exists pvals int[];
 -- hands from before this update: refund and close
@@ -718,6 +735,16 @@ begin
   update profiles set balance = balance - p_bet where id = auth.uid();
 
   select array_agg(c order by random()) into d from generate_series(0, 51) c;
+  -- bad luck: you get 16, dealer gets 20, and the next cards are all 10s
+  if (select badluck_until > clock_timestamp() from profiles where id = auth.uid()) then
+    declare tens int[] := array(select c from unnest(d) c where c % 13 >= 9);
+            six int := (select c from unnest(d) c where c % 13 = 5 limit 1);
+            picked int[];
+    begin
+      picked := array[tens[1], tens[2], six, tens[3]];
+      d := picked || array(select c from unnest(d) c where not (c = any(picked)) order by (c % 13 >= 9) desc, random());
+    end;
+  end if;
   insert into bj_hands (user_id, bet, deck, player, dealer, pvals)
     values (auth.uid(), p_bet, d[5:], array[d[1], d[3]], array[d[2], d[4]], array[_bj_val(d[1]), _bj_val(d[3])])
     returning * into h;
@@ -1203,3 +1230,122 @@ begin
   return json_build_object('user', them_name, 'until', until);
 end $$;
 
+-- ========== Moderators + Bad luck ==========
+alter table profiles add column if not exists badluck_until timestamptz;
+
+create table if not exists moderators (user_id uuid primary key references profiles(id) on delete cascade);
+create table if not exists badluck_log (by_user uuid, target uuid, at timestamptz not null default now());
+alter table moderators enable row level security;
+alter table badluck_log enable row level security;
+
+-- make Yoink a moderator
+insert into moderators select id from profiles where lower(username) = 'yoink' on conflict do nothing;
+
+-- 'admin', 'mod', or null
+create or replace function my_role() returns text
+language sql stable security definer set search_path = public as $$
+  select case when exists (select 1 from admins where user_id = auth.uid()) then 'admin'
+              when exists (select 1 from moderators where user_id = auth.uid()) then 'mod' end
+$$;
+
+create or replace function _bad_luck_now(p_uid uuid) returns boolean
+language sql stable security definer set search_path = public as $$
+  select coalesce((select badluck_until > clock_timestamp() from profiles where id = p_uid), false)
+$$;
+
+-- admin: make / remove a moderator
+create or replace function admin_set_mod(p_user text, p_on boolean) returns json
+language plpgsql security definer set search_path = public as $$
+declare them uuid; them_name text;
+begin
+  if not is_admin() then raise exception 'Admins only'; end if;
+  select id, username into them, them_name from profiles where lower(username) = lower(trim(p_user)) order by created_at limit 1;
+  if them is null then raise exception 'No player named %', p_user; end if;
+  if p_on then insert into moderators values (them) on conflict do nothing;
+  else delete from moderators where user_id = them; end if;
+  return json_build_object('user', them_name, 'mod', p_on);
+end $$;
+
+-- how many Bad luck uses a moderator has left today (Pacific time). null = unlimited (admin)
+create or replace function bad_luck_left() returns int
+language sql stable security definer set search_path = public as $$
+  select case when my_role() = 'admin' then null
+              when my_role() = 'mod' then greatest(0, 3 - (select count(*)::int from badluck_log
+                 where by_user = auth.uid() and (at at time zone 'America/Los_Angeles')::date = (now() at time zone 'America/Los_Angeles')::date))
+              else 0 end
+$$;
+
+-- give someone 1 minute of Bad luck (stacks)
+create or replace function give_bad_luck(p_user text) returns json
+language plpgsql security definer set search_path = public as $$
+declare role text := my_role(); them uuid; them_name text; until timestamptz;
+begin
+  if role is null then raise exception 'Moderators only'; end if;
+  if role = 'mod' and bad_luck_left() <= 0 then raise exception 'No Bad luck uses left today (3 per day)'; end if;
+  select id, username into them, them_name from profiles where lower(username) = lower(trim(p_user)) order by created_at limit 1;
+  if them is null then raise exception 'No player named %', p_user; end if;
+  if role = 'mod' and exists (select 1 from admins where user_id = them) then raise exception 'Can''t use Bad luck on an admin'; end if;
+  update profiles set badluck_until = greatest(coalesce(badluck_until, clock_timestamp()), clock_timestamp()) + interval '1 minute'
+   where id = them returning badluck_until into until;
+  insert into badluck_log (by_user, target) values (auth.uid(), them);
+  return json_build_object('user', them_name, 'until', until, 'left', bad_luck_left());
+end $$;
+
+-- coin flip: bad luck = always the side you didn't pick
+create or replace function flip_coin(p_bet numeric, p_pick text) returns json
+language plpgsql security definer set search_path = public as $$
+declare
+  bal numeric;
+  res text;
+  won boolean;
+  delta numeric;
+begin
+  if auth.uid() is null then raise exception 'Not signed in'; end if;
+  p_bet := round(p_bet, 2);
+  if p_bet is null or p_bet <= 0 then raise exception 'Invalid bet'; end if;
+  if p_pick not in ('heads', 'tails') then raise exception 'Invalid pick'; end if;
+
+  select balance into bal from profiles where id = auth.uid() for update;
+  if bal < p_bet then raise exception 'Not enough coins'; end if;
+
+  if _bad_luck_now(auth.uid()) then res := case when p_pick = 'heads' then 'tails' else 'heads' end;
+  else res := case when random() < 0.5 then 'heads' else 'tails' end; end if;
+  won := res = p_pick;
+  delta := case when won then round(p_bet * _luck(auth.uid()), 2) else -p_bet end;
+
+  update profiles set balance = balance + delta where id = auth.uid() returning balance into bal;
+  return json_build_object('result', res, 'won', won, 'balance', bal, 'delta', delta);
+end $$;
+
+-- rocket: bad luck = crashes at 1.01x
+create or replace function crash_start(p_bet numeric) returns json
+language plpgsql security definer set search_path = public as $$
+declare
+  bal numeric;
+  cp numeric;
+  rid uuid;
+  r float8;
+begin
+  if auth.uid() is null then raise exception 'Not signed in'; end if;
+  p_bet := round(p_bet, 2);
+  if p_bet is null or p_bet <= 0 then raise exception 'Invalid bet'; end if;
+
+  update crash_rounds set status = 'crashed' where user_id = auth.uid() and status = 'live';
+
+  select balance into bal from profiles where id = auth.uid() for update;
+  if bal < p_bet then raise exception 'Not enough coins'; end if;
+
+  if _bad_luck_now(auth.uid()) then cp := 1.01;
+  else
+    r := random();
+    cp := least(1000, greatest(1.00, floor(0.97 / (1 - r) * 100) / 100))::numeric;
+  end if;
+
+  update profiles set balance = balance - p_bet where id = auth.uid() returning balance into bal;
+  insert into crash_rounds (user_id, bet, crash_point) values (auth.uid(), p_bet, cp) returning id into rid;
+
+  return json_build_object('round_id', rid, 'balance', bal);
+end $$;
+
+select 'moderators:' as what, string_agg(p.username, ', ') from moderators m join profiles p on p.id = m.user_id;
+notify pgrst, 'reload schema';

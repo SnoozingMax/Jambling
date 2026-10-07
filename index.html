@@ -182,6 +182,7 @@ tr.me td{color:var(--accent)}
       <span class="rb" id="boostBadge" hidden></span>
       <button class="ghost rebirth" id="rebirthBtn" hidden>Rebirth</button>
       <button class="ghost" id="adminOpen" hidden>Admin</button>
+      <button class="ghost" id="modOpen" hidden>Mod</button>
       <div class="bal"><i></i><span id="balance">0.00</span></div>
       <button class="ghost daily" id="daily" disabled>Daily</button>
       <button class="ghost" id="giftOpen">Gift</button>
@@ -379,6 +380,20 @@ tr.me td{color:var(--accent)}
   </form>
 </div>
 
+<div class="modal" id="modModal" hidden>
+  <div class="card modal-card">
+    <h2>Moderator</h2>
+    <div class="admin-status" id="modStatus" hidden></div>
+    <div class="field">
+      <label>Player</label>
+      <input id="modUser" type="text" maxlength="20" autocapitalize="off" spellcheck="false" autocomplete="off">
+    </div>
+    <button type="button" class="go" id="modBad" style="background:#6b4bd6">Bad luck 1 min</button>
+    <p class="hint" id="modLeft" style="margin:6px 0 0"></p>
+    <button type="button" class="ghost" id="modClose" style="width:100%;margin-top:14px;padding:10px">Close</button>
+  </div>
+</div>
+
 <div class="modal" id="renameModal" hidden>
   <form class="card modal-card" id="renameForm">
     <h2>Change your name</h2>
@@ -411,6 +426,12 @@ tr.me td{color:var(--accent)}
     </div>
     <button type="button" class="go rebirth-go" id="adminBoost">Boost 5 min (free)</button>
     <p class="hint" style="margin:6px 0 18px">Nonstop pump in Ride for 5 minutes. Stacks.</p>
+    <button type="button" class="go" id="adminBad" style="background:#6b4bd6">Bad luck 1 min</button>
+    <p class="hint" style="margin:6px 0 18px">Rug pulls in Ride, loses every coin flip, bad blackjack deals, Rocket crashes at 1.01×. Stacks.</p>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:0 0 18px">
+      <button type="button" class="ghost" id="adminMod" style="padding:10px">Make mod</button>
+      <button type="button" class="ghost" id="adminUnmod" style="padding:10px">Remove mod</button>
+    </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:0 0 18px">
       <button type="button" class="go" id="adminBan" style="background:var(--lose)">Ban</button>
       <button type="button" class="go" id="adminUnban" style="background:var(--line);color:var(--ink)">Unban</button>
@@ -757,6 +778,37 @@ const pvpMove = async hit => {
 $('pvpHit').onclick = () => pvpMove(true);
 $('pvpStand').onclick = () => pvpMove(false);
 
+/* ---------- moderators + bad luck ---------- */
+function modStatus(msg, ok){
+  const el = $('modStatus'); el.hidden = false;
+  el.className = 'admin-status' + (ok ? '' : ' err');
+  el.textContent = (ok ? '✓ ' : '✗ ') + msg;
+}
+async function refreshModLeft(){
+  const { data } = await sb.rpc('bad_luck_left');
+  $('modLeft').textContent = data == null ? 'Unlimited uses' : `${data} of 3 uses left today`;
+  $('modBad').disabled = data === 0;
+}
+$('modOpen').onclick = () => { $('modModal').hidden = false; $('modStatus').hidden = true; refreshModLeft(); $('modUser').focus(); };
+$('modClose').onclick = () => { $('modModal').hidden = true; };
+async function giveBadLuck(name, report){
+  if (!name) return report('Enter a player name first', false);
+  const { data, error } = await sb.rpc('give_bad_luck', { p_user: name });
+  if (error) return report(error.message, false);
+  const t = new Date(data.until).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' });
+  report(`${data.user} has bad luck until ${t}` + (data.left == null ? '' : ` · ${data.left} left today`), true);
+}
+$('modBad').onclick = async () => { await giveBadLuck($('modUser').value.trim(), (m, ok) => { modStatus(m, ok); toast(m); }); refreshModLeft(); };
+$('adminBad').onclick = () => giveBadLuck($('adminUser').value.trim(), (m, ok) => { adminStatus(m, ok); toast(m); });
+async function setMod(on){
+  const n = adminName(); if (!n) return;
+  const { data, error } = await sb.rpc('admin_set_mod', { p_user: n, p_on: on });
+  if (error) { adminStatus(error.message, false); return toast(error.message); }
+  const m = `${data.user} is ${data.mod ? 'now a mod' : 'no longer a mod'}`; adminStatus(m, true); toast(m);
+}
+$('adminMod').onclick = () => setMod(true);
+$('adminUnmod').onclick = () => setMod(false);
+
 /* ---------- rebirth ---------- */
 $('rebirthBtn').onclick = () => {
   const next = rebirths + 1;
@@ -809,6 +861,7 @@ async function loadProfile(){
   const { data: left } = await sb.rpc('ride_cleanup');
   if (left && left.payout != null) setTimeout(() => toast(`Your last Ride round was stopped: paid ${fmt(left.payout)}`), 800);
   sb.rpc('is_admin').then(({ data: a }) => { $('adminOpen').hidden = !a; });   // checked first so nothing else can hide it
+  sb.rpc('my_role').then(({ data: r }) => { $('modOpen').hidden = r !== 'mod'; });
   loadNotice();
   const { data, error } = await sb.from('profiles').select('*').eq('id', user.id).single();
   if (error) return toast(error.message);
@@ -1091,8 +1144,8 @@ window.addEventListener('resize', () => { if (!round && !ghost) drawGraph(1); })
 // The chart comes from a server seed, so it's drawn locally with zero lag.
 // MUST match _ride_path() in ride.sql.
 const STEP_MS = 100, WINDOW = 120; // 12s visible
-const RIDE_VERSION = 31;            // must match ride_version() in ride.sql
-function ridePath(seed, boost = 0){
+const RIDE_VERSION = 32;            // must match ride_version() in ride.sql
+function ridePath(seed, boost = 0, bad = 0){
   let s = Number(seed), v = 0, p = 100, heat = 1;
   let evLeft = 0, evDir = 0, D = 0, size = 0, W = 1, cut = -1, rug = 0, base = 100;
   const arr = [100]; arr.ev = [0]; arr.heat = [1];
@@ -1104,6 +1157,15 @@ function ridePath(seed, boost = 0){
       if (u3 < 0.004) heat = 3;                      // wild phase
       heat = 1 + (heat - 1) * 0.97;
       const vol = heat * 2;
+      if (arr.length <= bad) {                       // bad luck: little pump, then rug pull, forever
+        const k = (arr.length - 1) % 10;
+        if (k < 6) p = p * Math.exp(0.01 + (u2 - 0.5) * 0.006);
+        else if (k < 9) p = p * Math.exp(Math.log(0.6) / 3);
+        evLeft = 0; rug = 0; v = 0;
+        p = Math.min(Math.max(p, 1e-200), 1e200);
+        arr.push(p); arr.ev.push(k < 6 ? 1 : k < 9 ? -2 : 0); arr.heat.push(heat);
+        continue;
+      }
       if (arr.length <= boost) {                     // admin boost: fast nonstop pump (~+22%/s), no dumps
         p = Math.min(p * Math.exp(0.02 + (u2 - 0.5) * 0.02), 1e200);
         evLeft = 0; rug = 0; v = 0;
@@ -1165,7 +1227,7 @@ $('rideStart').onclick = async () => {
   if (error) return toast(error.message);
   setBalance(data.balance);
   loadColors();
-  ride = { id: data.round_id, bet, path: ridePath(data.seed, data.boost_steps || 0), t0: performance.now(), cur: 0,
+  ride = { id: data.round_id, bet, path: ridePath(data.seed, data.boost_steps || 0, data.bad_steps || 0), t0: performance.now(), cur: 0,
            spans: [], holding: false, done: false, q: Promise.resolve(), lo: Math.log(95), hi: Math.log(105) };
   lastRide = ride;
   $('rideStart').hidden = true; $('holdBtn').hidden = false; $('rideCash').hidden = false;
