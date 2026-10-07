@@ -117,6 +117,8 @@ canvas{width:100%;height:100%;display:block}
 .ace-pick button{flex:1;padding:4px 0;border-radius:6px;border:0;background:var(--gold);color:#2a1d00;font:700 13px Inter,sans-serif;cursor:pointer}
 .ace-val{display:block;margin-top:6px;text-align:center;font:600 11px "IBM Plex Mono",monospace;color:var(--gold)}
 .card-wrap{display:flex;flex-direction:column}
+.notice{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:16px 0 0;padding:12px 14px;border-radius:12px;background:rgba(232,178,58,.12);border:1px solid var(--gold);color:var(--ink);font-weight:500}
+.notice .ghost{border-color:var(--gold);color:var(--gold);white-space:nowrap}
 .hint{font-size:12px;color:var(--muted);margin-top:6px}
 
 /* board */
@@ -180,6 +182,11 @@ tr.me td{color:var(--accent)}
       <button class="ghost" id="logout">Sign out</button>
     </div>
   </header>
+
+  <div class="notice" id="notice" hidden>
+    <span id="noticeText"></span>
+    <button class="ghost" id="renameOpen">Change name</button>
+  </div>
 
   <nav>
     <button data-tab="coin" class="on">Coin Flip</button>
@@ -331,6 +338,19 @@ tr.me td{color:var(--accent)}
   </form>
 </div>
 
+<div class="modal" id="renameModal" hidden>
+  <form class="card modal-card" id="renameForm">
+    <h2>Change your name</h2>
+    <p class="rb-text">Use your real name. After this you log in with the <b>new name</b> and the same passcode.</p>
+    <div class="field">
+      <label>New name</label>
+      <input id="renameNew" type="text" required maxlength="20" autocapitalize="off" spellcheck="false" autocomplete="off">
+    </div>
+    <button class="go" id="renameSend">Save name</button>
+    <button type="button" class="ghost" id="renameCancel" style="width:100%;margin-top:8px;padding:10px">Cancel</button>
+  </form>
+</div>
+
 <div class="modal" id="rbModal" hidden>
   <div class="card modal-card">
     <h2>Rebirth?</h2>
@@ -366,6 +386,11 @@ tr.me td{color:var(--accent)}
       <input id="adminCost" type="number" min="0.01" step="0.01" placeholder="Amount">
     </div>
     <button type="button" class="go" id="adminTake">Take coins</button>
+    <div class="field" style="margin-top:18px">
+      <label>Site notice (empty = hidden)</label>
+      <input id="adminNotice" type="text" maxlength="200" placeholder="Message everyone sees">
+    </div>
+    <button type="button" class="ghost" id="adminNoticeSave" style="width:100%;padding:10px">Update notice</button>
     <button type="button" class="go" id="adminDelete" style="margin-top:18px;background:var(--line);color:var(--lose)">Delete account</button>
     <button type="button" class="go" id="adminSeason" style="margin-top:8px;background:var(--lose)">Start new season</button>
     <p class="hint" style="margin:6px 0 0">Saves everyone's final coins, rebirths and rank to Past seasons, then resets everyone to 1,000 coins and 0 rebirths.</p>
@@ -567,6 +592,33 @@ $('refill').onclick = async () => {
   setBalance(data.balance); toast('Refilled to 100');
 };
 
+/* ---------- site notice + change your name ---------- */
+async function loadNotice(){
+  const { data } = await sb.from('site_notice').select('text').eq('id', 1).single();
+  const t = data?.text || '';
+  $('noticeText').textContent = t; $('notice').hidden = !t;
+  if ($('adminNotice')) $('adminNotice').value = t;
+}
+setInterval(() => { if (user) loadNotice(); }, 60000);
+$('renameOpen').onclick = () => { $('renameNew').value = ''; $('renameModal').hidden = false; $('renameNew').focus(); };
+$('renameCancel').onclick = () => { $('renameModal').hidden = true; };
+$('renameForm').onsubmit = async e => {
+  e.preventDefault();
+  $('renameSend').disabled = true;
+  const { data, error } = await sb.rpc('rename_me', { p_new: $('renameNew').value.trim() });
+  $('renameSend').disabled = false;
+  if (error) return toast(error.message);
+  $('renameModal').hidden = true;
+  $('who').textContent = data.new;
+  toast(`You're now ${data.new}. Log in with that name next time.`);
+};
+$('adminNoticeSave').onclick = async () => {
+  const { data, error } = await sb.rpc('admin_set_notice', { p_text: $('adminNotice').value });
+  if (error) return toast(error.message);
+  toast(data.text ? 'Notice updated' : 'Notice hidden');
+  loadNotice();
+};
+
 /* ---------- rebirth ---------- */
 $('rebirthBtn').onclick = () => {
   const next = rebirths + 1;
@@ -619,6 +671,7 @@ async function loadProfile(){
   const { data: left } = await sb.rpc('ride_cleanup');
   if (left && left.payout != null) setTimeout(() => toast(`Your last Ride round was stopped: paid ${fmt(left.payout)}`), 800);
   sb.rpc('is_admin').then(({ data: a }) => { $('adminOpen').hidden = !a; });   // checked first so nothing else can hide it
+  loadNotice();
   const { data, error } = await sb.from('profiles').select('*').eq('id', user.id).single();
   if (error) return toast(error.message);
   $('who').textContent = data.username;
