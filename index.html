@@ -121,6 +121,11 @@ canvas{width:100%;height:100%;display:block}
 .notice .ghost{border-color:var(--gold);color:var(--gold);white-space:nowrap}
 .admin-status{margin:0 0 14px;padding:10px 12px;border-radius:10px;font-size:14px;font-weight:600;background:rgba(47,191,107,.14);color:var(--win);border:1px solid var(--win)}
 .admin-status.err{background:rgba(255,77,69,.14);color:var(--lose);border-color:var(--lose)}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--accent);vertical-align:middle;margin-left:2px}
+.pvp-inv{padding:12px;border-radius:12px;border:1px solid var(--gold);background:rgba(232,178,58,.08);margin-bottom:12px}
+.pvp-inv b{color:var(--gold)}
+.pvp-inv .row{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
+.pvp-inv .row .go{padding:10px 0;font-size:14px}
 .hint{font-size:12px;color:var(--muted);margin-top:6px}
 
 /* board */
@@ -195,6 +200,7 @@ tr.me td{color:var(--accent)}
     <button data-tab="crash">Rocket</button>
     <button data-tab="ride">Ride</button>
     <button data-tab="bj">Blackjack</button>
+    <button data-tab="pvp">1v1 <span class="dot" id="pvpDot" hidden></span></button>
     <button data-tab="board">Leaderboard</button>
   </nav>
 
@@ -305,6 +311,39 @@ tr.me td{color:var(--accent)}
       <div class="bj-row"><div class="bj-label">Dealer <span id="bjDT"></span></div><div class="bj-cards" id="bjDealer"></div></div>
       <div class="bj-msg" id="bjMsg"></div>
       <div class="bj-row"><div class="bj-label">You <span id="bjPT"></span></div><div class="bj-cards" id="bjPlayer"></div></div>
+    </div>
+  </div>
+
+  <!-- 1v1 blackjack -->
+  <div id="tab-pvp" class="game" hidden>
+    <div class="card">
+      <div id="pvpIncoming"></div>
+      <div id="pvpOutgoing"></div>
+      <form id="pvpForm">
+        <div class="field">
+          <label>Challenge a player</label>
+          <input id="pvpUser" type="text" required maxlength="20" autocapitalize="off" spellcheck="false" autocomplete="off" placeholder="Username">
+        </div>
+        <div class="pick" id="pvpMode" style="margin-bottom:14px">
+          <button type="button" data-m="friendly" class="on">Friendly</button>
+          <button type="button" data-m="money">Money</button>
+        </div>
+        <div class="field" id="pvpStakeField" hidden>
+          <label>Stake (each player)</label>
+          <input id="pvpStake" type="number" min="0.01" step="0.01" placeholder="Coins above 1,000 only">
+        </div>
+        <button class="go" id="pvpSend">Send challenge</button>
+      </form>
+      <div class="pick" id="pvpActs" hidden style="grid-template-columns:1fr 1fr">
+        <button type="button" class="go cash" id="pvpHit">Hit</button>
+        <button type="button" class="go" id="pvpStand" style="background:var(--line);color:var(--ink)">Stand</button>
+      </div>
+      <div class="hint">You both play your own hand at the same time. Closer to 21 without going over wins. Tie or both bust = stakes back. Idle for 90s = auto-stand.</div>
+    </div>
+    <div class="card bj-table">
+      <div class="bj-row"><div class="bj-label"><span id="pvpOppName">Opponent</span> <span id="pvpOT"></span></div><div class="bj-cards" id="pvpOpp"></div></div>
+      <div class="bj-msg" id="pvpMsg">Challenge someone to start</div>
+      <div class="bj-row"><div class="bj-label">You <span id="pvpMT"></span></div><div class="bj-cards" id="pvpMe"></div></div>
     </div>
   </div>
 
@@ -596,7 +635,7 @@ $('adminUnban').onclick = () => adminBan(false);
 
 /* ---------- refill ---------- */
 $('refill').onclick = async () => {
-  if ((ride && !ride.done) || round || (bj && bj.status === 'live')) return toast('Finish your current game before refilling');
+  if ((ride && !ride.done) || round || (bj && bj.status === 'live') || (pvp && pvp.status === 'live')) return toast('Finish your current game before refilling');
   const { data, error } = await sb.rpc('claim_refill');
   if (error) { adminStatus(error.message, false); return toast(error.message); }
   setBalance(data.balance); toast('Refilled to 100');
@@ -627,7 +666,96 @@ $('adminNoticeSave').onclick = async () => {
   if (error) { adminStatus(error.message, false); return toast(error.message); }
   { const _m = data.text ? 'Notice updated' : 'Notice hidden'; adminStatus(_m, true); toast(_m); }
   loadNotice();
+  pollPvp();
 };
+
+
+/* ---------- 1v1 blackjack ---------- */
+let pvpMode = 'friendly', pvp = null, pvpSeen = new Set();
+document.querySelectorAll('#pvpMode button').forEach(b => b.onclick = () => {
+  pvpMode = b.dataset.m;
+  document.querySelectorAll('#pvpMode button').forEach(x => x.classList.toggle('on', x === b));
+  $('pvpStakeField').hidden = pvpMode !== 'money';
+});
+const stakeText = c => c.friendly ? 'Friendly' : `${fmt(c.stake)} coins each`;
+function renderPvp(st){
+  // incoming challenges
+  const inc = $('pvpIncoming'); inc.innerHTML = '';
+  (st.incoming || []).forEach(c => {
+    const d = document.createElement('div'); d.className = 'pvp-inv';
+    d.innerHTML = `<b></b> challenged you · ${stakeText(c)}<div class="row"><button class="go cash">Accept</button><button class="go" style="background:var(--line);color:var(--ink)">Decline</button></div>`;
+    d.querySelector('b').textContent = c.from;
+    const [acc, dec] = d.querySelectorAll('button');
+    acc.onclick = async () => { acc.disabled = true; const { data, error } = await sb.rpc('pvp_accept', { p_id: c.id }); if (error) { acc.disabled = false; return toast(error.message); } pollPvp(); };
+    dec.onclick = async () => { const { error } = await sb.rpc('pvp_decline', { p_id: c.id }); if (error) return toast(error.message); pollPvp(); };
+    inc.appendChild(d);
+    if (!pvpSeen.has(c.id)) { pvpSeen.add(c.id); toast(`${c.from} challenged you to 1v1 blackjack!`); }
+  });
+  $('pvpDot').hidden = !(st.incoming || []).length;
+  // my waiting challenge
+  const out = $('pvpOutgoing'); out.innerHTML = '';
+  if (st.outgoing) {
+    const d = document.createElement('div'); d.className = 'pvp-inv';
+    d.innerHTML = `Waiting for <b></b> to accept · ${stakeText(st.outgoing)}<div class="row" style="grid-template-columns:1fr"><button class="go" style="background:var(--line);color:var(--ink)">Cancel challenge</button></div>`;
+    d.querySelector('b').textContent = st.outgoing.to;
+    d.querySelector('button').onclick = async () => { const { data, error } = await sb.rpc('pvp_decline', { p_id: st.outgoing.id }); if (error) return toast(error.message); if (data.balance != null) setBalance(data.balance); pollPvp(); };
+    out.appendChild(d);
+  }
+  // the table
+  const m = st.match; pvp = m;
+  const live = m && m.status === 'live';
+  $('pvpForm').hidden = live || !!st.outgoing;
+  $('pvpActs').hidden = !(live && !m.my_done);
+  const draw = (el, cards, extraBacks) => { el.innerHTML = ''; (cards || []).forEach(c => el.appendChild(cardEl(c))); for (let i = 0; i < extraBacks; i++) el.appendChild(cardEl(null)); };
+  if (!m) { draw($('pvpOpp'), [], 0); draw($('pvpMe'), [], 0); $('pvpOT').textContent = $('pvpMT').textContent = ''; $('pvpOppName').textContent = 'Opponent'; $('pvpMsg').textContent = 'Challenge someone to start'; $('pvpMsg').className = 'bj-msg'; return; }
+  $('pvpOppName').textContent = m.opp;
+  draw($('pvpOpp'), m.opp_cards, Math.max(0, m.opp_count - (m.opp_cards || []).length));
+  draw($('pvpMe'), m.my_cards, 0);
+  $('pvpMT').textContent = m.my_total;
+  $('pvpOT').textContent = m.status === 'done' ? m.opp_total : m.opp_total + ' + ?';
+  const msg = $('pvpMsg');
+  if (live) {
+    msg.className = 'bj-msg';
+    msg.textContent = m.my_done ? (m.my_total > 21 ? 'Bust. Waiting on ' + m.opp + '…' : 'Standing. Waiting on ' + m.opp + '…') : (m.opp_done ? m.opp + ' is done. Your move' : 'Your move');
+  } else {
+    const label = { win: 'You win!', lose: m.opp + ' wins', tie: 'Tie' }[m.outcome];
+    const money = m.friendly ? ' (friendly)' : m.outcome === 'win' ? ` +${fmt(m.stake)}` : m.outcome === 'lose' ? ` −${fmt(m.stake)}` : ' · stakes back';
+    msg.textContent = label + money;
+    msg.className = 'bj-msg ' + (m.outcome === 'win' ? 'win' : m.outcome === 'lose' ? 'lose' : '');
+    if (pvp && m.balance != null) setBalance(m.balance);
+  }
+}
+let pvpBusy = false;
+async function pollPvp(){
+  if (!user || pvpBusy) return;
+  pvpBusy = true;
+  const { data, error } = await sb.rpc('pvp_state');
+  pvpBusy = false;
+  if (!error && data) renderPvp(data);
+}
+// fast while you're in a match, slower otherwise (so challenges still pop up on other tabs)
+setInterval(() => { if (pvp && pvp.status === 'live') pollPvp(); }, 1500);
+setInterval(() => { if (!(pvp && pvp.status === 'live')) pollPvp(); }, 5000);
+$('pvpForm').onsubmit = async e => {
+  e.preventDefault();
+  $('pvpSend').disabled = true;
+  const { data, error } = await sb.rpc('pvp_challenge', { p_user: $('pvpUser').value.trim(), p_stake: parseFloat($('pvpStake').value) || 0, p_friendly: pvpMode === 'friendly' });
+  $('pvpSend').disabled = false;
+  if (error) return toast(error.message);
+  if (data.balance != null) setBalance(data.balance);
+  toast(`Challenge sent to ${data.opp}`);
+  pollPvp();
+};
+const pvpMove = async hit => {
+  if (!pvp) return;
+  const btn = hit ? $('pvpHit') : $('pvpStand'); btn.disabled = true;
+  const { data, error } = await sb.rpc('pvp_move', { p_id: pvp.id, p_hit: hit });
+  btn.disabled = false;
+  if (error) return toast(error.message);
+  pollPvp();
+};
+$('pvpHit').onclick = () => pvpMove(true);
+$('pvpStand').onclick = () => pvpMove(false);
 
 /* ---------- rebirth ---------- */
 $('rebirthBtn').onclick = () => {
@@ -722,7 +850,7 @@ $('daily').onclick = async () => {
 /* ---------- tabs ---------- */
 document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
   document.querySelectorAll('nav button').forEach(x => x.classList.toggle('on', x === b));
-  ['coin', 'crash', 'ride', 'bj', 'board'].forEach(t => $('tab-' + t).hidden = t !== b.dataset.tab);
+  ['coin', 'crash', 'ride', 'bj', 'pvp', 'board'].forEach(t => $('tab-' + t).hidden = t !== b.dataset.tab);
   if (b.dataset.tab === 'board') loadBoard();
   if (b.dataset.tab === 'ride') drawRide();
   if (b.dataset.tab === 'crash' && !round && !ghost) drawGraph(1);
