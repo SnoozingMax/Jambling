@@ -17,6 +17,8 @@ create table if not exists bj_hands (
 );
 alter table bj_hands enable row level security;   -- no policies: only functions touch it
 alter table profiles add column if not exists badluck_until timestamptz;
+create table if not exists site_state (id int primary key default 1 check (id = 1), rush_until timestamptz);
+insert into site_state (id) values (1) on conflict do nothing;
 -- your card values: an ace stays null until you pick 1 or 11 (then it's locked)
 alter table bj_hands add column if not exists pvals int[];
 -- hands from before this update: refund and close
@@ -137,6 +139,17 @@ begin
     begin
       picked := array[tens[1], tens[2], six, tens[3]];
       d := picked || array(select c from unnest(d) c where not (c = any(picked)) order by (c % 13 >= 9) desc, random());
+    end;
+  elsif (select rush_until > clock_timestamp() from site_state where id = 1) then
+    declare tens int[] := array(select c from unnest(d) c where c % 13 >= 9);
+            good int := (select c from unnest(d) c where c % 13 in (0, 8) or c % 13 >= 9 limit 1 offset 1);
+            weak int := (select c from unnest(d) c where c % 13 in (3, 4, 5) limit 1);
+            picked int[];
+    begin
+      if good = tens[1] then good := tens[2]; end if;
+      picked := array[tens[1], weak, good];
+      d := picked || array(select c from unnest(d) c where not (c = any(picked)) order by random());
+      d := d[1:3] || d[4:];
     end;
   end if;
   insert into bj_hands (user_id, bet, deck, player, dealer, pvals)

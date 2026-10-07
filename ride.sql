@@ -21,13 +21,17 @@ create table if not exists ride_rounds (
 alter table ride_rounds enable row level security;
 alter table ride_rounds add column if not exists boost_steps int not null default 0;
 alter table ride_rounds add column if not exists bad_steps int not null default 0;
+alter table ride_rounds add column if not exists rush_steps int not null default 0;
+create table if not exists site_state (id int primary key default 1 check (id = 1), rush_until timestamptz);
+insert into site_state (id) values (1) on conflict do nothing;
 alter table profiles add column if not exists badluck_until timestamptz;
 alter table profiles add column if not exists boost_until timestamptz;
 
 -- the chart: momentum random walk. MUST match ridePath() in index.html
 drop function if exists _ride_path(bigint, int);
 drop function if exists _ride_path(bigint, int, int);
-create or replace function _ride_path(p_seed bigint, n int, p_boost int default 0, p_bad int default 0) returns float8[]
+drop function if exists _ride_path(bigint, int, int, int);
+create or replace function _ride_path(p_seed bigint, n int, p_boost int default 0, p_bad int default 0, p_rush int default 0) returns float8[]
 language plpgsql immutable as $$
 declare
   s bigint := p_seed;
@@ -65,15 +69,15 @@ begin
       arr := arr || p;
       continue;
     end if;
-    if ev_left = 0 and rug = 0 and u3 > 0.99 then
-      if u2 < 0.45 then                                   -- pump: +65% to +170% over 3-7s. 15% rug-pull partway
+    if ev_left = 0 and rug = 0 and u3 > (case when i <= p_rush then 0.98 else 0.99 end) then
+      if u2 < (case when i <= p_rush then 0.8 else 0.45 end) then   -- rush hour: way more pumps, no rugs                                   -- pump: +65% to +170% over 3-7s. 15% rug-pull partway
         ev_dir := 1;
         d := 30 + floor(u1 * 41)::int;
         size := 0.5 + 0.5 * (u1 * 53 - floor(u1 * 53));
         w := 0;
         for j in 1..d loop x := (j - 0.5) / d; w := w + x * (1 - x); end loop;
         base := p;
-        if (u1 * 97 - floor(u1 * 97)) < 0.15 then
+        if i > p_rush and (u1 * 97 - floor(u1 * 97)) < 0.15 then
           cut := 3 + floor((u1 * 331 - floor(u1 * 331)) * (d - 3))::int;
         else
           cut := -1;
@@ -130,7 +134,7 @@ begin
 end $$;
 
 -- bump this whenever the chart math changes; must match RIDE_VERSION in index.html
-create or replace function ride_version() returns int language sql immutable as $$ select 33 $$;
+create or replace function ride_version() returns int language sql immutable as $$ select 34 $$;
 
 -- pay out a round at step a (internal: never callable from the browser)
 create or replace function _ride_finish(p_id uuid, a int) returns json
@@ -149,7 +153,7 @@ begin
   h := rd.holds;
   if rd.holding then h := h || a; end if;
 
-  path := _ride_path(rd.seed, a, rd.boost_steps, rd.bad_steps);
+  path := _ride_path(rd.seed, a, rd.boost_steps, rd.bad_steps, rd.rush_steps);
   for i in 1 .. coalesce(array_length(h, 1), 0) / 2 loop
     m := m * 0.99 * path[h[2*i] + 1] / path[h[2*i - 1] + 1];   -- 1% fee per hold
   end loop;
@@ -186,6 +190,7 @@ declare
   rid uuid;
   bs int;
   bad int;
+  rush int;
   sd bigint := floor(random() * 2147483645)::bigint + 1;
 begin
   if auth.uid() is null then raise exception 'Not signed in'; end if;
@@ -203,8 +208,11 @@ begin
     from profiles where id = auth.uid() and boost_until > clock_timestamp();
   select greatest(0, floor(extract(epoch from (badluck_until - clock_timestamp())) / 0.1))::int into bad
     from profiles where id = auth.uid() and badluck_until > clock_timestamp();
-  insert into ride_rounds (user_id, bet, seed, boost_steps, bad_steps) values (auth.uid(), p_bet, sd, coalesce(bs, 0), coalesce(bad, 0)) returning id into rid;
-  return json_build_object('round_id', rid, 'seed', sd, 'balance', bal, 'boost_steps', coalesce(bs, 0), 'bad_steps', coalesce(bad, 0));
+  select greatest(0, floor(extract(epoch from (rush_until - clock_timestamp())) / 0.1))::int into rush
+    from site_state where id = 1 and rush_until > clock_timestamp();
+  insert into ride_rounds (user_id, bet, seed, boost_steps, bad_steps, rush_steps)
+    values (auth.uid(), p_bet, sd, coalesce(bs, 0), coalesce(bad, 0), coalesce(rush, 0)) returning id into rid;
+  return json_build_object('round_id', rid, 'seed', sd, 'balance', bal, 'boost_steps', coalesce(bs, 0), 'bad_steps', coalesce(bad, 0), 'rush_steps', coalesce(rush, 0));
 end $$;
 
 create or replace function ride_hold(p_round uuid, p_on boolean, p_step int) returns json

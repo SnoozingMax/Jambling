@@ -201,13 +201,17 @@ create table if not exists ride_rounds (
 alter table ride_rounds enable row level security;
 alter table ride_rounds add column if not exists boost_steps int not null default 0;
 alter table ride_rounds add column if not exists bad_steps int not null default 0;
+alter table ride_rounds add column if not exists rush_steps int not null default 0;
+create table if not exists site_state (id int primary key default 1 check (id = 1), rush_until timestamptz);
+insert into site_state (id) values (1) on conflict do nothing;
 alter table profiles add column if not exists badluck_until timestamptz;
 alter table profiles add column if not exists boost_until timestamptz;
 
 -- the chart: momentum random walk. MUST match ridePath() in index.html
 drop function if exists _ride_path(bigint, int);
 drop function if exists _ride_path(bigint, int, int);
-create or replace function _ride_path(p_seed bigint, n int, p_boost int default 0, p_bad int default 0) returns float8[]
+drop function if exists _ride_path(bigint, int, int, int);
+create or replace function _ride_path(p_seed bigint, n int, p_boost int default 0, p_bad int default 0, p_rush int default 0) returns float8[]
 language plpgsql immutable as $$
 declare
   s bigint := p_seed;
@@ -245,15 +249,15 @@ begin
       arr := arr || p;
       continue;
     end if;
-    if ev_left = 0 and rug = 0 and u3 > 0.99 then
-      if u2 < 0.45 then                                   -- pump: +65% to +170% over 3-7s. 15% rug-pull partway
+    if ev_left = 0 and rug = 0 and u3 > (case when i <= p_rush then 0.98 else 0.99 end) then
+      if u2 < (case when i <= p_rush then 0.8 else 0.45 end) then   -- rush hour: way more pumps, no rugs                                   -- pump: +65% to +170% over 3-7s. 15% rug-pull partway
         ev_dir := 1;
         d := 30 + floor(u1 * 41)::int;
         size := 0.5 + 0.5 * (u1 * 53 - floor(u1 * 53));
         w := 0;
         for j in 1..d loop x := (j - 0.5) / d; w := w + x * (1 - x); end loop;
         base := p;
-        if (u1 * 97 - floor(u1 * 97)) < 0.15 then
+        if i > p_rush and (u1 * 97 - floor(u1 * 97)) < 0.15 then
           cut := 3 + floor((u1 * 331 - floor(u1 * 331)) * (d - 3))::int;
         else
           cut := -1;
@@ -310,7 +314,7 @@ begin
 end $$;
 
 -- bump this whenever the chart math changes; must match RIDE_VERSION in index.html
-create or replace function ride_version() returns int language sql immutable as $$ select 33 $$;
+create or replace function ride_version() returns int language sql immutable as $$ select 34 $$;
 
 -- pay out a round at step a (internal: never callable from the browser)
 create or replace function _ride_finish(p_id uuid, a int) returns json
@@ -329,7 +333,7 @@ begin
   h := rd.holds;
   if rd.holding then h := h || a; end if;
 
-  path := _ride_path(rd.seed, a, rd.boost_steps, rd.bad_steps);
+  path := _ride_path(rd.seed, a, rd.boost_steps, rd.bad_steps, rd.rush_steps);
   for i in 1 .. coalesce(array_length(h, 1), 0) / 2 loop
     m := m * 0.99 * path[h[2*i] + 1] / path[h[2*i - 1] + 1];   -- 1% fee per hold
   end loop;
@@ -366,6 +370,7 @@ declare
   rid uuid;
   bs int;
   bad int;
+  rush int;
   sd bigint := floor(random() * 2147483645)::bigint + 1;
 begin
   if auth.uid() is null then raise exception 'Not signed in'; end if;
@@ -383,8 +388,11 @@ begin
     from profiles where id = auth.uid() and boost_until > clock_timestamp();
   select greatest(0, floor(extract(epoch from (badluck_until - clock_timestamp())) / 0.1))::int into bad
     from profiles where id = auth.uid() and badluck_until > clock_timestamp();
-  insert into ride_rounds (user_id, bet, seed, boost_steps, bad_steps) values (auth.uid(), p_bet, sd, coalesce(bs, 0), coalesce(bad, 0)) returning id into rid;
-  return json_build_object('round_id', rid, 'seed', sd, 'balance', bal, 'boost_steps', coalesce(bs, 0), 'bad_steps', coalesce(bad, 0));
+  select greatest(0, floor(extract(epoch from (rush_until - clock_timestamp())) / 0.1))::int into rush
+    from site_state where id = 1 and rush_until > clock_timestamp();
+  insert into ride_rounds (user_id, bet, seed, boost_steps, bad_steps, rush_steps)
+    values (auth.uid(), p_bet, sd, coalesce(bs, 0), coalesce(bad, 0), coalesce(rush, 0)) returning id into rid;
+  return json_build_object('round_id', rid, 'seed', sd, 'balance', bal, 'boost_steps', coalesce(bs, 0), 'bad_steps', coalesce(bad, 0), 'rush_steps', coalesce(rush, 0));
 end $$;
 
 create or replace function ride_hold(p_round uuid, p_on boolean, p_step int) returns json
@@ -623,6 +631,8 @@ create table if not exists bj_hands (
 );
 alter table bj_hands enable row level security;   -- no policies: only functions touch it
 alter table profiles add column if not exists badluck_until timestamptz;
+create table if not exists site_state (id int primary key default 1 check (id = 1), rush_until timestamptz);
+insert into site_state (id) values (1) on conflict do nothing;
 -- your card values: an ace stays null until you pick 1 or 11 (then it's locked)
 alter table bj_hands add column if not exists pvals int[];
 -- hands from before this update: refund and close
@@ -743,6 +753,17 @@ begin
     begin
       picked := array[tens[1], tens[2], six, tens[3]];
       d := picked || array(select c from unnest(d) c where not (c = any(picked)) order by (c % 13 >= 9) desc, random());
+    end;
+  elsif (select rush_until > clock_timestamp() from site_state where id = 1) then
+    declare tens int[] := array(select c from unnest(d) c where c % 13 >= 9);
+            good int := (select c from unnest(d) c where c % 13 in (0, 8) or c % 13 >= 9 limit 1 offset 1);
+            weak int := (select c from unnest(d) c where c % 13 in (3, 4, 5) limit 1);
+            picked int[];
+    begin
+      if good = tens[1] then good := tens[2]; end if;
+      picked := array[tens[1], weak, good];
+      d := picked || array(select c from unnest(d) c where not (c = any(picked)) order by random());
+      d := d[1:3] || d[4:];
     end;
   end if;
   insert into bj_hands (user_id, bet, deck, player, dealer, pvals)
@@ -1378,6 +1399,95 @@ begin
   update profiles set balance = balance + refunded where id = them;
 
   return json_build_object('user', them_name, 'kind', p_kind, 'refunded', refunded);
+end $$;
+
+notify pgrst, 'reload schema';
+
+-- ========== Rush hour ==========
+create table if not exists site_state (id int primary key default 1 check (id = 1), rush_until timestamptz);
+insert into site_state (id) values (1) on conflict do nothing;
+alter table site_state enable row level security;
+drop policy if exists "site state readable" on site_state;
+create policy "site state readable" on site_state for select to anon, authenticated using (true);
+
+create or replace function _rush_now() returns boolean
+language sql stable security definer set search_path = public as $$
+  select coalesce((select rush_until > clock_timestamp() from site_state where id = 1), false)
+$$;
+
+-- admin: start (or extend) rush hour by 3 minutes
+create or replace function admin_rush(p_on boolean default true) returns json
+language plpgsql security definer set search_path = public as $$
+declare until timestamptz;
+begin
+  if not is_admin() then raise exception 'Admins only'; end if;
+  if p_on then
+    update site_state set rush_until = greatest(coalesce(rush_until, clock_timestamp()), clock_timestamp()) + interval '3 minutes'
+     where id = 1 returning rush_until into until;
+  else
+    update site_state set rush_until = null where id = 1;
+  end if;
+  return json_build_object('until', until);
+end $$;
+
+-- coin flip: bad luck = always lose; rush hour = 75% win
+create or replace function flip_coin(p_bet numeric, p_pick text) returns json
+language plpgsql security definer set search_path = public as $$
+declare
+  bal numeric;
+  res text;
+  won boolean;
+  delta numeric;
+begin
+  if auth.uid() is null then raise exception 'Not signed in'; end if;
+  p_bet := round(p_bet, 2);
+  if p_bet is null or p_bet <= 0 then raise exception 'Invalid bet'; end if;
+  if p_pick not in ('heads', 'tails') then raise exception 'Invalid pick'; end if;
+
+  select balance into bal from profiles where id = auth.uid() for update;
+  if bal < p_bet then raise exception 'Not enough coins'; end if;
+
+  if _bad_luck_now(auth.uid()) then res := case when p_pick = 'heads' then 'tails' else 'heads' end;
+  elsif _rush_now() then res := case when random() < 0.75 then p_pick when p_pick = 'heads' then 'tails' else 'heads' end;   -- rush hour: 75% win
+  else res := case when random() < 0.5 then 'heads' else 'tails' end; end if;
+  won := res = p_pick;
+  delta := case when won then round(p_bet * _luck(auth.uid()), 2) else -p_bet end;
+
+  update profiles set balance = balance + delta where id = auth.uid() returning balance into bal;
+  return json_build_object('result', res, 'won', won, 'balance', bal, 'delta', delta);
+end $$;
+
+-- rocket: bad luck = crashes at 1.01x; rush hour = flies much higher
+create or replace function crash_start(p_bet numeric) returns json
+language plpgsql security definer set search_path = public as $$
+declare
+  bal numeric;
+  cp numeric;
+  rid uuid;
+  r float8;
+begin
+  if auth.uid() is null then raise exception 'Not signed in'; end if;
+  p_bet := round(p_bet, 2);
+  if p_bet is null or p_bet <= 0 then raise exception 'Invalid bet'; end if;
+
+  update crash_rounds set status = 'crashed' where user_id = auth.uid() and status = 'live';
+
+  select balance into bal from profiles where id = auth.uid() for update;
+  if bal < p_bet then raise exception 'Not enough coins'; end if;
+
+  if _bad_luck_now(auth.uid()) then cp := 1.01;
+  elsif _rush_now() then                                     -- rush hour: 1.5x minimum, ~5x typical
+    r := random();
+    cp := least(1000, greatest(1.5, floor(2.5 / (1 - r) * 100) / 100))::numeric;
+  else
+    r := random();
+    cp := least(1000, greatest(1.00, floor(0.97 / (1 - r) * 100) / 100))::numeric;
+  end if;
+
+  update profiles set balance = balance - p_bet where id = auth.uid() returning balance into bal;
+  insert into crash_rounds (user_id, bet, crash_point) values (auth.uid(), p_bet, cp) returning id into rid;
+
+  return json_build_object('round_id', rid, 'balance', bal);
 end $$;
 
 notify pgrst, 'reload schema';
