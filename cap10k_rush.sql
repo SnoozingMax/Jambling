@@ -1,33 +1,6 @@
--- Jambling: Ride (v3). Infinite chart until you press Stop.
+-- Jambling: max bet 10,000 on every game + rush hour toned down a little.
 -- Run once in Supabase > SQL Editor (safe to run again).
--- The chart is generated from a seed (same math in the browser and here), so it runs
--- smoothly with no network lag. Holds are reported live; Stop replays the chart to pay out.
 
-alter table profiles add column if not exists rebirths int not null default 0;
-
-create table if not exists ride_rounds (
-  id uuid primary key default gen_random_uuid(),
-  user_id uuid not null references profiles(id) on delete cascade,
-  bet numeric not null,
-  seed bigint not null,
-  started_at timestamptz not null default clock_timestamp(),
-  status text not null default 'live',
-  holds int[] not null default '{}',   -- start,end,start,end,... (steps of 100ms)
-  holding boolean not null default false,
-  last_step int not null default 0,
-  mult float8,
-  payout numeric
-);
-alter table ride_rounds enable row level security;
-alter table ride_rounds add column if not exists boost_steps int not null default 0;
-alter table ride_rounds add column if not exists bad_steps int not null default 0;
-alter table ride_rounds add column if not exists rush_steps int not null default 0;
-create table if not exists site_state (id int primary key default 1 check (id = 1), rush_until timestamptz);
-insert into site_state (id) values (1) on conflict do nothing;
-alter table profiles add column if not exists badluck_until timestamptz;
-alter table profiles add column if not exists boost_until timestamptz;
-
--- the chart: momentum random walk. MUST match ridePath() in index.html
 drop function if exists _ride_path(bigint, int);
 drop function if exists _ride_path(bigint, int, int);
 drop function if exists _ride_path(bigint, int, int, int);
@@ -119,70 +92,8 @@ begin
   return arr;
 end $$;
 
-create or replace function _ride_k(rd ride_rounds) returns int
-language sql stable as $$
-  select floor(extract(epoch from clock_timestamp() - rd.started_at) / 0.1)::int
-$$;
-
--- clamp a reported step to a fair window around real time
-create or replace function _ride_clamp(rd ride_rounds, p_step int) returns int
-language plpgsql stable as $$
-declare
-  k int := _ride_k(rd);
-begin
-  return greatest(least(coalesce(p_step, k), k + 2), k - 15, rd.last_step);
-end $$;
-
--- bump this whenever the chart math changes; must match RIDE_VERSION in index.html
 create or replace function ride_version() returns int language sql immutable as $$ select 37 $$;
 
--- pay out a round at step a (internal: never callable from the browser)
-create or replace function _ride_finish(p_id uuid, a int) returns json
-language plpgsql security definer set search_path = public as $$
-declare
-  rd ride_rounds;
-  h int[];
-  path float8[];
-  m float8 := 1;
-  pay numeric;
-  bal numeric;
-begin
-  select * into rd from ride_rounds where id = p_id for update;
-  if rd.status <> 'live' then return json_build_object('payout', rd.payout); end if;
-  a := greatest(a, rd.last_step);
-  h := rd.holds;
-  if rd.holding then h := h || a; end if;
-
-  path := _ride_path(rd.seed, a, rd.boost_steps, rd.bad_steps, rd.rush_steps);
-  for i in 1 .. coalesce(array_length(h, 1), 0) / 2 loop
-    m := m * 0.99 * path[h[2*i] + 1] / path[h[2*i - 1] + 1];   -- 1% fee per hold
-  end loop;
-  if m <> m then m := 1; end if;                                -- NaN: give the bet back
-  m := least(m, 1e15);                                          -- overflow guard
-
-  pay := round((rd.bet * m)::numeric, 2);
-  if pay > rd.bet then pay := round(rd.bet + (pay - rd.bet) * (1 + 0.1 * coalesce((select rebirths from profiles where id = rd.user_id), 0)), 2); end if;  -- rebirth luck
-  update ride_rounds set status = 'done', holds = h, holding = false, last_step = a, mult = m, payout = pay where id = rd.id;
-  update profiles set balance = balance + pay where id = rd.user_id returning balance into bal;
-  return json_build_object('payout', pay, 'mult', m, 'balance', bal, 'step', a, 'bet', rd.bet);
-end $$;
-revoke execute on function _ride_finish(uuid, int) from public, anon, authenticated;
-
--- settle rounds left open (tab closed): stops the bet instead of losing it.
--- if you were holding, the hold counts until you left (max 5s after your last action).
-create or replace function ride_cleanup() returns json
-language plpgsql security definer set search_path = public as $$
-declare
-  rd ride_rounds;
-  out json := null;
-begin
-  for rd in select * from ride_rounds where user_id = auth.uid() and status = 'live' loop
-    out := _ride_finish(rd.id, case when rd.holding then least(_ride_k(rd), rd.last_step + 50) else rd.last_step end);
-  end loop;
-  return out;
-end $$;
-
-drop function if exists ride_start(numeric);
 create or replace function ride_start(p_bet numeric, p_ver int) returns json
 language plpgsql security definer set search_path = public as $$
 declare
@@ -215,43 +126,117 @@ begin
   return json_build_object('round_id', rid, 'seed', sd, 'balance', bal, 'boost_steps', coalesce(bs, 0), 'bad_steps', coalesce(bad, 0), 'rush_steps', coalesce(rush, 0));
 end $$;
 
-create or replace function ride_hold(p_round uuid, p_on boolean, p_step int) returns json
+create or replace function flip_coin(p_bet numeric, p_pick text) returns json
 language plpgsql security definer set search_path = public as $$
 declare
-  rd ride_rounds;
-  a int;
+  bal numeric;
+  res text;
+  won boolean;
+  delta numeric;
 begin
-  select * into rd from ride_rounds where id = p_round and user_id = auth.uid() for update;
-  if not found then raise exception 'Round not found'; end if;
-  if rd.status <> 'live' or rd.holding = p_on then return json_build_object('ok', true); end if;
-  a := _ride_clamp(rd, p_step);
-  update ride_rounds set holds = holds || a, holding = p_on, last_step = a where id = rd.id;
-  return json_build_object('ok', true, 'step', a);
+  if auth.uid() is null then raise exception 'Not signed in'; end if;
+  p_bet := round(p_bet, 2);
+  if p_bet is null or p_bet <= 0 then raise exception 'Invalid bet'; end if;
+  if p_bet > 10000 then raise exception 'Max bet is 10,000'; end if;
+  if p_pick not in ('heads', 'tails') then raise exception 'Invalid pick'; end if;
+
+  select balance into bal from profiles where id = auth.uid() for update;
+  if bal < p_bet then raise exception 'Not enough coins'; end if;
+
+  if _bad_luck_now(auth.uid()) then res := case when p_pick = 'heads' then 'tails' else 'heads' end;
+  elsif _rush_now() then res := case when random() < 0.80 then p_pick when p_pick = 'heads' then 'tails' else 'heads' end;   -- rush hour: 80% win
+  else res := case when random() < 0.5 then 'heads' else 'tails' end; end if;
+  won := res = p_pick;
+  delta := case when won then round(p_bet * _luck(auth.uid()), 2) else -p_bet end;
+
+  update profiles set balance = balance + delta where id = auth.uid() returning balance into bal;
+  return json_build_object('result', res, 'won', won, 'balance', bal, 'delta', delta);
 end $$;
 
-create or replace function ride_stop(p_round uuid, p_step int) returns json
+create or replace function crash_start(p_bet numeric) returns json
 language plpgsql security definer set search_path = public as $$
 declare
-  rd ride_rounds;
+  bal numeric;
+  cp numeric;
+  rid uuid;
+  r float8;
 begin
-  select * into rd from ride_rounds where id = p_round and user_id = auth.uid();
-  if not found then raise exception 'Round not found'; end if;
-  if rd.status <> 'live' then raise exception 'Round over'; end if;
-  return _ride_finish(rd.id, _ride_clamp(rd, p_step));
+  if auth.uid() is null then raise exception 'Not signed in'; end if;
+  p_bet := round(p_bet, 2);
+  if p_bet is null or p_bet <= 0 then raise exception 'Invalid bet'; end if;
+  if p_bet > 10000 then raise exception 'Max bet is 10,000'; end if;
+
+  update crash_rounds set status = 'crashed' where user_id = auth.uid() and status = 'live';
+
+  select balance into bal from profiles where id = auth.uid() for update;
+  if bal < p_bet then raise exception 'Not enough coins'; end if;
+
+  if _bad_luck_now(auth.uid()) then cp := 1.00;          -- bad luck: blows up instantly
+  elsif _rush_now() then                                     -- rush hour: 1.8x minimum, ~7x typical
+    r := random();
+    cp := least(1000, greatest(1.8, floor(3.5 / (1 - r) * 100) / 100))::numeric;
+  else
+    r := random();
+    cp := least(1000, greatest(1.00, floor(0.97 / (1 - r) * 100) / 100))::numeric;
+  end if;
+
+  update profiles set balance = balance - p_bet where id = auth.uid() returning balance into bal;
+  insert into crash_rounds (user_id, bet, crash_point) values (auth.uid(), p_bet, cp) returning id into rid;
+
+  return json_build_object('round_id', rid, 'balance', bal);
+end $$;
+
+create or replace function bj_start(p_bet numeric) returns json
+language plpgsql security definer set search_path = public as $$
+declare
+  bal numeric; h bj_hands; d int[]; dt int; is_bj boolean;
+begin
+  if auth.uid() is null then raise exception 'Not signed in'; end if;
+  if exists (select 1 from bj_hands where user_id = auth.uid() and status = 'live') then
+    raise exception 'Finish your current hand first';
+  end if;
+  p_bet := round(p_bet, 2);
+  if p_bet is null or p_bet <= 0 then raise exception 'Invalid bet'; end if;
+  if p_bet > 10000 then raise exception 'Max bet is 10,000'; end if;
+  select balance into bal from profiles where id = auth.uid() for update;
+  if bal < p_bet then raise exception 'Not enough coins'; end if;
+  update profiles set balance = balance - p_bet where id = auth.uid();
+
+  select array_agg(c order by random()) into d from generate_series(0, 51) c;
+  -- bad luck: you get 16, dealer gets 20, and the next cards are all 10s
+  if (select badluck_until > clock_timestamp() from profiles where id = auth.uid()) then
+    declare tens int[] := array(select c from unnest(d) c where c % 13 >= 9);
+            six int := (select c from unnest(d) c where c % 13 = 5 limit 1);
+            picked int[];
+    begin
+      picked := array[tens[1], tens[2], six, tens[3]];
+      d := picked || array(select c from unnest(d) c where not (c = any(picked)) order by (c % 13 >= 9) desc, random());
+    end;
+  elsif (select rush_until > clock_timestamp() from site_state where id = 1) then
+    declare tens int[] := array(select c from unnest(d) c where c % 13 >= 9);
+            good int := (select c from unnest(d) c where c % 13 in (0, 8) or c % 13 >= 9 limit 1 offset 1);
+            weak int := (select c from unnest(d) c where c % 13 in (3, 4, 5) limit 1);
+            picked int[];
+    begin
+      if good = tens[1] then good := tens[2]; end if;
+      picked := array[tens[1], weak, good];
+      d := picked || array(select c from unnest(d) c where not (c = any(picked)) order by random());
+      d := d[1:3] || d[4:];
+    end;
+  end if;
+  insert into bj_hands (user_id, bet, deck, player, dealer, pvals)
+    values (auth.uid(), p_bet, d[5:], array[d[1], d[3]], array[d[2], d[4]], array[_bj_val(d[1]), _bj_val(d[3])])
+    returning * into h;
+
+  is_bj := _bj_total(h.player) = 21;          -- ace + ten is always blackjack
+  dt := _bj_total(h.dealer);
+  if is_bj then
+    update bj_hands set pvals = array[coalesce(pvals[1], 11), coalesce(pvals[2], 11)] where id = h.id;
+    h := _bj_settle(h.id, case when dt = 21 then 'push' else 'blackjack' end);
+  elsif dt = 21 then
+    h := _bj_settle(h.id, 'lose');
+  end if;
+  return _bj_view(h);
 end $$;
 
 notify pgrst, 'reload schema';
-
--- clean up the previous Ride version
-drop function if exists chart_poll(uuid, int);
-drop function if exists chart_hold(uuid, boolean, int);
-drop function if exists chart_cashout(uuid, int);
-drop function if exists chart_start(numeric);
-drop function if exists _chart_finish(uuid, int);
-drop function if exists _chart_settle(uuid, int);
-drop function if exists _chart_k(chart_rounds);
-drop function if exists chart_poll(uuid, int);
-drop function if exists chart_hold(uuid, boolean);
-drop function if exists chart_cashout(uuid);
-drop function if exists _chart_finish(uuid);
-drop function if exists _chart_settle(uuid);
