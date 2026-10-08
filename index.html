@@ -188,7 +188,7 @@ tr.me td{color:var(--accent)}
       <button class="ghost" id="modOpen" hidden>Mod</button>
       <div class="bal"><i></i><span id="balance">0.00</span></div>
       <button class="ghost daily" id="daily" disabled>Daily</button>
-      <button class="ghost" id="giftOpen" hidden>Gift</button>
+      <button class="ghost" id="giftOpen">Gift</button>
       <button class="ghost" id="refill" hidden>Refill</button>
       <button class="ghost" id="logout">Sign out</button>
     </div>
@@ -887,10 +887,11 @@ $('rbYes').onclick = async () => {
 
 /* ---------- gifting ---------- */
 const giftable = () => Math.max(0, Math.floor((balance - 1000) * 100) / 100);
-function openGift(name){
+async function openGift(name){
   $('giftTo').value = name || '';
   $('giftAmt').value = '';
   $('giftHint').textContent = `You can send up to ${fmt(giftable())} (coins above 1,000).`;
+  sb.rpc('gifts_left').then(({ data }) => { if (data != null) $('giftHint').textContent = `You can send up to ${fmt(giftable())} (coins above 1,000). ${data} of 10 gifts left today.`; });
   $('giftModal').hidden = false;
   (name ? $('giftAmt') : $('giftTo')).focus();
 }
@@ -905,7 +906,7 @@ $('giftForm').onsubmit = async e => {
   if (error) return toast(error.message);
   setBalance(data.balance);
   $('giftModal').hidden = true;
-  toast(`Sent ${fmt(data.amount)} to ${data.to}`);
+  toast(`Sent ${fmt(data.amount)} to ${data.to} (${data.left} gifts left today)`);
 };
 async function checkGifts(){
   if (!user) return;
