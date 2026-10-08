@@ -459,6 +459,8 @@ tr.me td{color:var(--accent)}
       <input id="adminCost" type="number" min="0.01" step="0.01" placeholder="Amount">
     </div>
     <div style="display:flex;gap:8px"><button type="button" class="go" id="adminGive" style="flex:1">Gift coins</button><button type="button" class="go" id="adminTake" style="flex:1">Take coins</button></div>
+    <button type="button" class="ghost" id="adminGiftLog" style="width:100%;padding:10px;margin-top:18px">Gift log (player above, or everyone if blank)</button>
+    <div id="giftLog" hidden style="max-height:260px;overflow:auto;margin-top:8px;border:1px solid var(--line);border-radius:10px;font-size:13px"></div>
     <div class="field" style="margin-top:18px">
       <label>Site notice (empty = hidden)</label>
       <input id="adminNotice" type="text" maxlength="200" placeholder="Message everyone sees">
@@ -605,6 +607,24 @@ $('adminGive').onclick = async () => {
   if (error) { adminStatus(error.message, false); return toast(error.message); }
   { const _m = `Gave ${fmt(data.gave)} to ${data.user} (now ${fmt(data.balance)})`; adminStatus(_m, true); toast(_m); }
   if (data.user.toLowerCase() === $('who').textContent.toLowerCase()) setBalance(data.balance);
+};
+
+$('adminGiftLog').onclick = async () => {
+  const box = $('giftLog'), who = $('adminUser').value.trim();
+  box.hidden = false; box.textContent = 'Loading...';
+  const { data, error } = await sb.rpc('admin_gift_log', { p_user: who || null });
+  if (error) { box.textContent = error.message; return; }
+  if (!data.length) { box.textContent = 'No gifts' + (who ? ' for ' + who : ''); return; }
+  box.innerHTML = '';
+  const esc = x => String(x).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  for (const g of data) {
+    const d = document.createElement('div');
+    d.style.cssText = 'display:flex;gap:8px;padding:6px 10px;border-bottom:1px dashed var(--line)';
+    const when = new Date(g.at).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+    const amt = Number(g.amount);
+    d.innerHTML = `<span style="color:var(--muted);white-space:nowrap">${esc(when)}</span><span style="flex:1;min-width:0;overflow-wrap:anywhere"><b>${esc(g.from_user)}</b> → <b>${esc(g.to_user)}</b></span><span style="white-space:nowrap;font-family:'IBM Plex Mono',monospace">${isFinite(amt) ? short(amt) : 'NaN'}</span>`;
+    box.appendChild(d);
+  }
 };
 
 /* ---------- blackjack ---------- */
