@@ -428,8 +428,8 @@ tr.me td{color:var(--accent)}
       <label>Player</label>
       <input id="adminUser" type="text" maxlength="20" autocapitalize="off" spellcheck="false" autocomplete="off">
     </div>
-    <button type="button" class="go rebirth-go" id="adminBoost">Boost 5 min (free)</button>
-    <p class="hint" style="margin:6px 0 18px">Nonstop pump in Ride for 5 minutes. Stacks.</p>
+    <button type="button" class="go rebirth-go" id="adminBoost">Boost 3 min (free)</button>
+    <p class="hint" style="margin:6px 0 18px">Nonstop pump in Ride for 3 minutes. Stacks.</p>
     <button type="button" class="go" id="adminRush" style="background:linear-gradient(90deg,var(--gold),#ff8a3c);color:#2a1d00">Rush hour 3 min (everyone)</button>
     <p class="hint" style="margin:6px 0 18px">Way more luck in every game for everyone. Stacks. <a href="#" id="adminRushStop" style="color:var(--muted)">End rush hour</a></p>
     <button type="button" class="go" id="adminBad" style="background:#6b4bd6">Bad luck 1 min</button>
@@ -561,7 +561,7 @@ setInterval(async () => {
   if (!user) return;
   const { data } = await sb.from('profiles').select('boost_until').eq('id', user.id).single();
   const t = data?.boost_until ? new Date(data.boost_until).getTime() : 0;
-  if (t > boostUntil && t > Date.now()) toast('You got a 5 minute BOOST! Start a Ride round.');
+  if (t > boostUntil && t > Date.now()) toast('You got a 3 minute BOOST! Start a Ride round.');
   boostUntil = t;
 }, 15000);
 

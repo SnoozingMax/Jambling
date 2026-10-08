@@ -1244,7 +1244,7 @@ begin
    where lower(username) = lower(trim(p_user)) order by created_at limit 1;
   if them is null then raise exception 'No player named %', p_user; end if;
   update profiles
-     set boost_until = least(greatest(coalesce(boost_until, clock_timestamp()), clock_timestamp()) + interval '5 minutes',
+     set boost_until = least(greatest(coalesce(boost_until, clock_timestamp()), clock_timestamp()) + interval '3 minutes',
                              clock_timestamp() + interval '30 minutes')
    where id = them returning boost_until into until;
   return json_build_object('user', them_name, 'until', until);
