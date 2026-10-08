@@ -272,7 +272,7 @@ tr.me td{color:var(--accent)}
     <div class="card">
       <div class="field">
         <label>Bet</label>
-        <input id="rideBet" type="number" min="0.01" step="0.01" value="10">
+        <input id="rideBet" type="number" min="0.01" max="100000" step="0.01" value="10">
         <div class="chips" data-for="rideBet">
           <button data-op="half">½</button><button data-op="double">2×</button><button data-op="max">Max</button>
         </div>
@@ -280,7 +280,7 @@ tr.me td{color:var(--accent)}
       <button class="go" id="rideStart">Start</button>
       <button class="holdbtn" id="holdBtn" hidden>HOLD</button>
       <button class="go cash" id="rideCash" hidden style="margin-top:10px">Stop</button>
-      <div class="hint">Hold to ride: while you hold, your bet moves with the chart. Let go to lock it in. Each hold costs 1%. Press Stop to cash out.</div>
+      <div class="hint">Hold to ride: while you hold, your bet moves with the chart. Let go to lock it in. Each hold costs 1%. Max bet 100k. Press Stop to cash out.</div>
       <div class="warn">Closing the tab mid-round stops your bet (like pressing Stop).</div>
     </div>
     <div class="card" style="padding:10px">
@@ -1003,7 +1003,7 @@ document.querySelectorAll('.chips').forEach(c => c.onclick = e => {
   if (op === 'half') v = v / 2;
   if (op === 'double') v = v * 2;
   if (op === 'max') v = balance;
-  const cap = balance;
+  const cap = inp.id === 'rideBet' ? Math.min(balance, 100000) : balance;
   inp.value = (Math.floor(Math.min(v, cap) * 100) / 100).toFixed(2);
 });
 
@@ -1308,6 +1308,7 @@ const loadColors = () => { C = { win: css('--win'), lose: css('--lose'), mut: cs
 
 $('rideStart').onclick = async () => {
   const bet = readBet('rideBet'); if (!bet) return;
+  if (bet > 100000) return toast('Max Ride bet is 100,000');
   $('rideStart').disabled = true;
   const { data, error } = await sb.rpc('ride_start', { p_bet: bet, p_ver: RIDE_VERSION });
   $('rideStart').disabled = false;
