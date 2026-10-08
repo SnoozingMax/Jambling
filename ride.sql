@@ -69,11 +69,11 @@ begin
       arr := arr || p;
       continue;
     end if;
-    if ev_left = 0 and rug = 0 and u3 > (case when i <= p_rush then 0.98 else 0.99 end) then
-      if u2 < (case when i <= p_rush then 0.8 else 0.45 end) then   -- rush hour: way more pumps, no rugs                                   -- pump: +65% to +170% over 3-7s. 15% rug-pull partway
+    if ev_left = 0 and rug = 0 and u3 > (case when i <= p_rush then 0.96 else 0.99 end) then
+      if u2 < (case when i <= p_rush then 0.92 else 0.45 end) then   -- rush hour: way more pumps, no rugs                                   -- pump: +65% to +170% over 3-7s. 15% rug-pull partway
         ev_dir := 1;
         d := 30 + floor(u1 * 41)::int;
-        size := 0.5 + 0.5 * (u1 * 53 - floor(u1 * 53));
+        size := case when i <= p_rush then 0.8 + 0.7 * (u1 * 53 - floor(u1 * 53)) else 0.5 + 0.5 * (u1 * 53 - floor(u1 * 53)) end;   -- rush: bigger pumps
         w := 0;
         for j in 1..d loop x := (j - 0.5) / d; w := w + x * (1 - x); end loop;
         base := p;
@@ -85,7 +85,7 @@ begin
       else                                                -- dump: -14% to -33%, random length, hits hardest first
         ev_dir := -1;
         d := 5 + floor((u1 * 13 - floor(u1 * 13)) * 18)::int;
-        size := 0.15 + 0.25 * (u1 * 53 - floor(u1 * 53));
+        size := (case when i <= p_rush then 0.5 else 1 end) * (0.15 + 0.25 * (u1 * 53 - floor(u1 * 53)));   -- rush: half-size dumps
         w := (d * (d + 1))::float8 / 2;
       end if;
       ev_left := d;
@@ -134,7 +134,7 @@ begin
 end $$;
 
 -- bump this whenever the chart math changes; must match RIDE_VERSION in index.html
-create or replace function ride_version() returns int language sql immutable as $$ select 35 $$;
+create or replace function ride_version() returns int language sql immutable as $$ select 36 $$;
 
 -- pay out a round at step a (internal: never callable from the browser)
 create or replace function _ride_finish(p_id uuid, a int) returns json
