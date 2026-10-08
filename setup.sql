@@ -740,6 +740,7 @@ begin
   end if;
   p_bet := round(p_bet, 2);
   if p_bet is null or p_bet <= 0 then raise exception 'Invalid bet'; end if;
+  if p_bet > 100000 then raise exception 'Max bet is 100,000'; end if;
   select balance into bal from profiles where id = auth.uid() for update;
   if bal < p_bet then raise exception 'Not enough coins'; end if;
   update profiles set balance = balance - p_bet where id = auth.uid();
@@ -1442,6 +1443,7 @@ begin
   if auth.uid() is null then raise exception 'Not signed in'; end if;
   p_bet := round(p_bet, 2);
   if p_bet is null or p_bet <= 0 then raise exception 'Invalid bet'; end if;
+  if p_bet > 100000 then raise exception 'Max bet is 100,000'; end if;
   if p_pick not in ('heads', 'tails') then raise exception 'Invalid pick'; end if;
 
   select balance into bal from profiles where id = auth.uid() for update;
@@ -1469,6 +1471,7 @@ begin
   if auth.uid() is null then raise exception 'Not signed in'; end if;
   p_bet := round(p_bet, 2);
   if p_bet is null or p_bet <= 0 then raise exception 'Invalid bet'; end if;
+  if p_bet > 100000 then raise exception 'Max bet is 100,000'; end if;
 
   update crash_rounds set status = 'crashed' where user_id = auth.uid() and status = 'live';
 

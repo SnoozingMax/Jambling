@@ -507,6 +507,7 @@ function toast(msg){ const t = $('toast'); t.textContent = msg; t.classList.add(
 function readBet(id){
   const v = Math.round(parseFloat($(id).value) * 100) / 100;
   if (!(v > 0)) { toast('Enter a bet'); return 0; }
+  if (v > 100000) { toast('Max bet is 100,000'); return 0; }
   if (v > balance) { toast('Not enough coins'); return 0; }
   return v;
 }
@@ -1003,7 +1004,7 @@ document.querySelectorAll('.chips').forEach(c => c.onclick = e => {
   if (op === 'half') v = v / 2;
   if (op === 'double') v = v * 2;
   if (op === 'max') v = balance;
-  const cap = inp.id === 'rideBet' ? Math.min(balance, 100000) : balance;
+  const cap = Math.min(balance, 100000);
   inp.value = (Math.floor(Math.min(v, cap) * 100) / 100).toFixed(2);
 });
 
@@ -1308,7 +1309,6 @@ const loadColors = () => { C = { win: css('--win'), lose: css('--lose'), mut: cs
 
 $('rideStart').onclick = async () => {
   const bet = readBet('rideBet'); if (!bet) return;
-  if (bet > 100000) return toast('Max Ride bet is 100,000');
   $('rideStart').disabled = true;
   const { data, error } = await sb.rpc('ride_start', { p_bet: bet, p_ver: RIDE_VERSION });
   $('rideStart').disabled = false;
