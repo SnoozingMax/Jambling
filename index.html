@@ -1484,7 +1484,7 @@ async function loadBoard(){
     x = boardMode === 'rebirths'
       ? x.order('rebirths', { ascending: false }).order('balance', { ascending: false })
       : x.order('balance', { ascending: false });
-    return x.limit(50);
+    return x.range(0, 9999);
   };
   let { data, error } = await q(true);
   if (error) ({ data, error } = await q(false));   // works even before ban.sql is run
@@ -1506,12 +1506,12 @@ async function loadPast(){
     b.onclick = () => { pastSeason = x.id; loadPast(); };
     pick.appendChild(b);
   });
-  const { data: rows, error: e2 } = await sb.from('season_results').select('user_id,username,balance,rebirths,rank').eq('season_id', pastSeason).order('rank').limit(200);
+  const { data: rows, error: e2 } = await sb.from('season_results').select('user_id,username,balance,rebirths,rank').eq('season_id', pastSeason).order('rank').range(0, 9999);
   if (e2) return toast(e2.message);
   $('board').innerHTML = '';
   const mine = rows.find(r => r.user_id === user.id);
   if (mine) { $('pastMine').hidden = false; $('pastMine').innerHTML = `You finished <b>#${mine.rank}</b> with <b>${short(mine.balance)}</b> coins and <b>▲${mine.rebirths}</b>`; }
-  rows.slice(0, 50).forEach((r, i) => $('board').appendChild(boardRow(r.rank - 1, r, r.user_id === user.id, short(r.balance))));
+  rows.forEach((r, i) => $('board').appendChild(boardRow(r.rank - 1, r, r.user_id === user.id, short(r.balance))));
 }
 
 /* ---------- admin: rename / rebirths / season ---------- */
