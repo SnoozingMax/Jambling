@@ -455,10 +455,10 @@ tr.me td{color:var(--accent)}
       <div style="display:flex;gap:8px"><input id="adminRb" type="number" min="1" step="1" placeholder="How many"><button type="button" class="ghost" id="adminTakeRb" style="white-space:nowrap">Take</button></div>
     </div>
     <div class="field">
-      <label>Take coins</label>
+      <label>Coins</label>
       <input id="adminCost" type="number" min="0.01" step="0.01" placeholder="Amount">
     </div>
-    <button type="button" class="go" id="adminTake">Take coins</button>
+    <div style="display:flex;gap:8px"><button type="button" class="go" id="adminGive" style="flex:1">Gift coins</button><button type="button" class="go" id="adminTake" style="flex:1">Take coins</button></div>
     <div class="field" style="margin-top:18px">
       <label>Site notice (empty = hidden)</label>
       <input id="adminNotice" type="text" maxlength="200" placeholder="Message everyone sees">
@@ -590,6 +590,17 @@ $('adminTake').onclick = async () => {
   if (data.user.toLowerCase() === $('who').textContent.toLowerCase()) setBalance(data.balance);
 };
 
+$('adminGive').onclick = async () => {
+  const n = adminName(); if (!n) return;
+  const amt = parseFloat($('adminCost').value);
+  if (!(amt > 0)) return toast('Enter an amount');
+  $('adminGive').disabled = true;
+  const { data, error } = await sb.rpc('admin_give', { p_user: n, p_amount: amt });
+  $('adminGive').disabled = false;
+  if (error) { adminStatus(error.message, false); return toast(error.message); }
+  { const _m = `Gave ${fmt(data.gave)} to ${data.user} (now ${fmt(data.balance)})`; adminStatus(_m, true); toast(_m); }
+  if (data.user.toLowerCase() === $('who').textContent.toLowerCase()) setBalance(data.balance);
+};
 
 /* ---------- blackjack ---------- */
 let bj = null;
