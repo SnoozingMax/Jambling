@@ -188,7 +188,7 @@ tr.me td{color:var(--accent)}
       <button class="ghost" id="modOpen" hidden>Mod</button>
       <div class="bal"><i></i><span id="balance">0.00</span></div>
       <button class="ghost daily" id="daily" disabled>Daily</button>
-      <button class="ghost" id="giftOpen">Gift</button>
+      <button class="ghost" id="giftOpen" hidden>Gift</button>
       <button class="ghost" id="refill" hidden>Refill</button>
       <button class="ghost" id="logout">Sign out</button>
     </div>
@@ -1491,7 +1491,6 @@ async function loadBoard(){
   if (error) return toast(error.message);
   data.forEach((p, i) => {
     const tr = boardRow(i, p, p.id === user.id, boardMode === 'rebirths' ? '▲' + (p.rebirths || 0) : short(p.balance));
-    if (p.id !== user.id) { tr.style.cursor = 'pointer'; tr.title = 'Gift ' + p.username; tr.onclick = () => openGift(p.username); }
     $('board').appendChild(tr);
   });
 }
