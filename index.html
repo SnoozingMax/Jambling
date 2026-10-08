@@ -671,7 +671,7 @@ $('refill').onclick = async () => {
   if (bj && bj.status === 'live') return toast('Finish your Blackjack hand first');
   const { data, error } = await sb.rpc('claim_refill');
   if (error) { adminStatus(error.message, false); return toast(error.message); }
-  setBalance(data.balance); toast('Refilled to 100');
+  setBalance(data.balance); toast('Refilled to 500');
 };
 
 /* ---------- site notice + change your name ---------- */
