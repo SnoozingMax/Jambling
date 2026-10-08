@@ -53,10 +53,10 @@ begin
     if u3 < 0.004 then heat := 3; end if;                 -- wild phase
     heat := 1 + (heat - 1) * 0.97;
     vol := heat * 2;
-    if i <= p_bad then                                    -- bad luck: little pump, then rug pull, forever
-      k := (i - 1) % 10;
-      if k < 6 then p := p * exp(0.01 + (u2 - 0.5) * 0.006);
-      elsif k < 9 then p := p * exp(ln(0.6) / 3);
+    if i <= p_bad then                                    -- bad luck: fake chop, then a rug to 40%, every 0.6s
+      k := (i - 1) % 6;
+      if k < 3 then p := p * exp((u2 - 0.5) * 0.01);
+      else p := p * exp(ln(0.4) / 3);
       end if;
       ev_left := 0; rug := 0; v := 0;
       p := least(greatest(p, 1e-200), 1e200);
@@ -134,7 +134,7 @@ begin
 end $$;
 
 -- bump this whenever the chart math changes; must match RIDE_VERSION in index.html
-create or replace function ride_version() returns int language sql immutable as $$ select 34 $$;
+create or replace function ride_version() returns int language sql immutable as $$ select 35 $$;
 
 -- pay out a round at step a (internal: never callable from the browser)
 create or replace function _ride_finish(p_id uuid, a int) returns json

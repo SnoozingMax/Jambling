@@ -1204,7 +1204,7 @@ window.addEventListener('resize', () => { if (!round && !ghost) drawGraph(1); })
 // The chart comes from a server seed, so it's drawn locally with zero lag.
 // MUST match _ride_path() in ride.sql.
 const STEP_MS = 100, WINDOW = 120; // 12s visible
-const RIDE_VERSION = 34;            // must match ride_version() in ride.sql
+const RIDE_VERSION = 35;            // must match ride_version() in ride.sql
 function ridePath(seed, boost = 0, bad = 0, rush = 0){
   let s = Number(seed), v = 0, p = 100, heat = 1;
   let evLeft = 0, evDir = 0, D = 0, size = 0, W = 1, cut = -1, rug = 0, base = 100;
@@ -1217,13 +1217,13 @@ function ridePath(seed, boost = 0, bad = 0, rush = 0){
       if (u3 < 0.004) heat = 3;                      // wild phase
       heat = 1 + (heat - 1) * 0.97;
       const vol = heat * 2;
-      if (arr.length <= bad) {                       // bad luck: little pump, then rug pull, forever
-        const k = (arr.length - 1) % 10;
-        if (k < 6) p = p * Math.exp(0.01 + (u2 - 0.5) * 0.006);
-        else if (k < 9) p = p * Math.exp(Math.log(0.6) / 3);
+      if (arr.length <= bad) {                       // bad luck: fake chop, then a rug to 40%, every 0.6s
+        const k = (arr.length - 1) % 6;
+        if (k < 3) p = p * Math.exp((u2 - 0.5) * 0.01);
+        else p = p * Math.exp(Math.log(0.4) / 3);
         evLeft = 0; rug = 0; v = 0;
         p = Math.min(Math.max(p, 1e-200), 1e200);
-        arr.push(p); arr.ev.push(k < 6 ? 1 : k < 9 ? -2 : 0); arr.heat.push(heat);
+        arr.push(p); arr.ev.push(k < 3 ? 0 : -2); arr.heat.push(heat);
         continue;
       }
       if (arr.length <= boost) {                     // admin boost: fast nonstop pump (~+22%/s), no dumps
