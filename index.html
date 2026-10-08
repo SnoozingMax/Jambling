@@ -562,8 +562,13 @@ setInterval(async () => {
   const { data } = await sb.from('profiles').select('boost_until').eq('id', user.id).single();
   const t = data?.boost_until ? new Date(data.boost_until).getTime() : 0;
   if (t > boostUntil && t > Date.now()) toast('You got a 3 minute BOOST! Start a Ride round.');
+  const removed = boostUntil > Date.now() && t < boostUntil - 1000;
   boostUntil = t;
-}, 15000);
+  if (removed) {
+    toast('Your boost was removed');
+    if (ride && !ride.done && ride.boost > 0) $('rideCash').onclick();   // server already refunded it; this resets the screen
+  }
+}, 4000);
 
 /* ---------- admin ---------- */
 $('adminOpen').onclick = () => { $('adminModal').hidden = false; $('adminUser').focus(); };
@@ -848,6 +853,7 @@ async function clearEffect(name, kind, report){
   if (!name) return report('Enter a player name first', false);
   const { data, error } = await sb.rpc('clear_effect', { p_user: name, p_kind: kind });
   if (error) return report(error.message, false);
+  if (kind === 'boost' && data.user.toLowerCase() === $('who').textContent.toLowerCase()) boostUntil = 0;
   report(`Removed ${kind === 'boost' ? 'boost' : 'bad luck'} from ${data.user}` + (Number(data.refunded) > 0 ? ` · refunded ${fmt(data.refunded)} from rounds in progress` : ''), true);
 }
 const adminReport = (m, ok) => { adminStatus(m, ok); toast(m); };
@@ -1288,7 +1294,7 @@ $('rideStart').onclick = async () => {
   if (error) return toast(error.message);
   setBalance(data.balance);
   loadColors();
-  ride = { id: data.round_id, bet, path: ridePath(data.seed, data.boost_steps || 0, data.bad_steps || 0, data.rush_steps || 0), t0: performance.now(), cur: 0,
+  ride = { id: data.round_id, bet, boost: data.boost_steps || 0, path: ridePath(data.seed, data.boost_steps || 0, data.bad_steps || 0, data.rush_steps || 0), t0: performance.now(), cur: 0,
            spans: [], holding: false, done: false, q: Promise.resolve(), lo: Math.log(95), hi: Math.log(105) };
   lastRide = ride;
   $('rideStart').hidden = true; $('holdBtn').hidden = false; $('rideCash').hidden = false;
