@@ -634,10 +634,13 @@ async function loadWaiting(){
     const no = document.createElement('button'); no.type = 'button'; no.className = 'ghost'; no.textContent = 'Reject';
     no.style.cssText = 'border-color:var(--lose);color:var(--lose)';
     const act = async ok => {
-      if (!ok && !confirm(`Reject ${w.username}? This deletes their account.`)) return;
+      // confirm() is blocked inside the Google Site embed, so Reject asks by changing its own label instead
+      if (!ok && no.dataset.sure !== '1') { no.dataset.sure = '1'; no.textContent = 'Sure? Tap again'; setTimeout(() => { no.dataset.sure = ''; no.textContent = 'Reject'; }, 4000); return; }
       yes.disabled = no.disabled = true;
-      const { data: d, error: e } = await sb.rpc('admin_approve', { p_user: w.username, p_ok: ok });
-      if (e) { adminStatus(e.message, false); toast(e.message); yes.disabled = no.disabled = false; return; }
+      let d, e;
+      try { ({ data: d, error: e } = await sb.rpc('admin_approve', { p_user: w.username, p_ok: ok })); }
+      catch (x) { e = { message: String(x.message || x) }; }
+      if (e || !d) { const m = (e && e.message) || 'Didn\'t work. Run waiting.sql in Supabase.'; adminStatus(m, false); toast(m); yes.disabled = no.disabled = false; return; }
       const m = ok ? `Accepted ${d.user}` : `Rejected ${d.user} (account deleted)`; adminStatus(m, true); toast(m);
       loadWaiting();
     };
