@@ -2065,3 +2065,289 @@ begin
 end $$;
 
 notify pgrst, 'reload schema';
+
+-- ================= Ride v4: streamed chart (seed stays secret) =================
+-- (ride_feed), so nobody can see what's coming. Holds are reported live; Stop replays the chart to pay out.
+
+alter table profiles add column if not exists rebirths int not null default 0;
+
+create table if not exists ride_rounds (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references profiles(id) on delete cascade,
+  bet numeric not null,
+  seed bigint not null,
+  started_at timestamptz not null default clock_timestamp(),
+  status text not null default 'live',
+  holds int[] not null default '{}',   -- start,end,start,end,... (steps of 100ms)
+  holding boolean not null default false,
+  last_step int not null default 0,
+  mult float8,
+  payout numeric
+);
+alter table ride_rounds enable row level security;
+alter table ride_rounds add column if not exists boost_steps int not null default 0;
+alter table ride_rounds add column if not exists bad_steps int not null default 0;
+alter table ride_rounds add column if not exists rush_steps int not null default 0;
+create table if not exists site_state (id int primary key default 1 check (id = 1), rush_until timestamptz);
+insert into site_state (id) values (1) on conflict do nothing;
+alter table profiles add column if not exists badluck_until timestamptz;
+alter table profiles add column if not exists boost_until timestamptz;
+
+-- the chart: momentum random walk. MUST match ridePath() in index.html
+drop function if exists _ride_path(bigint, int);
+drop function if exists _ride_path(bigint, int, int);
+drop function if exists _ride_path(bigint, int, int, int);
+drop function if exists _ride_gen(bigint, int, int, int, int);
+create or replace function _ride_gen(p_seed bigint, n int, p_boost int default 0, p_bad int default 0, p_rush int default 0,
+  out px float8[], out evs int[], out heats float8[])
+language plpgsql immutable as $$
+declare
+  s bigint := p_seed;
+  v float8 := 0;
+  p float8 := 100;
+  heat float8 := 1;
+  vol float8;
+  u1 float8; u2 float8; u3 float8;
+  ev_left int := 0; ev_dir float8 := 0; d int := 0;
+  size float8 := 0; w float8 := 1; x float8; drift float8;
+  cut int := -1; rug int := 0; base float8 := 100;
+  k int; ev int; done boolean;
+  arr float8[] := array[100.0];
+  ea int[] := array[0];
+  ha float8[] := array[1.0];
+  evc int;
+begin
+  for i in 1..n loop
+    s := (s * 48271) % 2147483647; u1 := s::float8 / 2147483647;
+    s := (s * 48271) % 2147483647; u2 := s::float8 / 2147483647;
+    s := (s * 48271) % 2147483647; u3 := s::float8 / 2147483647;
+    if u3 < 0.004 then heat := 3; end if;                 -- wild phase
+    heat := 1 + (heat - 1) * 0.97;
+    vol := heat * 2;
+    if i <= p_bad then                                    -- bad luck: fake chop, then a rug to 40%, every 0.6s
+      k := (i - 1) % 6;
+      if k < 3 then p := p * exp((u2 - 0.5) * 0.01);
+      else p := p * exp(ln(0.4) / 3);
+      end if;
+      ev_left := 0; rug := 0; v := 0;
+      p := least(greatest(p, 1e-200), 1e200);
+      arr := arr || p; ea := ea || (case when k < 3 then 0 else -2 end); ha := ha || heat;
+      continue;
+    end if;
+    if i <= p_boost then                                  -- admin boost: fast nonstop pump (~+22%/s), no dumps
+      p := least(p * exp(0.02 + (u2 - 0.5) * 0.02), 1e200);
+      ev_left := 0; rug := 0; v := 0;
+      arr := arr || p; ea := ea || 2; ha := ha || heat;
+      continue;
+    end if;
+    if ev_left = 0 and rug = 0 and u3 > (case when i <= p_rush then 0.97 else 0.99 end) then
+      if u2 < (case when i <= p_rush then 0.88 else 0.45 end) then   -- rush hour: way more pumps, no rugs                                   -- pump: +65% to +170% over 3-7s. 15% rug-pull partway
+        ev_dir := 1;
+        d := 30 + floor(u1 * 41)::int;
+        size := case when i <= p_rush then 0.7 + 0.6 * (u1 * 53 - floor(u1 * 53)) else 0.5 + 0.5 * (u1 * 53 - floor(u1 * 53)) end;   -- rush: bigger pumps
+        w := 0;
+        for j in 1..d loop x := (j - 0.5) / d; w := w + x * (1 - x); end loop;
+        base := p;
+        if i > p_rush and (u1 * 97 - floor(u1 * 97)) < 0.15 then
+          cut := 3 + floor((u1 * 331 - floor(u1 * 331)) * (d - 3))::int;
+        else
+          cut := -1;
+        end if;
+      else                                                -- dump: -14% to -33%, random length, hits hardest first
+        ev_dir := -1;
+        d := 5 + floor((u1 * 13 - floor(u1 * 13)) * 18)::int;
+        size := (case when i <= p_rush then 0.7 else 1 end) * (0.15 + 0.25 * (u1 * 53 - floor(u1 * 53)));   -- rush: half-size dumps
+        w := (d * (d + 1))::float8 / 2;
+      end if;
+      ev_left := d;
+    end if;
+    ev := 0; drift := 0; done := false; evc := 0;
+    if ev_left > 0 then
+      k := d - ev_left + 1;
+      if ev_dir > 0 then
+        if k = cut then
+          ev_left := 0; rug := 3;
+        else
+          x := (k - 0.5) / d; drift := size * (x * (1 - x)) / w; ev := 1; evc := 1;
+          ev_left := ev_left - 1;
+        end if;
+      else
+        p := p * exp(-size * (d - k + 1) / w + (u2 - 0.5) * 0.012); v := 0; ev := -1; evc := -1;
+        ev_left := ev_left - 1; done := true;
+      end if;
+    end if;
+    if not done and rug > 0 and ev = 0 then              -- rug pull: crash to half of where the pump started
+      p := p * exp(ln(base * 0.5 / p) / rug);
+      rug := rug - 1; v := 0; done := true; evc := -2;
+    end if;
+    if not done then                                      -- normal chop keeps going during pumps
+      v := 0.8 * v + (u1 - 0.5) * 0.009 * vol - 0.0007 * ln(p / 100);
+      p := p * exp(v + (u2 - 0.5) * 0.035 * vol + drift);
+    end if;
+    p := least(greatest(p, 1e-200), 1e200);                -- never overflow
+    arr := arr || p; ea := ea || evc; ha := ha || heat;
+  end loop;
+  px := arr; evs := ea; heats := ha;
+end $$;
+
+create or replace function _ride_path(p_seed bigint, n int, p_boost int default 0, p_bad int default 0, p_rush int default 0) returns float8[]
+language sql immutable as $$ select (_ride_gen(p_seed, n, p_boost, p_bad, p_rush)).px $$;
+
+create or replace function _ride_k(rd ride_rounds) returns int
+language sql stable as $$
+  select floor(extract(epoch from clock_timestamp() - rd.started_at) / 0.1)::int
+$$;
+
+-- clamp a reported step to a fair window around real time
+create or replace function _ride_clamp(rd ride_rounds, p_step int) returns int
+language plpgsql stable as $$
+declare
+  k int := _ride_k(rd);
+begin
+  return greatest(least(coalesce(p_step, k), k), k - 10, rd.last_step);   -- no future steps, at most 1s back
+end $$;
+
+-- bump this whenever the chart math changes; must match RIDE_VERSION in index.html
+create or replace function ride_version() returns int language sql immutable as $$ select 38 $$;
+
+-- pay out a round at step a (internal: never callable from the browser)
+create or replace function _ride_finish(p_id uuid, a int) returns json
+language plpgsql security definer set search_path = public as $$
+declare
+  rd ride_rounds;
+  h int[];
+  path float8[];
+  m float8 := 1;
+  pay numeric;
+  bal numeric;
+begin
+  select * into rd from ride_rounds where id = p_id for update;
+  if rd.status <> 'live' then return json_build_object('payout', rd.payout); end if;
+  a := greatest(a, rd.last_step);
+  h := rd.holds;
+  if rd.holding then h := h || a; end if;
+
+  path := _ride_path(rd.seed, a, rd.boost_steps, rd.bad_steps, rd.rush_steps);
+  for i in 1 .. coalesce(array_length(h, 1), 0) / 2 loop
+    m := m * 0.99 * path[h[2*i] + 1] / path[h[2*i - 1] + 1];   -- 1% fee per hold
+  end loop;
+  if m <> m then m := 1; end if;                                -- NaN: give the bet back
+  m := least(m, 1e15);                                          -- overflow guard
+
+  pay := round((rd.bet * m)::numeric, 2);
+  if pay > rd.bet then pay := round(rd.bet + (pay - rd.bet) * (1 + 0.1 * coalesce((select rebirths from profiles where id = rd.user_id), 0)), 2); end if;  -- rebirth luck
+  pay := least(pay, rd.bet + 500000);                          -- max win 500k per round (RIDE_MAX_WIN in index.html)
+  update ride_rounds set status = 'done', holds = h, holding = false, last_step = a, mult = m, payout = pay where id = rd.id;
+  update profiles set balance = balance + pay where id = rd.user_id returning balance into bal;
+  return json_build_object('payout', pay, 'mult', m, 'balance', bal, 'step', a, 'bet', rd.bet);
+end $$;
+revoke execute on function _ride_finish(uuid, int) from public, anon, authenticated;
+
+-- settle rounds left open (tab closed): stops the bet instead of losing it.
+-- if you were holding, the hold counts until you left (max 5s after your last action).
+create or replace function ride_cleanup() returns json
+language plpgsql security definer set search_path = public as $$
+declare
+  rd ride_rounds;
+  out json := null;
+begin
+  for rd in select * from ride_rounds where user_id = auth.uid() and status = 'live' loop
+    out := _ride_finish(rd.id, case when rd.holding then least(_ride_k(rd), rd.last_step + 50) else rd.last_step end);
+  end loop;
+  return out;
+end $$;
+
+drop function if exists ride_start(numeric);
+create or replace function ride_start(p_bet numeric, p_ver int) returns json
+language plpgsql security definer set search_path = public as $$
+declare
+  bal numeric;
+  rid uuid;
+  bs int;
+  bad int;
+  rush int;
+  sd bigint := floor(random() * 2147483645)::bigint + 1;
+begin
+  if auth.uid() is null then raise exception 'Not signed in'; end if;
+  if p_ver is distinct from ride_version() then raise exception 'Ride was updated. Refresh the page.'; end if;
+  p_bet := round(p_bet, 2);
+  if p_bet is null or p_bet <= 0 then raise exception 'Invalid bet'; end if;
+  if p_bet > 10000 then raise exception 'Max bet is 10,000'; end if;
+
+  perform ride_cleanup();
+
+  select balance into bal from profiles where id = auth.uid() for update;
+  if bal < p_bet then raise exception 'Not enough coins'; end if;
+  update profiles set balance = balance - p_bet where id = auth.uid() returning balance into bal;
+  select greatest(0, floor(extract(epoch from (boost_until - clock_timestamp())) / 0.1))::int into bs
+    from profiles where id = auth.uid() and boost_until > clock_timestamp();
+  select greatest(0, floor(extract(epoch from (badluck_until - clock_timestamp())) / 0.1))::int into bad
+    from profiles where id = auth.uid() and badluck_until > clock_timestamp();
+  select greatest(0, floor(extract(epoch from (rush_until - clock_timestamp())) / 0.1))::int into rush
+    from site_state where id = 1 and rush_until > clock_timestamp();
+  insert into ride_rounds (user_id, bet, seed, boost_steps, bad_steps, rush_steps)
+    values (auth.uid(), p_bet, sd, coalesce(bs, 0), coalesce(bad, 0), coalesce(rush, 0)) returning id into rid;
+  return json_build_object('round_id', rid, 'balance', bal, 'boost_steps', coalesce(bs, 0), 'bad_steps', coalesce(bad, 0), 'rush_steps', coalesce(rush, 0));
+end $$;
+
+-- the chart, streamed: only points up to "now" (the seed stays secret so nobody can see the future)
+create or replace function ride_feed(p_round uuid, p_from int) returns json
+language plpgsql stable security definer set search_path = public as $$
+declare
+  rd ride_rounds;
+  k int;
+  a int;
+  g record;
+begin
+  select * into rd from ride_rounds where id = p_round and user_id = auth.uid();
+  if not found then raise exception 'Round not found'; end if;
+  k := case when rd.status = 'live' then _ride_k(rd) else rd.last_step end;
+  a := greatest(coalesce(p_from, 0), 0);
+  if a > k then return json_build_object('k', k, 'from', a, 'p', '[]'::json, 'ev', '[]'::json, 'heat', '[]'::json, 'live', rd.status = 'live'); end if;
+  k := least(k, a + 300);
+  g := _ride_gen(rd.seed, k, rd.boost_steps, rd.bad_steps, rd.rush_steps);
+  return json_build_object('k', k, 'from', a,
+    'p', to_json(g.px[a + 1 : k + 1]), 'ev', to_json(g.evs[a + 1 : k + 1]), 'heat', to_json(g.heats[a + 1 : k + 1]),
+    'live', rd.status = 'live');
+end $$;
+
+create or replace function ride_hold(p_round uuid, p_on boolean, p_step int) returns json
+language plpgsql security definer set search_path = public as $$
+declare
+  rd ride_rounds;
+  a int;
+begin
+  select * into rd from ride_rounds where id = p_round and user_id = auth.uid() for update;
+  if not found then raise exception 'Round not found'; end if;
+  if rd.status <> 'live' or rd.holding = p_on then return json_build_object('ok', true); end if;
+  a := _ride_clamp(rd, p_step);
+  update ride_rounds set holds = holds || a, holding = p_on, last_step = a where id = rd.id;
+  return json_build_object('ok', true, 'step', a);
+end $$;
+
+create or replace function ride_stop(p_round uuid, p_step int) returns json
+language plpgsql security definer set search_path = public as $$
+declare
+  rd ride_rounds;
+begin
+  select * into rd from ride_rounds where id = p_round and user_id = auth.uid();
+  if not found then raise exception 'Round not found'; end if;
+  if rd.status <> 'live' then raise exception 'Round over'; end if;
+  return _ride_finish(rd.id, _ride_clamp(rd, p_step));
+end $$;
+
+notify pgrst, 'reload schema';
+
+-- clean up the previous Ride version
+drop function if exists chart_poll(uuid, int);
+drop function if exists chart_hold(uuid, boolean, int);
+drop function if exists chart_cashout(uuid, int);
+drop function if exists chart_start(numeric);
+drop function if exists _chart_finish(uuid, int);
+drop function if exists _chart_settle(uuid, int);
+drop function if exists _chart_k(chart_rounds);
+drop function if exists chart_poll(uuid, int);
+drop function if exists chart_hold(uuid, boolean);
+drop function if exists chart_cashout(uuid);
+drop function if exists _chart_finish(uuid);
+drop function if exists _chart_settle(uuid);

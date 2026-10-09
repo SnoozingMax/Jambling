@@ -1246,77 +1246,22 @@ window.addEventListener('resize', () => { if (!round && !ghost) drawGraph(1); })
 // The chart comes from a server seed, so it's drawn locally with zero lag.
 // MUST match _ride_path() in ride.sql.
 const STEP_MS = 100, WINDOW = 120; // 12s visible
-const RIDE_VERSION = 37;            // must match ride_version() in ride.sql
+const RIDE_VERSION = 38;            // must match ride_version() in ride.sql
 const RIDE_MAX_WIN = 500000;        // max profit per Ride round, must match _ride_finish() in SQL
-function ridePath(seed, boost = 0, bad = 0, rush = 0){
-  let s = Number(seed), v = 0, p = 100, heat = 1;
-  let evLeft = 0, evDir = 0, D = 0, size = 0, W = 1, cut = -1, rug = 0, base = 100;
-  const arr = [100]; arr.ev = [0]; arr.heat = [1];
-  const R = () => (s = (s * 48271) % 2147483647) / 2147483647;
-  const fr = x => x - Math.floor(x);
-  arr.ext = n => {
-    while (arr.length <= n) {
-      const u1 = R(), u2 = R(), u3 = R();
-      if (u3 < 0.004) heat = 3;                      // wild phase
-      heat = 1 + (heat - 1) * 0.97;
-      const vol = heat * 2;
-      if (arr.length <= bad) {                       // bad luck: fake chop, then a rug to 40%, every 0.6s
-        const k = (arr.length - 1) % 6;
-        if (k < 3) p = p * Math.exp((u2 - 0.5) * 0.01);
-        else p = p * Math.exp(Math.log(0.4) / 3);
-        evLeft = 0; rug = 0; v = 0;
-        p = Math.min(Math.max(p, 1e-200), 1e200);
-        arr.push(p); arr.ev.push(k < 3 ? 0 : -2); arr.heat.push(heat);
-        continue;
-      }
-      if (arr.length <= boost) {                     // admin boost: fast nonstop pump (~+22%/s), no dumps
-        p = Math.min(p * Math.exp(0.02 + (u2 - 0.5) * 0.02), 1e200);
-        evLeft = 0; rug = 0; v = 0;
-        arr.push(p); arr.ev.push(2); arr.heat.push(heat);
-        continue;
-      }
-      const inRush = arr.length <= rush;
-      if (evLeft === 0 && rug === 0 && u3 > (inRush ? 0.97 : 0.99)) {
-        if (u2 < (inRush ? 0.88 : 0.45)) {          // rush hour: way more pumps, no rugs                             // pump: +65% to +170% over 3-7s. 15% rug-pull partway
-          evDir = 1;
-          D = 30 + Math.floor(u1 * 41);
-          size = inRush ? 0.7 + 0.6 * fr(u1 * 53) : 0.5 + 0.5 * fr(u1 * 53);   // rush hour: bigger pumps
-          W = 0;
-          for (let j = 1; j <= D; j++) { const x = (j - 0.5) / D; W = W + x * (1 - x); }
-          base = p;
-          cut = !inRush && fr(u1 * 97) < 0.15 ? 3 + Math.floor(fr(u1 * 331) * (D - 3)) : -1;
-        } else {                                     // dump: -14% to -33%, random length, hits hardest first
-          evDir = -1;
-          D = 5 + Math.floor(fr(u1 * 13) * 18);
-          size = (inRush ? 0.7 : 1) * (0.15 + 0.25 * fr(u1 * 53));               // rush hour: half-size dumps
-          W = (D * (D + 1)) / 2;
-        }
-        evLeft = D;
-      }
-      let ev = 0, drift = 0, done = false;
-      if (evLeft > 0) {
-        const k = D - evLeft + 1;
-        if (evDir > 0) {
-          if (k === cut) { evLeft = 0; rug = 3; }
-          else { const x = (k - 0.5) / D; drift = size * (x * (1 - x)) / W; ev = 1; evLeft--; }
-        } else {
-          p = p * Math.exp(-size * (D - k + 1) / W + (u2 - 0.5) * 0.012); v = 0; ev = -1;
-          evLeft--; done = true;
-        }
-      }
-      if (!done && rug > 0 && ev === 0) {            // rug pull: crash to half of where the pump started
-        p = p * Math.exp(Math.log(base * 0.5 / p) / rug);
-        rug--; v = 0; ev = -2; done = true;
-      }
-      if (!done) {                                   // normal chop keeps going during pumps
-        v = 0.8 * v + (u1 - 0.5) * 0.009 * vol - 0.0007 * Math.log(p / 100);
-        p = p * Math.exp(v + (u2 - 0.5) * 0.035 * vol + drift);
-      }
-      p = Math.min(Math.max(p, 1e-200), 1e200);      // never overflow
-      arr.push(p); arr.ev.push(ev); arr.heat.push(heat);
+const FEED_LAG = 2.5;                // draw this many steps behind real time so streamed points arrive first
+
+// pull new chart points from the server (only points up to "now" exist)
+function feedRide(r){
+  if (r.done || r.feeding) return;
+  r.feeding = true;
+  sb.rpc('ride_feed', { p_round: r.id, p_from: r.path.length }).then(({ data, error }) => {
+    r.feeding = false;
+    if (r.done) return;
+    if (!error && data && data.from === r.path.length) {
+      for (let i = 0; i < data.p.length; i++) { r.path.push(data.p[i]); r.path.ev.push(data.ev[i]); r.path.heat.push(data.heat[i]); }
     }
-  };
-  return arr;
+    r.feedT = setTimeout(() => feedRide(r), error ? 600 : 150);
+  }, () => { r.feeding = false; if (!r.done) r.feedT = setTimeout(() => feedRide(r), 600); });
 }
 
 let ride = null, rideRaf = null, lastRide = null, C = {};
@@ -1330,8 +1275,10 @@ $('rideStart').onclick = async () => {
   if (error) return toast(error.message);
   setBalance(data.balance);
   loadColors();
-  ride = { id: data.round_id, bet, boost: data.boost_steps || 0, path: ridePath(data.seed, data.boost_steps || 0, data.bad_steps || 0, data.rush_steps || 0), t0: performance.now(), cur: 0,
+  const path = [100]; path.ev = [0]; path.heat = [1];
+  ride = { id: data.round_id, bet, boost: data.boost_steps || 0, path, t0: performance.now(), cur: 0,
            spans: [], holding: false, done: false, q: Promise.resolve(), lo: Math.log(95), hi: Math.log(105) };
+  feedRide(ride);
   lastRide = ride;
   $('rideStart').hidden = true; $('holdBtn').hidden = false; $('rideCash').hidden = false;
   $('rideMsg').textContent = 'Hold to ride'; $('rideMsg').className = 'sub';
@@ -1340,7 +1287,8 @@ $('rideStart').onclick = async () => {
 };
 
 function priceAt(r, x){
-  r.path.ext(Math.ceil(x) + 1);
+  const n = r.path.length - 1;
+  if (x >= n) return r.path[n];
   const i = Math.floor(x), f = x - i;
   return r.path[i] + (r.path[i + 1] - r.path[i]) * f;
 }
@@ -1374,7 +1322,7 @@ $('rideCash').onclick = () => {
   r.q = r.q.then(() => sb.rpc('ride_stop', { p_round: r.id, p_step: step })).then(({ data, error }) => {
     $('rideCash').disabled = false;
     if (error) {
-      if (/Round over/.test(error.message)) { toast('This round was cancelled by an admin and your bet was refunded'); r.done = true; ride = null; $('rideStart').hidden = false; $('holdBtn').hidden = true; $('rideCash').hidden = true; loadProfile(); return; }
+      if (/Round over/.test(error.message)) { toast('This round was cancelled by an admin and your bet was refunded'); r.done = true; clearTimeout(r.feedT); ride = null; $('rideStart').hidden = false; $('holdBtn').hidden = true; $('rideCash').hidden = true; loadProfile(); return; }
       r.stopping = false; return toast(error.message);
     }
     finishRide(data);
@@ -1382,7 +1330,7 @@ $('rideCash').onclick = () => {
 };
 
 function finishRide(d){
-  const r = ride; r.done = true;
+  const r = ride; r.done = true; clearTimeout(r.feedT);
   cancelAnimationFrame(rideRaf);
   setBalance(d.balance);
   const pay = Number(d.payout), diff = pay - r.bet;
@@ -1401,7 +1349,7 @@ function finishRide(d){
 
 function rideLoop(){
   const r = ride; if (!r) return;
-  r.cur = (performance.now() - r.t0) / STEP_MS;
+  r.cur = Math.max(r.cur, Math.min((performance.now() - r.t0) / STEP_MS - FEED_LAG, r.path.length - 1));
   const val = Math.min(boost(r.bet, r.bet * rideMult(r)), r.bet + RIDE_MAX_WIN);
   $('rideVal').textContent = fmt(val);
   $('rideVal').className = 'mult ' + (val > r.bet + 0.004 ? 'win' : val < r.bet - 0.004 ? 'lose' : '');
