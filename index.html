@@ -178,6 +178,18 @@ tr.me td{color:var(--accent)}
 </section>
 
 <!-- APP -->
+<section id="waiting" class="wrap" hidden>
+  <div class="auth">
+    <h1>Jambling</h1>
+    <div class="card" style="text-align:center">
+      <p style="font-size:18px;margin:0 0 8px">You're in the waiting room, <b id="waitName"></b>.</p>
+      <p style="color:var(--muted);margin:0 0 18px">An admin has to accept your account before you can play. This page checks again on its own.</p>
+      <button class="go" id="waitCheck">Check again</button>
+      <button class="ghost" id="waitOut" style="width:100%;margin-top:8px;padding:10px">Sign out</button>
+    </div>
+  </div>
+</section>
+
 <section id="app" class="wrap" hidden>
   <header>
     <div class="logo">Jambling</div>
@@ -428,6 +440,10 @@ tr.me td{color:var(--accent)}
   <div class="card modal-card">
     <h2>Admin</h2>
     <div class="admin-status" id="adminStatus" hidden></div>
+    <div id="waitBox" hidden style="margin:0 0 18px;border:1px solid var(--gold);border-radius:12px;padding:10px 12px">
+      <div style="font-weight:600;margin-bottom:6px">Waiting room <span id="waitCount" style="color:var(--gold)"></span></div>
+      <div id="waitList"></div>
+    </div>
     <div class="field">
       <label>Player</label>
       <input id="adminUser" type="text" maxlength="20" autocapitalize="off" spellcheck="false" autocomplete="off">
@@ -558,11 +574,21 @@ $('authForm').onsubmit = async e => {
 };
 $('logout').onclick = () => sb.auth.signOut();
 
+let waitPoll = null;
+function showWaiting(name){
+  $('waitName').textContent = name;
+  $('app').hidden = true; $('waiting').hidden = false;
+  clearInterval(waitPoll); waitPoll = setInterval(() => { if (user) loadProfile(); }, 15000);
+}
+$('waitCheck').onclick = () => loadProfile();
+$('waitOut').onclick = () => sb.auth.signOut();
+
 sb.auth.onAuthStateChange((_event, session) => {
   user = session?.user || null;
   accessToken = session?.access_token || null;
   $('auth').hidden = !!user;
   $('app').hidden = !user;
+  if (!user) { $('waiting').hidden = true; clearInterval(waitPoll); }
   if (user) loadProfile();
 });
 
@@ -588,7 +614,38 @@ setInterval(async () => {
 }, 4000);
 
 /* ---------- admin ---------- */
-$('adminOpen').onclick = () => { $('adminModal').hidden = false; $('adminUser').focus(); };
+$('adminOpen').onclick = () => { $('adminModal').hidden = false; loadWaiting(); };
+async function loadWaiting(){
+  const { data, error } = await sb.rpc('admin_pending');
+  if (error || !data) { $('waitBox').hidden = true; return; }
+  $('adminOpen').textContent = data.length ? `Admin (${data.length})` : 'Admin';
+  $('waitBox').hidden = !data.length;
+  $('waitCount').textContent = data.length ? `· ${data.length}` : '';
+  const list = $('waitList'); list.innerHTML = '';
+  for (const w of data) {
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:6px 0;border-top:1px dashed var(--line)';
+    const name = document.createElement('span'); name.style.cssText = 'flex:1;min-width:0;overflow-wrap:anywhere';
+    name.textContent = w.username;
+    const when = document.createElement('span'); when.style.cssText = 'color:var(--muted);font-size:12px;white-space:nowrap';
+    when.textContent = new Date(w.joined).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+    const yes = document.createElement('button'); yes.type = 'button'; yes.className = 'ghost'; yes.textContent = 'Accept';
+    yes.style.cssText = 'border-color:var(--win);color:var(--win)';
+    const no = document.createElement('button'); no.type = 'button'; no.className = 'ghost'; no.textContent = 'Reject';
+    no.style.cssText = 'border-color:var(--lose);color:var(--lose)';
+    const act = async ok => {
+      if (!ok && !confirm(`Reject ${w.username}? This deletes their account.`)) return;
+      yes.disabled = no.disabled = true;
+      const { data: d, error: e } = await sb.rpc('admin_approve', { p_user: w.username, p_ok: ok });
+      if (e) { adminStatus(e.message, false); toast(e.message); yes.disabled = no.disabled = false; return; }
+      const m = ok ? `Accepted ${d.user}` : `Rejected ${d.user} (account deleted)`; adminStatus(m, true); toast(m);
+      loadWaiting();
+    };
+    yes.onclick = () => act(true); no.onclick = () => act(false);
+    row.append(name, when, yes, no); list.appendChild(row);
+  }
+}
+setInterval(() => { if (user && !$('adminOpen').hidden) loadWaiting(); }, 30000);
 $('adminCancel').onclick = () => { $('adminModal').hidden = true; };
 const adminName = () => { const n = $('adminUser').value.trim(); if (!n) { adminStatus('Enter a player name first', false); toast('Enter a player'); } return n; };
 $('adminBoost').onclick = async () => {
@@ -962,7 +1019,7 @@ setInterval(checkGifts, 15000);
 async function loadProfile(){
   const { data: left } = await sb.rpc('ride_cleanup');
   if (left && left.payout != null) setTimeout(() => toast(`Your last Ride round was stopped: paid ${fmt(left.payout)}`), 800);
-  sb.rpc('is_admin').then(({ data: a }) => { $('adminOpen').hidden = !a; });   // checked first so nothing else can hide it
+  sb.rpc('is_admin').then(({ data: a }) => { $('adminOpen').hidden = !a; if (a) loadWaiting(); });   // checked first so nothing else can hide it
   sb.rpc('my_role').then(({ data: r }) => { $('modOpen').hidden = r !== 'mod'; });
   loadNotice();
   const { data, error } = await sb.from('profiles').select('*').eq('id', user.id).single();
@@ -971,6 +1028,8 @@ async function loadProfile(){
   setRebirths(data.rebirths || 0);
   boostUntil = data.boost_until ? new Date(data.boost_until).getTime() : 0;
   if (data.banned) { toast('This account is banned.'); setTimeout(() => sb.auth.signOut(), 1500); return; }
+  if (data.approved === false) { showWaiting(data.username); return; }
+  $('waiting').hidden = true; $('app').hidden = false; clearInterval(waitPoll);
   resumeBJ();
   setBalance(data.balance);
   checkGifts();
@@ -1479,16 +1538,18 @@ async function loadBoard(){
   $('pastPick').hidden = boardMode !== 'past';
   $('pastMine').hidden = true;
   if (boardMode === 'past') return loadPast();
-  const q = (hideBanned) => {
+  const q = (hideBanned, hideWaiting) => {
     let x = sb.from('profiles').select('id,username,balance,rebirths');
     if (hideBanned) x = x.eq('banned', false);
+    if (hideWaiting) x = x.eq('approved', true);
     x = boardMode === 'rebirths'
       ? x.order('rebirths', { ascending: false }).order('balance', { ascending: false })
       : x.order('balance', { ascending: false });
     return x.range(0, 9999);
   };
-  let { data, error } = await q(true);
-  if (error) ({ data, error } = await q(false));   // works even before ban.sql is run
+  let { data, error } = await q(true, true);
+  if (error) ({ data, error } = await q(true, false));   // works even before waiting.sql is run
+  if (error) ({ data, error } = await q(false, false));  // ...or ban.sql
   if (error) return toast(error.message);
   data.forEach((p, i) => {
     const tr = boardRow(i, p, p.id === user.id, boardMode === 'rebirths' ? '▲' + (p.rebirths || 0) : short(p.balance));
