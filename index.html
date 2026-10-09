@@ -183,7 +183,8 @@ tr.me td{color:var(--accent)}
     <h1>Jambling</h1>
     <div class="card" style="text-align:center">
       <p style="font-size:18px;margin:0 0 8px">You're in the waiting room, <b id="waitName"></b>.</p>
-      <p style="color:var(--muted);margin:0 0 18px">An admin has to accept your account before you can play. This page checks again on its own.</p>
+      <p style="color:var(--muted);margin:0 0 18px" id="waitText">An admin has to accept your account before you can play. This page checks again on its own.</p>
+      <button class="go" id="waitAsk" hidden>Ask again</button>
       <button class="go" id="waitCheck">Check again</button>
       <button class="ghost" id="waitOut" style="width:100%;margin-top:8px;padding:10px">Sign out</button>
     </div>
@@ -575,12 +576,21 @@ $('authForm').onsubmit = async e => {
 $('logout').onclick = () => sb.auth.signOut();
 
 let waitPoll = null;
-function showWaiting(name){
+function showWaiting(name, rejected){
   $('waitName').textContent = name;
+  $('waitText').textContent = rejected
+    ? 'An admin didn\'t let you in this time. Make sure your username is your real name, then tap Ask again.'
+    : 'An admin has to accept your account before you can play. This page checks again on its own.';
+  $('waitAsk').hidden = !rejected; $('waitCheck').hidden = rejected;
   $('app').hidden = true; $('waiting').hidden = false;
   clearInterval(waitPoll); waitPoll = setInterval(() => { if (user) loadProfile(); }, 15000);
 }
 $('waitCheck').onclick = () => loadProfile();
+$('waitAsk').onclick = async () => {
+  const { error } = await sb.rpc('ask_again');
+  if (error) return toast(error.message);
+  toast('You\'re back on the list'); loadProfile();
+};
 $('waitOut').onclick = () => sb.auth.signOut();
 
 sb.auth.onAuthStateChange((_event, session) => {
@@ -634,14 +644,12 @@ async function loadWaiting(){
     const no = document.createElement('button'); no.type = 'button'; no.className = 'ghost'; no.textContent = 'Reject';
     no.style.cssText = 'border-color:var(--lose);color:var(--lose)';
     const act = async ok => {
-      // confirm() is blocked inside the Google Site embed, so Reject asks by changing its own label instead
-      if (!ok && no.dataset.sure !== '1') { no.dataset.sure = '1'; no.textContent = 'Sure? Tap again'; setTimeout(() => { no.dataset.sure = ''; no.textContent = 'Reject'; }, 4000); return; }
       yes.disabled = no.disabled = true;
       let d, e;
       try { ({ data: d, error: e } = await sb.rpc('admin_approve', { p_user: w.username, p_ok: ok })); }
       catch (x) { e = { message: String(x.message || x) }; }
       if (e || !d) { const m = (e && e.message) || 'Didn\'t work. Run waiting.sql in Supabase.'; adminStatus(m, false); toast(m); yes.disabled = no.disabled = false; return; }
-      const m = ok ? `Accepted ${d.user}` : `Rejected ${d.user} (account deleted)`; adminStatus(m, true); toast(m);
+      const m = ok ? `Accepted ${d.user}` : `Rejected ${d.user} (hidden until they ask again)`; adminStatus(m, true); toast(m);
       loadWaiting();
     };
     yes.onclick = () => act(true); no.onclick = () => act(false);
@@ -1031,7 +1039,7 @@ async function loadProfile(){
   setRebirths(data.rebirths || 0);
   boostUntil = data.boost_until ? new Date(data.boost_until).getTime() : 0;
   if (data.banned) { toast('This account is banned.'); setTimeout(() => sb.auth.signOut(), 1500); return; }
-  if (data.approved === false) { showWaiting(data.username); return; }
+  if (data.approved === false) { showWaiting(data.username, !!data.rejected_at); return; }
   $('waiting').hidden = true; $('app').hidden = false; clearInterval(waitPoll);
   resumeBJ();
   setBalance(data.balance);
