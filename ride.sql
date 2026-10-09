@@ -172,6 +172,7 @@ begin
   if pay > rd.bet then pay := round(rd.bet + (pay - rd.bet) * (1 + 0.1 * coalesce((select rebirths from profiles where id = rd.user_id), 0)), 2); end if;  -- rebirth luck
   pay := least(pay, rd.bet + 500000);                          -- max win 500k per round (RIDE_MAX_WIN in index.html)
   update ride_rounds set status = 'done', holds = h, holding = false, last_step = a, mult = m, payout = pay where id = rd.id;
+  delete from ride_paths where round_id = rd.id;
   update profiles set balance = balance + pay where id = rd.user_id returning balance into bal;
   return json_build_object('payout', pay, 'mult', m, 'balance', bal, 'step', a, 'bet', rd.bet);
 end $$;
@@ -225,12 +226,19 @@ begin
 end $$;
 
 -- the chart, streamed: only points up to "now" (the seed stays secret so nobody can see the future)
+create table if not exists ride_paths (
+  round_id uuid primary key references ride_rounds(id) on delete cascade,
+  p float8[] not null, ev int[] not null, heat float8[] not null
+);
+alter table ride_paths enable row level security;   -- no policies: only functions touch it (it holds the future)
+
 create or replace function ride_feed(p_round uuid, p_from int) returns json
-language plpgsql stable security definer set search_path = public as $$
+language plpgsql volatile security definer set search_path = public as $$
 declare
   rd ride_rounds;
   k int;
   a int;
+  c ride_paths;
   g record;
 begin
   select * into rd from ride_rounds where id = p_round and user_id = auth.uid();
@@ -239,9 +247,16 @@ begin
   a := greatest(coalesce(p_from, 0), 0);
   if a > k then return json_build_object('k', k, 'from', a, 'p', '[]'::json, 'ev', '[]'::json, 'heat', '[]'::json, 'live', rd.status = 'live'); end if;
   k := least(k, a + 300);
-  g := _ride_gen(rd.seed, k, rd.boost_steps, rd.bad_steps, rd.rush_steps);
+  -- the chart is worked out a minute ahead and kept here (never sent), so each poll is just a slice
+  select * into c from ride_paths where round_id = rd.id;
+  if not found or array_length(c.p, 1) < k + 1 then
+    g := _ride_gen(rd.seed, k + 600, rd.boost_steps, rd.bad_steps, rd.rush_steps);
+    insert into ride_paths values (rd.id, g.px, g.evs, g.heats)
+      on conflict (round_id) do update set p = excluded.p, ev = excluded.ev, heat = excluded.heat
+      returning * into c;
+  end if;
   return json_build_object('k', k, 'from', a,
-    'p', to_json(g.px[a + 1 : k + 1]), 'ev', to_json(g.evs[a + 1 : k + 1]), 'heat', to_json(g.heats[a + 1 : k + 1]),
+    'p', to_json(c.p[a + 1 : k + 1]), 'ev', to_json(c.ev[a + 1 : k + 1]), 'heat', to_json(c.heat[a + 1 : k + 1]),
     'live', rd.status = 'live');
 end $$;
 

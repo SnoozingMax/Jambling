@@ -1318,7 +1318,7 @@ window.addEventListener('resize', () => { if (!round && !ghost) drawGraph(1); })
 const STEP_MS = 100, WINDOW = 120; // 12s visible
 const RIDE_VERSION = 38;            // must match ride_version() in ride.sql
 const RIDE_MAX_WIN = 500000;        // max profit per Ride round, must match _ride_finish() in SQL
-const FEED_LAG = 2.5;                // draw this many steps behind real time so streamed points arrive first
+const FEED_LAG = 4;                  // draw this many steps behind real time so streamed points arrive first
 
 // pull new chart points from the server (only points up to "now" exist)
 function feedRide(r){
@@ -1330,7 +1330,7 @@ function feedRide(r){
     if (!error && data && data.from === r.path.length) {
       for (let i = 0; i < data.p.length; i++) { r.path.push(data.p[i]); r.path.ev.push(data.ev[i]); r.path.heat.push(data.heat[i]); }
     }
-    r.feedT = setTimeout(() => feedRide(r), error ? 600 : 150);
+    r.feedT = setTimeout(() => feedRide(r), error ? 800 : 280);
   }, () => { r.feeding = false; if (!r.done) r.feedT = setTimeout(() => feedRide(r), 600); });
 }
 
