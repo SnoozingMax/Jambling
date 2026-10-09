@@ -342,6 +342,7 @@ begin
 
   pay := round((rd.bet * m)::numeric, 2);
   if pay > rd.bet then pay := round(rd.bet + (pay - rd.bet) * (1 + 0.1 * coalesce((select rebirths from profiles where id = rd.user_id), 0)), 2); end if;  -- rebirth luck
+  pay := least(pay, rd.bet + 500000);                          -- max win 500k per round (RIDE_MAX_WIN in index.html)
   update ride_rounds set status = 'done', holds = h, holding = false, last_step = a, mult = m, payout = pay where id = rd.id;
   update profiles set balance = balance + pay where id = rd.user_id returning balance into bal;
   return json_build_object('payout', pay, 'mult', m, 'balance', bal, 'step', a, 'bet', rd.bet);

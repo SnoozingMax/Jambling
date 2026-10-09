@@ -284,7 +284,7 @@ tr.me td{color:var(--accent)}
       <button class="go" id="rideStart">Start</button>
       <button class="holdbtn" id="holdBtn" hidden>HOLD</button>
       <button class="go cash" id="rideCash" hidden style="margin-top:10px">Stop</button>
-      <div class="hint">Hold to ride: while you hold, your bet moves with the chart. Let go to lock it in. Each hold costs 1%. Max bet 10k. Press Stop to cash out.</div>
+      <div class="hint">Hold to ride: while you hold, your bet moves with the chart. Let go to lock it in. Each hold costs 1%. Max bet 10k, max win 500k. Press Stop to cash out.</div>
       <div class="warn">Closing the tab mid-round stops your bet (like pressing Stop).</div>
     </div>
     <div class="card" style="padding:10px">
@@ -1247,6 +1247,7 @@ window.addEventListener('resize', () => { if (!round && !ghost) drawGraph(1); })
 // MUST match _ride_path() in ride.sql.
 const STEP_MS = 100, WINDOW = 120; // 12s visible
 const RIDE_VERSION = 37;            // must match ride_version() in ride.sql
+const RIDE_MAX_WIN = 500000;        // max profit per Ride round, must match _ride_finish() in SQL
 function ridePath(seed, boost = 0, bad = 0, rush = 0){
   let s = Number(seed), v = 0, p = 100, heat = 1;
   let evLeft = 0, evDir = 0, D = 0, size = 0, W = 1, cut = -1, rug = 0, base = 100;
@@ -1385,7 +1386,7 @@ function finishRide(d){
   cancelAnimationFrame(rideRaf);
   setBalance(d.balance);
   const pay = Number(d.payout), diff = pay - r.bet;
-  const shown = boost(r.bet, r.bet * rideMult(r));
+  const shown = Math.min(boost(r.bet, r.bet * rideMult(r)), r.bet + RIDE_MAX_WIN);
   if (Math.abs(pay - shown) > Math.max(0.05, shown * 0.01)) toast(`Server paid ${fmt(pay)} (screen showed ${fmt(shown)})`);
   $('rideVal').textContent = fmt(pay);
   $('rideVal').className = 'mult ' + (diff >= 0 ? 'win' : 'lose');
@@ -1401,7 +1402,7 @@ function finishRide(d){
 function rideLoop(){
   const r = ride; if (!r) return;
   r.cur = (performance.now() - r.t0) / STEP_MS;
-  const val = boost(r.bet, r.bet * rideMult(r));
+  const val = Math.min(boost(r.bet, r.bet * rideMult(r)), r.bet + RIDE_MAX_WIN);
   $('rideVal').textContent = fmt(val);
   $('rideVal').className = 'mult ' + (val > r.bet + 0.004 ? 'win' : val < r.bet - 0.004 ? 'lose' : '');
   // flash PUMP / DUMP for ~1.5s after one happens, and WILD during wild phases
