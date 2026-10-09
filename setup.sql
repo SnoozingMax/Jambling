@@ -2753,3 +2753,12 @@ drop function if exists chart_hold(uuid, boolean);
 drop function if exists chart_cashout(uuid);
 drop function if exists _chart_finish(uuid);
 drop function if exists _chart_settle(uuid);
+
+-- ================= Ride v4.2: 1.5s hold window for slow wifi =================
+create or replace function _ride_clamp(rd ride_rounds, p_step int) returns int
+language plpgsql stable as $$
+declare
+  k int := _ride_k(rd);
+begin
+  return greatest(least(coalesce(p_step, k), k), k - 15, rd.last_step);   -- no future steps, at most 1.5s back (slow wifi)
+end $$;

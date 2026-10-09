@@ -1318,7 +1318,7 @@ window.addEventListener('resize', () => { if (!round && !ghost) drawGraph(1); })
 const STEP_MS = 100, WINDOW = 120; // 12s visible
 const RIDE_VERSION = 38;            // must match ride_version() in ride.sql
 const RIDE_MAX_WIN = 500000;        // max profit per Ride round, must match _ride_finish() in SQL
-const FEED_LAG = 4;                  // draw this many steps behind real time so streamed points arrive first
+const FEED_BUF = 6;                  // keep this many streamed points ahead of what's drawn; playback eases to match
 
 // pull new chart points from the server (only points up to "now" exist)
 function feedRide(r){
@@ -1330,7 +1330,7 @@ function feedRide(r){
     if (!error && data && data.from === r.path.length) {
       for (let i = 0; i < data.p.length; i++) { r.path.push(data.p[i]); r.path.ev.push(data.ev[i]); r.path.heat.push(data.heat[i]); }
     }
-    r.feedT = setTimeout(() => feedRide(r), error ? 800 : 280);
+    r.feedT = setTimeout(() => feedRide(r), error ? 800 : 200);
   }, () => { r.feeding = false; if (!r.done) r.feedT = setTimeout(() => feedRide(r), 600); });
 }
 
@@ -1419,7 +1419,12 @@ function finishRide(d){
 
 function rideLoop(){
   const r = ride; if (!r) return;
-  r.cur = Math.max(r.cur, Math.min((performance.now() - r.t0) / STEP_MS - FEED_LAG, r.path.length - 1));
+  // smooth playback: run at normal speed while we have a buffer of points, ease down if the network is slow,
+  // and speed up a little to catch up after a slow patch. Never draws past the last point we actually have.
+  const now = performance.now(), dt = Math.min(250, now - (r.lastT || now)) / STEP_MS; r.lastT = now;
+  const buf = (r.path.length - 1) - r.cur;
+  const rate = Math.max(0, Math.min(1.3, buf / FEED_BUF));
+  r.cur = Math.min(r.cur + dt * rate, r.path.length - 1);
   const val = Math.min(boost(r.bet, r.bet * rideMult(r)), r.bet + RIDE_MAX_WIN);
   $('rideVal').textContent = fmt(val);
   $('rideVal').className = 'mult ' + (val > r.bet + 0.004 ? 'win' : val < r.bet - 0.004 ? 'lose' : '');

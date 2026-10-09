@@ -138,7 +138,7 @@ language plpgsql stable as $$
 declare
   k int := _ride_k(rd);
 begin
-  return greatest(least(coalesce(p_step, k), k), k - 10, rd.last_step);   -- no future steps, at most 1s back
+  return greatest(least(coalesce(p_step, k), k), k - 15, rd.last_step);   -- no future steps, at most 1.5s back (slow wifi)
 end $$;
 
 -- bump this whenever the chart math changes; must match RIDE_VERSION in index.html
