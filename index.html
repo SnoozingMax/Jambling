@@ -1561,12 +1561,13 @@ function boardRow(i, p, isMe, right){
   tr.children[2].textContent = right;
   return tr;
 }
+let boardReq = 0, boardShown = null;
 async function loadBoard(){
-  $('board').innerHTML = '';
-  $('pastPick').hidden = boardMode !== 'past';
+  const req = ++boardReq, mode = boardMode;
+  $('pastPick').hidden = mode !== 'past';
   $('pastMine').hidden = true;
-  $('onlineCount').hidden = true;
-  if (boardMode === 'past') return loadPast();
+  if (mode === 'past') { $('onlineCount').hidden = true; $('board').innerHTML = ''; boardShown = 'past'; return loadPast(); }
+  if (boardShown !== mode) { $('board').innerHTML = ''; $('onlineCount').hidden = true; }   // switching tabs: clear; auto-refresh: keep the old rows until the new ones are ready
   const q = (hideBanned, hideWaiting) => {
     let x = sb.from('profiles').select('*');   // includes last_seen for the online dot (if online.sql was run)
     if (hideBanned) x = x.eq('banned', false);
@@ -1580,12 +1581,13 @@ async function loadBoard(){
   if (error) ({ data, error } = await q(true, false));   // works even before waiting.sql is run
   if (error) ({ data, error } = await q(false, false));  // ...or ban.sql
   if (error) return toast(error.message);
+  if (req !== boardReq || boardMode !== mode) return;   // a newer load (or a tab switch) already happened
   const on = data.filter(isOnline).length;
   $('onlineCount').hidden = !on; $('onlineCount').innerHTML = `<span class="online-dot" style="margin:0 6px 0 0"></span>${on} online`;
-  data.forEach((p, i) => {
-    const tr = boardRow(i, p, p.id === user.id, boardMode === 'rebirths' ? '▲' + (p.rebirths || 0) : short(p.balance));
-    $('board').appendChild(tr);
-  });
+  const frag = document.createDocumentFragment();
+  data.forEach((p, i) => frag.appendChild(boardRow(i, p, p.id === user.id, mode === 'rebirths' ? '▲' + (p.rebirths || 0) : short(p.balance))));
+  $('board').replaceChildren(frag);   // swap all rows at once: no flash, scroll stays put
+  boardShown = mode;
 }
 async function loadPast(){
   const { data: seasons, error } = await sb.from('seasons').select('id,ended_at').order('id', { ascending: false });
