@@ -596,9 +596,12 @@ $('waitAsk').onclick = async () => {
 };
 $('waitOut').onclick = () => sb.auth.signOut();
 
+let shownUserId = null;
 sb.auth.onAuthStateChange((_event, session) => {
   user = session?.user || null;
-  accessToken = session?.access_token || null;
+  accessToken = session?.access_token || null;   // token refreshes just update the key, nothing on screen changes
+  if ((user?.id || null) === shownUserId) return;
+  shownUserId = user?.id || null;
   $('auth').hidden = !!user;
   $('app').hidden = !user;
   if (!user) { $('waiting').hidden = true; clearInterval(waitPoll); }
