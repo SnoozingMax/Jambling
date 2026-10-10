@@ -98,6 +98,8 @@ canvas{width:100%;height:100%;display:block}
 .rb-text b{color:var(--ink)}
 .rebirth-go{background:var(--gold);color:#2a1d00}
 .lb-rb{font:600 12px "IBM Plex Mono",monospace;color:var(--gold);margin-left:8px}
+.online-dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#2ecc71;box-shadow:0 0 0 2px rgba(46,204,113,.18);margin-left:8px;vertical-align:middle}
+.online-count{color:var(--muted);font-size:13px;margin:-4px 0 10px}
 .bj-table{display:flex;flex-direction:column;justify-content:space-between;min-height:340px;gap:14px}
 .bj-label{font:600 12px "IBM Plex Mono",monospace;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px}
 .bj-label span{color:var(--ink);margin-left:6px}
@@ -375,6 +377,7 @@ tr.me td{color:var(--accent)}
       <button data-b="rebirths">Rebirths</button>
       <button data-b="past">Past seasons</button>
     </div>
+    <div class="online-count" id="onlineCount" hidden></div>
     <div class="card">
       <div id="pastPick" class="seg small" hidden></div>
       <div id="pastMine" class="past-mine" hidden></div>
@@ -601,6 +604,12 @@ sb.auth.onAuthStateChange((_event, session) => {
   if (!user) { $('waiting').hidden = true; clearInterval(waitPoll); }
   if (user) loadProfile();
 });
+
+/* ---------- online heartbeat ---------- */
+const beat = () => { if (user && !document.hidden) sb.rpc('heartbeat').then(() => {}, () => {}); };
+setInterval(beat, 30000);
+document.addEventListener('visibilitychange', beat);
+setInterval(() => { if (user && !$('tab-board').hidden && boardMode !== 'past') loadBoard(); }, 30000);
 
 /* ---------- boost (from admin) ---------- */
 setInterval(() => {
@@ -1028,6 +1037,7 @@ async function checkGifts(){
 setInterval(checkGifts, 15000);
 
 async function loadProfile(){
+  beat();
   const { data: left } = await sb.rpc('ride_cleanup');
   if (left && left.payout != null) setTimeout(() => toast(`Your last Ride round was stopped: paid ${fmt(left.payout)}`), 800);
   sb.rpc('is_admin').then(({ data: a }) => { $('adminOpen').hidden = !a; if (a) loadWaiting(); });   // checked first so nothing else can hide it
@@ -1540,11 +1550,13 @@ document.querySelectorAll('#boardSeg button').forEach(b => b.onclick = () => {
   document.querySelectorAll('#boardSeg button').forEach(x => x.classList.toggle('on', x === b));
   loadBoard();
 });
+const isOnline = p => p.last_seen && Date.now() - new Date(p.last_seen).getTime() < 75000;
 function boardRow(i, p, isMe, right){
   const tr = document.createElement('tr');
   if (isMe) tr.className = 'me';
   tr.innerHTML = `<td>${i + 1}</td><td></td><td></td>`;
   tr.children[1].textContent = p.username;   // safe from HTML injection
+  if (isOnline(p)) { const d = document.createElement('span'); d.className = 'online-dot'; d.title = 'Online'; tr.children[1].appendChild(d); }
   if (p.rebirths && boardMode !== 'rebirths') { const b = document.createElement('span'); b.className = 'lb-rb'; b.textContent = '▲' + p.rebirths; tr.children[1].appendChild(b); }
   tr.children[2].textContent = right;
   return tr;
@@ -1553,9 +1565,10 @@ async function loadBoard(){
   $('board').innerHTML = '';
   $('pastPick').hidden = boardMode !== 'past';
   $('pastMine').hidden = true;
+  $('onlineCount').hidden = true;
   if (boardMode === 'past') return loadPast();
   const q = (hideBanned, hideWaiting) => {
-    let x = sb.from('profiles').select('id,username,balance,rebirths');
+    let x = sb.from('profiles').select('*');   // includes last_seen for the online dot (if online.sql was run)
     if (hideBanned) x = x.eq('banned', false);
     if (hideWaiting) x = x.eq('approved', true);
     x = boardMode === 'rebirths'
@@ -1567,6 +1580,8 @@ async function loadBoard(){
   if (error) ({ data, error } = await q(true, false));   // works even before waiting.sql is run
   if (error) ({ data, error } = await q(false, false));  // ...or ban.sql
   if (error) return toast(error.message);
+  const on = data.filter(isOnline).length;
+  $('onlineCount').hidden = !on; $('onlineCount').innerHTML = `<span class="online-dot" style="margin:0 6px 0 0"></span>${on} online`;
   data.forEach((p, i) => {
     const tr = boardRow(i, p, p.id === user.id, boardMode === 'rebirths' ? '▲' + (p.rebirths || 0) : short(p.balance));
     $('board').appendChild(tr);
