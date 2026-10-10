@@ -607,9 +607,9 @@ sb.auth.onAuthStateChange((_event, session) => {
 
 /* ---------- online heartbeat ---------- */
 const beat = () => { if (user && !document.hidden) sb.rpc('heartbeat').then(() => {}, () => {}); };
-setInterval(beat, 30000);
+setInterval(beat, 10000);
 document.addEventListener('visibilitychange', beat);
-setInterval(() => { if (user && !$('tab-board').hidden && boardMode !== 'past') loadBoard(); }, 30000);
+setInterval(() => { if (user && !$('tab-board').hidden && boardMode !== 'past') loadBoard(); }, 10000);
 
 /* ---------- boost (from admin) ---------- */
 setInterval(() => {
@@ -1550,7 +1550,7 @@ document.querySelectorAll('#boardSeg button').forEach(b => b.onclick = () => {
   document.querySelectorAll('#boardSeg button').forEach(x => x.classList.toggle('on', x === b));
   loadBoard();
 });
-const isOnline = p => p.last_seen && Date.now() - new Date(p.last_seen).getTime() < 75000;
+const isOnline = p => p.last_seen && Date.now() - new Date(p.last_seen).getTime() < 25000;
 function boardRow(i, p, isMe, right){
   const tr = document.createElement('tr');
   if (isMe) tr.className = 'me';
