@@ -82,7 +82,7 @@ begin
         w := 0;
         for j in 1..d loop x := (j - 0.5) / d; w := w + x * (1 - x); end loop;
         base := p;
-        if i > p_rush and (u1 * 97 - floor(u1 * 97)) < 0.10 then   -- 10% of pumps rug (was 15%)
+        if i > p_rush and (u1 * 97 - floor(u1 * 97)) < 0.15 then
           cut := 3 + floor((u1 * 331 - floor(u1 * 331)) * (d - 3))::int;
         else
           cut := -1;
@@ -100,7 +100,7 @@ begin
       k := d - ev_left + 1;
       if ev_dir > 0 then
         if k = cut then
-          ev_left := 0; rug := 5;
+          ev_left := 0; rug := 3;
         else
           x := (k - 0.5) / d; drift := size * (x * (1 - x)) / w; ev := 1; evc := 1;
           ev_left := ev_left - 1;
@@ -110,8 +110,8 @@ begin
         ev_left := ev_left - 1; done := true;
       end if;
     end if;
-    if not done and rug > 0 and ev = 0 then              -- rug pull: drop to 70% of where the pump started, over 0.5s (was 50% in 0.3s)
-      p := p * exp(least(0, ln(base * 0.7 / p)) / rug);
+    if not done and rug > 0 and ev = 0 then              -- rug pull: crash to half of where the pump started
+      p := p * exp(ln(base * 0.5 / p) / rug);
       rug := rug - 1; v := 0; done := true; evc := -2;
     end if;
     if not done then                                      -- normal chop keeps going during pumps
@@ -173,7 +173,6 @@ begin
 
   pay := round((rd.bet * m)::numeric, 2);
   if pay > rd.bet then pay := round(rd.bet + (pay - rd.bet) * (1 + 0.1 * coalesce((select rebirths from profiles where id = rd.user_id), 0)), 2); end if;  -- rebirth luck
-  pay := least(pay, rd.bet + 500000);                          -- max win 500k per round (RIDE_MAX_WIN in index.html)
   update ride_rounds set status = 'done', holds = h, holding = false, last_step = a, mult = m, payout = pay where id = rd.id;
   delete from ride_paths where round_id = rd.id;
   update profiles set balance = balance + pay where id = rd.user_id returning balance into bal;
