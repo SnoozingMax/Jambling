@@ -414,6 +414,11 @@ tr.me td{color:var(--accent)}
     <button type="button" class="go" id="modBad" style="background:#6b4bd6">Bad luck 1 min</button>
     <p class="hint" id="modLeft" style="margin:6px 0 0"></p>
     <button type="button" class="ghost" id="modClearBad" style="width:100%;margin-top:12px;padding:10px">Remove bad luck</button>
+    <div class="field" style="margin-top:18px">
+      <label>Grant coins</label>
+      <div style="display:flex;gap:8px"><input id="modAmt" type="number" min="1" step="1" placeholder="Amount"><button type="button" class="go" id="modGive" style="width:auto;white-space:nowrap;padding:10px 16px">Give</button></div>
+    </div>
+    <p class="hint" id="modGiveLeft" style="margin:6px 0 0"></p>
     <button type="button" class="ghost" id="modClose" style="width:100%;margin-top:14px;padding:10px">Close</button>
   </div>
 </div>
@@ -946,7 +951,23 @@ async function refreshModLeft(){
   const { data } = await sb.rpc('bad_luck_left');
   $('modLeft').textContent = data == null ? 'Unlimited uses' : `${data} of 3 uses left today`;
   $('modBad').disabled = data === 0;
+  const g = await sb.rpc('mod_grants_left');
+  if (g.error || !g.data) { $('modGiveLeft').textContent = ''; return; }
+  $('modGiveLeft').textContent = `${g.data.grants} of 2 grants left today · up to ${fmt(g.data.coins)} coins`;
+  $('modGive').disabled = g.data.grants <= 0 || Number(g.data.coins) <= 0;
 }
+$('modGive').onclick = async () => {
+  const name = $('modUser').value.trim(), amt = parseFloat($('modAmt').value);
+  const report = (m, ok) => { modStatus(m, ok); toast(m); };
+  if (!name) return report('Enter a player name first', false);
+  if (!(amt > 0)) return report('Enter an amount', false);
+  $('modGive').disabled = true;
+  const { data, error } = await sb.rpc('mod_give', { p_user: name, p_amount: amt });
+  if (error) { report(error.message, false); return refreshModLeft(); }
+  report(`Gave ${fmt(data.gave)} to ${data.user}`, true);
+  $('modAmt').value = '';
+  refreshModLeft();
+};
 $('modOpen').onclick = () => { $('modModal').hidden = false; $('modStatus').hidden = true; refreshModLeft(); $('modUser').focus(); };
 $('modClose').onclick = () => { $('modModal').hidden = true; };
 async function giveBadLuck(name, report){
