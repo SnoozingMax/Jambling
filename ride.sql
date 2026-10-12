@@ -207,7 +207,7 @@ begin
   if p_ver is distinct from ride_version() then raise exception 'Ride was updated. Refresh the page.'; end if;
   p_bet := round(p_bet, 2);
   if p_bet is null or p_bet <= 0 then raise exception 'Invalid bet'; end if;
-  if p_bet > 1000000 then raise exception 'Max bet is 1,000,000'; end if;
+  if p_bet > 500000 then raise exception 'Max bet is 500,000'; end if;
 
   perform ride_cleanup();
 
