@@ -467,11 +467,11 @@ tr.me td{color:var(--accent)}
       <button type="button" class="ghost" id="adminClearBoost" style="padding:10px">Remove boost</button>
       <button type="button" class="ghost" id="adminClearBad" style="padding:10px">Remove bad luck</button>
     </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:0 0 18px">
+    <div class="owner-only" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:0 0 18px">
       <button type="button" class="ghost" id="adminMod" style="padding:10px">Make mod</button>
       <button type="button" class="ghost" id="adminUnmod" style="padding:10px">Remove mod</button>
     </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:0 0 18px">
+    <div class="owner-only" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:0 0 18px">
       <button type="button" class="go" id="adminBan" style="background:var(--lose)">Ban</button>
       <button type="button" class="go" id="adminUnban" style="background:var(--line);color:var(--ink)">Unban</button>
     </div>
@@ -1064,7 +1064,8 @@ async function loadProfile(){
   beat();
   const { data: left } = await sb.rpc('ride_cleanup');
   if (left && left.payout != null) setTimeout(() => toast(`Your last Ride round was stopped: paid ${fmt(left.payout)}`), 800);
-  sb.rpc('is_admin').then(({ data: a }) => { $('adminOpen').hidden = !a; if (a) loadWaiting(); });   // checked first so nothing else can hide it
+  sb.rpc('is_admin').then(({ data: a }) => { $('adminOpen').hidden = !a; if (a) loadWaiting(); });
+  sb.rpc('am_owner').then(({ data: o, error: e }) => { document.querySelectorAll('.owner-only').forEach(el => el.hidden = !e && !o); });   // only max sees Ban + Make mod   // checked first so nothing else can hide it
   sb.rpc('my_role').then(({ data: r }) => { $('modOpen').hidden = r !== 'mod'; });
   loadNotice();
   const { data, error } = await sb.from('profiles').select('*').eq('id', user.id).single();
