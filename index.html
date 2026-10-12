@@ -398,6 +398,10 @@ tr.me td{color:var(--accent)}
       <input id="giftAmt" type="number" min="0.01" step="0.01" required>
       <div class="hint" id="giftHint"></div>
     </div>
+    <div class="field">
+      <label>Message (optional)</label>
+      <input id="giftMsg" type="text" maxlength="80" placeholder="gg / happy birthday / pay me back" autocomplete="off">
+    </div>
     <button class="go" id="giftSend">Send</button>
     <button type="button" class="ghost" id="giftCancel" style="width:100%;margin-top:8px;padding:10px">Cancel</button>
   </form>
@@ -542,7 +546,7 @@ function adminStatus(msg, ok){
   el.className = 'admin-status' + (ok ? '' : ' err');
   el.textContent = (ok ? '✓ ' : '✗ ') + msg + ' · ' + new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' });
 }
-function toast(msg){ const t = $('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), 2400); }
+function toast(msg, ms = 2400){ const t = $('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), ms); }
 function readBet(id){
   const v = Math.round(parseFloat($(id).value) * 100) / 100;
   if (!(v > 0)) { toast('Enter a bet'); return 0; }
@@ -722,7 +726,8 @@ $('adminGiftLog').onclick = async () => {
     d.style.cssText = 'display:flex;gap:8px;padding:6px 10px;border-bottom:1px dashed var(--line)';
     const when = new Date(g.at).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
     const amt = Number(g.amount);
-    d.innerHTML = `<span style="color:var(--muted);white-space:nowrap">${esc(when)}</span><span style="flex:1;min-width:0;overflow-wrap:anywhere"><b>${esc(g.from_user)}</b> → <b>${esc(g.to_user)}</b></span><span style="white-space:nowrap;font-family:'IBM Plex Mono',monospace">${isFinite(amt) ? short(amt) : 'NaN'}</span>`;
+    d.innerHTML = `<span style="color:var(--muted);white-space:nowrap">${esc(when)}</span><span style="flex:1;min-width:0;overflow-wrap:anywhere"><b>${esc(g.from_user)}</b> → <b>${esc(g.to_user)}</b></span><span style="white-space:nowrap;font-family:'IBM Plex Mono',monospace">${isFinite(amt) ? short(amt) : 'NaN'}</span>` + (g.message ? `<div style="flex-basis:100%;color:var(--muted);font-size:12px;overflow-wrap:anywhere">“${esc(g.message)}”</div>` : '');
+    d.style.flexWrap = 'wrap';
     box.appendChild(d);
   }
 };
@@ -1031,7 +1036,7 @@ $('rbYes').onclick = async () => {
 const giftable = () => Math.max(0, Math.floor((balance - 1000) * 100) / 100);
 async function openGift(name){
   $('giftTo').value = name || '';
-  $('giftAmt').value = '';
+  $('giftAmt').value = ''; $('giftMsg').value = '';
   $('giftHint').textContent = `You can send up to ${fmt(giftable())} (coins above 1,000).`;
   sb.rpc('gifts_left').then(({ data }) => { if (data != null) $('giftHint').textContent = `You can send up to ${fmt(giftable())} (coins above 1,000). ${data} of 10 gifts left today.`; });
   $('giftModal').hidden = false;
@@ -1043,7 +1048,10 @@ $('giftModal').onclick = e => { if (e.target === $('giftModal')) $('giftModal').
 $('giftForm').onsubmit = async e => {
   e.preventDefault();
   $('giftSend').disabled = true;
-  const { data, error } = await sb.rpc('gift_coins', { p_to: $('giftTo').value.trim(), p_amount: parseFloat($('giftAmt').value) });
+  const msg = $('giftMsg').value.trim();
+  const args = { p_to: $('giftTo').value.trim(), p_amount: parseFloat($('giftAmt').value) };
+  if (msg) args.p_message = msg;
+  const { data, error } = await sb.rpc('gift_coins', args);
   $('giftSend').disabled = false;
   if (error) return toast(error.message);
   setBalance(data.balance);
@@ -1054,7 +1062,7 @@ async function checkGifts(){
   if (!user) return;
   const { data } = await sb.rpc('my_new_gifts');
   if (!data || !data.length) return;
-  data.forEach((g, i) => setTimeout(() => toast(`${g.from} gifted you ${fmt(g.amount)} coins`), i * 2600));
+  data.forEach((g, i) => setTimeout(() => toast(`${g.from} gifted you ${fmt(g.amount)} coins` + (g.message ? `: “${g.message}”` : ''), g.message ? 5000 : 2400), i * 5200));
   const { data: p } = await sb.from('profiles').select('balance').eq('id', user.id).single();
   if (p) setBalance(p.balance);
 }
