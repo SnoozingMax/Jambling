@@ -561,7 +561,7 @@ begin
   end if;
 
   payout := round(rd.bet + rd.bet * (m - 1) * _luck(auth.uid()), 2);
-  payout := least(payout, rd.bet + 2000000);   -- max win 2m per round
+  payout := least(payout, rd.bet + 5000000);   -- max win 5m per round
   update crash_rounds set status = 'cashed', cashout = m where id = rd.id;
   update profiles set balance = balance + payout where id = auth.uid() returning balance into bal;
 
@@ -710,7 +710,7 @@ begin
     when 'win'       then round(h.bet + h.bet * luck, 2)
     when 'push'      then h.bet
     else 0 end;
-  pay := least(pay, h.bet + 2000000);   -- max win 2m per hand
+  pay := least(pay, h.bet + 5000000);   -- max win 5m per hand
   update bj_hands set dealer = h.dealer, deck = h.deck, status = 'done', result = res, payout = pay where id = h.id
     returning * into h;
   update profiles set balance = balance + pay where id = h.user_id;
@@ -1456,7 +1456,7 @@ begin
   elsif _rush_now() then res := case when random() < 0.80 then p_pick when p_pick = 'heads' then 'tails' else 'heads' end;   -- rush hour: 80% win
   else res := case when random() < 0.5 then 'heads' else 'tails' end; end if;
   won := res = p_pick;
-  delta := case when won then least(round(p_bet * _luck(auth.uid()), 2), 2000000) else -p_bet end;   -- max win 2m
+  delta := case when won then least(round(p_bet * _luck(auth.uid()), 2), 5000000) else -p_bet end;   -- max win 5m
 
   update profiles set balance = balance + delta where id = auth.uid() returning balance into bal;
   return json_build_object('result', res, 'won', won, 'balance', bal, 'delta', delta);
@@ -3291,7 +3291,7 @@ begin
 
   pay := round((rd.bet * m)::numeric, 2);
   if pay > rd.bet then pay := round(rd.bet + (pay - rd.bet) * (1 + 0.1 * coalesce((select rebirths from profiles where id = rd.user_id), 0)), 2); end if;  -- rebirth luck
-  pay := least(pay, rd.bet + 2000000);                         -- max win 2m per round (RIDE_MAX_WIN in index.html)
+  pay := least(pay, rd.bet + 5000000);                         -- max win 5m per round (RIDE_MAX_WIN in index.html)
   update ride_rounds set status = 'done', holds = h, holding = false, last_step = a, mult = m, payout = pay where id = rd.id;
   delete from ride_paths where round_id = rd.id;
   update profiles set balance = balance + pay where id = rd.user_id returning balance into bal;
