@@ -537,7 +537,7 @@ const luck = () => 1 + 0.1 * rebirths;
 const boost = (bet, val) => val > bet ? bet + (val - bet) * luck() : val;   // profit x luck
 
 const fmt = n => Number(n).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
-const rebirthCost = () => 50000 * (rebirths + 1);   // 50k, 100k, 150k, ... must match _rebirth_cost() in SQL
+const rebirthCost = () => 100000 + 50000 * rebirths;   // 100k, 150k, 200k, ... must match _rebirth_cost() in SQL
 function updateGoal(){
   const cost = rebirthCost(), pct = Math.max(0, Math.min(100, balance / cost * 100));
   $('rebirthBtn').hidden = balance < cost;
@@ -1060,7 +1060,7 @@ $('adminUnmod').onclick = () => setMod(false);
 /* ---------- rebirth ---------- */
 $('rebirthBtn').onclick = () => {
   const next = rebirths + 1;
-  $('rbText').innerHTML = `Your coins reset to <b>1,000</b>.<br>You become <b>▲${next}</b>: <b>+${next * 10}%</b> on all winnings, forever.<br><span style="color:var(--muted)">Next rebirth after this one: ${short(50000 * (next + 1))}</span>`;
+  $('rbText').innerHTML = `Your coins reset to <b>1,000</b>.<br>You become <b>▲${next}</b>: <b>+${next * 10}%</b> on all winnings, forever.<br><span style="color:var(--muted)">Next rebirth after this one: ${short(100000 + 50000 * next)}</span>`;
   $('rbModal').hidden = false;
 };
 $('rbNo').onclick = () => { $('rbModal').hidden = true; };
