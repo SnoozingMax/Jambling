@@ -380,6 +380,7 @@ tr.me td{color:var(--accent)}
       <button data-b="money" class="on">Money</button>
       <button data-b="rebirths">Rebirths</button>
       <button data-b="past">Past seasons</button>
+      <button data-b="hidden">Leaderboard banned</button>
     </div>
     <div class="online-count" id="onlineCount" hidden></div>
     <div class="card">
@@ -1674,19 +1675,21 @@ async function loadBoard(){
   const q = (hideBanned, hideWaiting) => {
     let x = sb.from('profiles').select('*');   // includes last_seen for the online dot (if online.sql was run)
     if (hideBanned) x = x.eq('banned', false);
-    if (hideWaiting) x = x.eq('approved', true).eq('board_hidden', false);
+    if (hideWaiting) x = x.eq('approved', true).eq('board_hidden', mode === 'hidden');   // the banned tab shows only leaderboard-banned players
     x = boardMode === 'rebirths'
       ? x.order('rebirths', { ascending: false }).order('balance', { ascending: false })
       : x.order('balance', { ascending: false });
     return x.range(0, 9999);
   };
   let { data, error } = await q(true, true);
+  if (error && mode === 'hidden') { $('board').innerHTML = '<tr><td></td><td>Run board_ban.sql first</td><td></td></tr>'; return; }
   if (error) ({ data, error } = await q(true, false));   // works even before waiting.sql is run
   if (error) ({ data, error } = await q(false, false));  // ...or ban.sql
   if (error) return toast(error.message);
   if (req !== boardReq || boardMode !== mode) return;   // a newer load (or a tab switch) already happened
   const on = data.filter(isOnline).length;
   $('onlineCount').hidden = !on; $('onlineCount').innerHTML = `<span class="online-dot" style="margin:0 6px 0 0"></span>${on} online`;
+  if (mode === 'hidden' && !data.length) { $('board').innerHTML = '<tr><td></td><td>Nobody is leaderboard banned</td><td></td></tr>'; boardShown = mode; return; }
   const frag = document.createDocumentFragment();
   data.forEach((p, i) => frag.appendChild(boardRow(i, p, p.id === user.id, mode === 'rebirths' ? '▲' + (p.rebirths || 0) : short(p.balance))));
   $('board').replaceChildren(frag);   // swap all rows at once: no flash, scroll stays put
