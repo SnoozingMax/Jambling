@@ -1446,6 +1446,7 @@ begin
   if auth.uid() is null then raise exception 'Not signed in'; end if;
   p_bet := round(p_bet, 2);
   if p_bet is null or p_bet <= 0 then raise exception 'Invalid bet'; end if;
+  if p_bet > 1000000 then raise exception 'Max Coin Flip bet is 1,000,000'; end if;
   if p_pick not in ('heads', 'tails') then raise exception 'Invalid pick'; end if;
 
   select balance into bal from profiles where id = auth.uid() for update;
@@ -1455,7 +1456,7 @@ begin
   elsif _rush_now() then res := case when random() < 0.80 then p_pick when p_pick = 'heads' then 'tails' else 'heads' end;   -- rush hour: 80% win
   else res := case when random() < 0.5 then 'heads' else 'tails' end; end if;
   won := res = p_pick;
-  delta := case when won then round(p_bet * _luck(auth.uid()), 2) else -p_bet end;   -- no max bet or max win on Coin Flip
+  delta := case when won then round(p_bet * _luck(auth.uid()), 2) else -p_bet end;   -- no max win on Coin Flip (max bet 1m)
 
   update profiles set balance = balance + delta where id = auth.uid() returning balance into bal;
   return json_build_object('result', res, 'won', won, 'balance', bal, 'delta', delta);
