@@ -461,10 +461,12 @@ tr.me td{color:var(--accent)}
       <label>Player</label>
       <input id="adminUser" type="text" maxlength="20" autocapitalize="off" spellcheck="false" autocomplete="off">
     </div>
+    <div class="owner-only">
     <button type="button" class="go rebirth-go" id="adminBoost">Boost 3 min (free)</button>
     <p class="hint" style="margin:6px 0 18px">Nonstop pump in Ride for 3 minutes. Stacks.</p>
     <button type="button" class="go" id="adminRush" style="background:linear-gradient(90deg,var(--gold),#ff8a3c);color:#2a1d00">Rush hour 3 min (everyone)</button>
     <p class="hint" style="margin:6px 0 18px">Way more luck in every game for everyone. Stacks. <a href="#" id="adminRushStop" style="color:var(--muted)">End rush hour</a></p>
+    </div>
     <button type="button" class="go" id="adminBad" style="background:#6b4bd6">Bad luck 1 min</button>
     <p class="hint" style="margin:6px 0 18px">Rug pulls in Ride, loses every coin flip, bad blackjack deals, Rocket crashes at 1.01×. Stacks.</p>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:0 0 18px">
@@ -492,6 +494,10 @@ tr.me td{color:var(--accent)}
       <input id="adminCost" type="number" min="0.01" step="0.01" placeholder="Amount">
     </div>
     <div style="display:flex;gap:8px"><button type="button" class="go" id="adminGive" style="flex:1">Gift coins</button><button type="button" class="go" id="adminTake" style="flex:1">Take coins</button></div>
+    <div class="owner-only">
+      <button type="button" class="ghost" id="adminStaffLog" style="width:100%;padding:10px;margin-top:18px">Staff activity (what other admins + mods did)</button>
+      <div id="staffLog" hidden style="max-height:260px;overflow:auto;margin-top:8px;border:1px solid var(--line);border-radius:10px;font-size:13px"></div>
+    </div>
     <button type="button" class="ghost" id="adminGiftLog" style="width:100%;padding:10px;margin-top:18px">Gift log (player above, or everyone if blank)</button>
     <div id="giftLog" hidden style="max-height:260px;overflow:auto;margin-top:8px;border:1px solid var(--line);border-radius:10px;font-size:13px"></div>
     <div class="field" style="margin-top:18px">
@@ -713,6 +719,22 @@ $('adminGive').onclick = async () => {
   if (data.user.toLowerCase() === $('who').textContent.toLowerCase()) setBalance(data.balance);
 };
 
+$('adminStaffLog').onclick = async () => {
+  const box = $('staffLog'); box.hidden = false; box.textContent = 'Loading...';
+  const { data, error } = await sb.rpc('staff_activity', { p_limit: 200 });
+  if (error) { box.textContent = error.message; return; }
+  if (!data.length) { box.textContent = 'Nothing yet'; return; }
+  box.innerHTML = '';
+  for (const s of data) {
+    const d = document.createElement('div');
+    d.style.cssText = 'padding:6px 10px;border-bottom:1px dashed var(--line)';
+    const when = document.createElement('span'); when.style.cssText = 'color:var(--muted);margin-right:6px';
+    when.textContent = new Date(s.at).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+    const who = document.createElement('b'); who.textContent = s.who || '?';
+    const rest = document.createElement('span'); rest.textContent = (s.target ? ` → ${s.target}: ` : ': ') + s.what;
+    d.append(when, who, rest); box.appendChild(d);
+  }
+};
 $('adminGiftLog').onclick = async () => {
   const box = $('giftLog'), who = $('adminUser').value.trim();
   box.hidden = false; box.textContent = 'Loading...';
