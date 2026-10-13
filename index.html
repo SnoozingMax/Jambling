@@ -565,7 +565,7 @@ function toast(msg, ms = 2400){ const t = $('toast'); t.textContent = msg; t.cla
 function readBet(id){
   const v = Math.round(parseFloat($(id).value) * 100) / 100;
   if (!(v > 0)) { toast('Enter a bet'); return 0; }
-  const maxBet = id === 'coinBet' ? 5000000 : 100000;   // Coin Flip 5m, everything else 100k
+  const maxBet = id === 'coinBet' ? 50000000 : 100000;   // Coin Flip 50m, everything else 100k
   if (v > maxBet) { toast(`Max bet is ${maxBet.toLocaleString()}`); return 0; }
   if (v > balance) { toast('Not enough coins'); return 0; }
   return v;
@@ -1203,7 +1203,7 @@ document.querySelectorAll('.chips').forEach(c => c.onclick = e => {
   if (op === 'half') v = v / 2;
   if (op === 'double') v = v * 2;
   if (op === 'max') v = balance;
-  const cap = Math.min(balance, inp.id === 'coinBet' ? 5000000 : 100000);
+  const cap = Math.min(balance, inp.id === 'coinBet' ? 50000000 : 100000);
   inp.value = (Math.floor(Math.min(v, cap) * 100) / 100).toFixed(2);
 });
 
