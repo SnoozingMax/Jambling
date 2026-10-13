@@ -481,6 +481,10 @@ tr.me td{color:var(--accent)}
       <button type="button" class="go" id="adminBan" style="background:var(--lose)">Ban</button>
       <button type="button" class="go" id="adminUnban" style="background:var(--line);color:var(--ink)">Unban</button>
     </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:0 0 18px">
+      <button type="button" class="ghost" id="adminBoardHide" style="padding:10px">Leaderboard ban</button>
+      <button type="button" class="ghost" id="adminBoardShow" style="padding:10px">Leaderboard unban</button>
+    </div>
     <div class="field">
       <label>Rename to</label>
       <div style="display:flex;gap:8px"><input id="adminNewName" type="text" maxlength="20" autocapitalize="off" spellcheck="false" autocomplete="off" placeholder="New name"><button type="button" class="ghost" id="adminRename" style="white-space:nowrap">Rename</button></div>
@@ -719,6 +723,16 @@ $('adminGive').onclick = async () => {
   if (data.user.toLowerCase() === $('who').textContent.toLowerCase()) setBalance(data.balance);
 };
 
+async function boardBan(hide){
+  const n = adminName(); if (!n) return;
+  const { data, error } = await sb.rpc('admin_board_ban', { p_user: n, p_hide: hide });
+  if (error) { adminStatus(error.message, false); return toast(error.message); }
+  const m = hide ? `${data.user} is hidden from the leaderboard` : `${data.user} is back on the leaderboard`;
+  adminStatus(m, true); toast(m);
+  if (!$('tab-board').hidden) loadBoard();
+}
+$('adminBoardHide').onclick = () => boardBan(true);
+$('adminBoardShow').onclick = () => boardBan(false);
 $('adminStaffLog').onclick = async () => {
   const box = $('staffLog'); box.hidden = false; box.textContent = 'Loading...';
   const { data, error } = await sb.rpc('staff_activity', { p_limit: 200 });
@@ -1626,7 +1640,7 @@ async function loadBoard(){
   const q = (hideBanned, hideWaiting) => {
     let x = sb.from('profiles').select('*');   // includes last_seen for the online dot (if online.sql was run)
     if (hideBanned) x = x.eq('banned', false);
-    if (hideWaiting) x = x.eq('approved', true);
+    if (hideWaiting) x = x.eq('approved', true).eq('board_hidden', false);
     x = boardMode === 'rebirths'
       ? x.order('rebirths', { ascending: false }).order('balance', { ascending: false })
       : x.order('balance', { ascending: false });
