@@ -125,6 +125,15 @@ canvas{width:100%;height:100%;display:block}
 .gift-req{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:16px 0 0;padding:12px 14px;border-radius:12px;background:rgba(46,204,113,.10);border:1px solid #2ecc71}
 .gift-req .txt{flex:1;min-width:180px}
 .gift-req .msg{display:block;color:var(--muted);font-size:13px;margin-top:2px;overflow-wrap:anywhere}
+.pvp-online{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.pvp-online:empty{display:none}
+.pvp-online button{display:inline-flex;align-items:center;gap:6px;padding:5px 10px;border-radius:999px;border:1px solid var(--line);background:none;color:var(--ink);font-size:13px;cursor:pointer}
+.pvp-online button .online-dot{margin:0}
+.pvp-hist{grid-column:1/-1}
+.pvp-rec{font-weight:600;margin-bottom:8px}
+.pvp-rec span{color:var(--muted);font-weight:400}
+.pvp-row{display:flex;justify-content:space-between;gap:8px;padding:6px 0;border-top:1px dashed var(--line);font-size:14px}
+.pvp-row .w{color:var(--win)} .pvp-row .l{color:var(--lose)} .pvp-row .t{color:var(--muted)}
 .notice{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:16px 0 0;padding:12px 14px;border-radius:12px;background:rgba(232,178,58,.12);border:1px solid var(--gold);color:var(--ink);font-weight:500}
 .notice .ghost{border-color:var(--gold);color:var(--gold);white-space:nowrap}
 .admin-status{margin:0 0 14px;padding:10px 12px;border-radius:10px;font-size:14px;font-weight:600;background:rgba(47,191,107,.14);color:var(--win);border:1px solid var(--win)}
@@ -350,6 +359,7 @@ tr.me td{color:var(--accent)}
         <div class="field">
           <label>Challenge a player</label>
           <input id="pvpUser" type="text" required maxlength="20" autocapitalize="off" spellcheck="false" autocomplete="off" placeholder="Username">
+          <div class="pvp-online" id="pvpOnline"></div>
         </div>
         <div class="pick" id="pvpMode" style="margin-bottom:14px">
           <button type="button" data-m="friendly" class="on">Friendly</button>
@@ -361,6 +371,7 @@ tr.me td{color:var(--accent)}
         </div>
         <button class="go" id="pvpSend">Send challenge</button>
       </form>
+      <button type="button" class="go" id="pvpRematch" hidden style="margin-bottom:12px">Rematch</button>
       <div class="pick" id="pvpActs" hidden style="grid-template-columns:1fr 1fr">
         <button type="button" class="go cash" id="pvpHit">Hit</button>
         <button type="button" class="go" id="pvpStand" style="background:var(--line);color:var(--ink)">Stand</button>
@@ -371,6 +382,10 @@ tr.me td{color:var(--accent)}
       <div class="bj-row"><div class="bj-label"><span id="pvpOppName">Opponent</span> <span id="pvpOT"></span></div><div class="bj-cards" id="pvpOpp"></div></div>
       <div class="bj-msg" id="pvpMsg">Challenge someone to start</div>
       <div class="bj-row"><div class="bj-label">You <span id="pvpMT"></span></div><div class="bj-cards" id="pvpMe"></div></div>
+    </div>
+    <div class="card pvp-hist" id="pvpHist" hidden>
+      <div class="pvp-rec" id="pvpRec"></div>
+      <div id="pvpRecent"></div>
     </div>
   </div>
 
@@ -904,7 +919,50 @@ $('adminNoticeSave').onclick = async () => {
 
 
 /* ---------- 1v1 blackjack ---------- */
-let pvpMode = 'friendly', pvp = null, pvpSeen = new Set();
+let pvpMode = 'friendly', pvp = null, pvpSeen = new Set(), pvpLast = null, pvpHistFor = null;
+$('pvpRematch').onclick = async () => {
+  const m = pvpLast; if (!m) return;
+  $('pvpRematch').disabled = true;
+  const { data, error } = await sb.rpc('pvp_challenge', { p_user: m.opp, p_stake: m.friendly ? 0 : Number(m.stake), p_friendly: !!m.friendly });
+  $('pvpRematch').disabled = false;
+  if (error) return toast(error.message);
+  if (data.balance != null) setBalance(data.balance);
+  toast(`Rematch sent to ${data.opp}`);
+  pollPvp();
+};
+async function loadPvpHistory(){
+  const { data, error } = await sb.rpc('pvp_history');
+  if (error || !data) { $('pvpHist').hidden = true; return; }
+  const total = Number(data.wins) + Number(data.losses) + Number(data.ties);
+  $('pvpHist').hidden = !total;
+  const net = Number(data.net);
+  $('pvpRec').innerHTML = `Your record: ${data.wins}W · ${data.losses}L · ${data.ties}T <span>(${net >= 0 ? '+' : '−'}${fmt(Math.abs(net))} coins from money matches)</span>`;
+  const box = $('pvpRecent'); box.innerHTML = '';
+  for (const r of data.recent) {
+    const row = document.createElement('div'); row.className = 'pvp-row';
+    const left = document.createElement('span'); left.textContent = `vs ${r.opp}` + (r.friendly ? ' · friendly' : ` · ${fmt(r.stake)}`);
+    const right = document.createElement('span');
+    right.className = r.outcome === 'win' ? 'w' : r.outcome === 'lose' ? 'l' : 't';
+    right.textContent = r.outcome === 'win' ? 'Won' : r.outcome === 'lose' ? 'Lost' : 'Tie';
+    row.append(left, right); box.appendChild(row);
+  }
+}
+// who's online right now: tap a name to fill in the challenge box
+async function loadPvpOnline(){
+  if (!user || $('tab-pvp').hidden) return;
+  const since = new Date(Date.now() - 25000).toISOString();
+  const { data, error } = await sb.from('profiles').select('username').gt('last_seen', since).eq('approved', true).eq('banned', false).neq('id', user.id).order('username').limit(30);
+  const box = $('pvpOnline'); box.innerHTML = '';
+  if (error || !data) return;
+  for (const p of data) {
+    const b = document.createElement('button'); b.type = 'button';
+    const dot = document.createElement('span'); dot.className = 'online-dot';
+    b.append(dot, p.username);
+    b.onclick = () => { $('pvpUser').value = p.username; };
+    box.appendChild(b);
+  }
+}
+setInterval(loadPvpOnline, 10000);
 document.querySelectorAll('#pvpMode button').forEach(b => b.onclick = () => {
   pvpMode = b.dataset.m;
   document.querySelectorAll('#pvpMode button').forEach(x => x.classList.toggle('on', x === b));
@@ -939,6 +997,9 @@ function renderPvp(st){
   const live = m && m.status === 'live';
   $('pvpForm').hidden = live || !!st.outgoing;
   $('pvpActs').hidden = !(live && !m.my_done);
+  $('pvpRematch').hidden = !(m && m.status === 'done' && !st.outgoing);
+  if (m && m.status === 'done') { $('pvpRematch').textContent = `Rematch ${m.opp}` + (m.friendly ? ' (friendly)' : ` · ${fmt(m.stake)}`); pvpLast = m; }
+  if (m && m.status === 'done' && pvpHistFor !== m.id) { pvpHistFor = m.id; loadPvpHistory(); }
   const draw = (el, cards, extraBacks) => { el.innerHTML = ''; (cards || []).forEach(c => el.appendChild(cardEl(c))); for (let i = 0; i < extraBacks; i++) el.appendChild(cardEl(null)); };
   if (!m) { draw($('pvpOpp'), [], 0); draw($('pvpMe'), [], 0); $('pvpOT').textContent = $('pvpMT').textContent = ''; $('pvpOppName').textContent = 'Opponent'; $('pvpMsg').textContent = 'Challenge someone to start'; $('pvpMsg').className = 'bj-msg'; return; }
   $('pvpOppName').textContent = m.opp;
@@ -1194,6 +1255,7 @@ document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
   document.querySelectorAll('nav button').forEach(x => x.classList.toggle('on', x === b));
   ['coin', 'crash', 'ride', 'bj', 'pvp', 'board'].forEach(t => $('tab-' + t).hidden = t !== b.dataset.tab);
   if (b.dataset.tab === 'board') loadBoard();
+  if (b.dataset.tab === 'pvp') { loadPvpOnline(); loadPvpHistory(); pollPvp(); }
   if (b.dataset.tab === 'ride') drawRide();
   if (b.dataset.tab === 'crash' && !round && !ghost) drawGraph(1);
 });
