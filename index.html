@@ -509,11 +509,13 @@ tr.me td{color:var(--accent)}
     </div>
     <button type="button" class="ghost" id="adminGiftLog" style="width:100%;padding:10px;margin-top:18px">Gift log (player above, or everyone if blank)</button>
     <div id="giftLog" hidden style="max-height:260px;overflow:auto;margin-top:8px;border:1px solid var(--line);border-radius:10px;font-size:13px"></div>
+<div class="owner-only">
     <div class="field" style="margin-top:18px">
       <label>Site notice (empty = hidden)</label>
       <input id="adminNotice" type="text" maxlength="200" placeholder="Message everyone sees">
     </div>
     <button type="button" class="ghost" id="adminNoticeSave" style="width:100%;padding:10px">Update notice</button>
+    </div>
     <button type="button" class="go" id="adminDelete" style="margin-top:18px;background:var(--line);color:var(--lose)">Delete account</button>
     <button type="button" class="go" id="adminSeason" style="margin-top:8px;background:var(--lose)">Start new season</button>
     <p class="hint" style="margin:6px 0 0">Saves everyone's final coins, rebirths and rank to Past seasons, then resets everyone to 1,000 coins and 0 rebirths.</p>
