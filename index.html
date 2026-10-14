@@ -129,11 +129,20 @@ canvas{width:100%;height:100%;display:block}
 .pvp-online:empty{display:none}
 .pvp-online button{display:inline-flex;align-items:center;gap:6px;padding:5px 10px;border-radius:999px;border:1px solid var(--line);background:none;color:var(--ink);font-size:13px;cursor:pointer}
 .pvp-online button .online-dot{margin:0}
+.pvp-mid{display:flex;flex-direction:column;align-items:center;gap:10px}
+.pvp-rematch{padding:8px 18px;border-radius:999px;border:1px solid var(--accent);background:none;color:var(--accent);font:600 14px Inter,sans-serif;cursor:pointer}
+.pvp-rematch:disabled{opacity:.5}
 .pvp-hist{grid-column:1/-1}
-.pvp-rec{font-weight:600;margin-bottom:8px}
-.pvp-rec span{color:var(--muted);font-weight:400}
-.pvp-row{display:flex;justify-content:space-between;gap:8px;padding:6px 0;border-top:1px dashed var(--line);font-size:14px}
-.pvp-row .w{color:var(--win)} .pvp-row .l{color:var(--lose)} .pvp-row .t{color:var(--muted)}
+.pvp-rec{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;margin-bottom:12px}
+.pvp-rec .n{font:600 22px "IBM Plex Mono",monospace}
+.pvp-rec .n small{font-size:13px;color:var(--muted);margin-left:2px}
+.pvp-rec .w{color:var(--win)} .pvp-rec .l{color:var(--lose)} .pvp-rec .t{color:var(--muted)}
+.pvp-rec .net{color:var(--muted);font-size:13px}
+.pvp-recent{display:flex;flex-wrap:wrap;gap:6px}
+.pvp-chip{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;border:1px solid var(--line);font-size:13px}
+.pvp-chip b{font:600 11px "IBM Plex Mono",monospace;width:16px;height:16px;border-radius:50%;display:inline-grid;place-items:center;color:var(--paper)}
+.pvp-chip.w b{background:var(--win)} .pvp-chip.l b{background:var(--lose)} .pvp-chip.t b{background:var(--muted)}
+.pvp-chip span{color:var(--muted)}
 .notice{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:16px 0 0;padding:12px 14px;border-radius:12px;background:rgba(232,178,58,.12);border:1px solid var(--gold);color:var(--ink);font-weight:500}
 .notice .ghost{border-color:var(--gold);color:var(--gold);white-space:nowrap}
 .admin-status{margin:0 0 14px;padding:10px 12px;border-radius:10px;font-size:14px;font-weight:600;background:rgba(47,191,107,.14);color:var(--win);border:1px solid var(--win)}
@@ -371,7 +380,6 @@ tr.me td{color:var(--accent)}
         </div>
         <button class="go" id="pvpSend">Send challenge</button>
       </form>
-      <button type="button" class="go" id="pvpRematch" hidden style="margin-bottom:12px">Rematch</button>
       <div class="pick" id="pvpActs" hidden style="grid-template-columns:1fr 1fr">
         <button type="button" class="go cash" id="pvpHit">Hit</button>
         <button type="button" class="go" id="pvpStand" style="background:var(--line);color:var(--ink)">Stand</button>
@@ -380,12 +388,16 @@ tr.me td{color:var(--accent)}
     </div>
     <div class="card bj-table">
       <div class="bj-row"><div class="bj-label"><span id="pvpOppName">Opponent</span> <span id="pvpOT"></span></div><div class="bj-cards" id="pvpOpp"></div></div>
-      <div class="bj-msg" id="pvpMsg">Challenge someone to start</div>
+      <div class="pvp-mid">
+        <div class="bj-msg" id="pvpMsg">Challenge someone to start</div>
+        <button type="button" class="pvp-rematch" id="pvpRematch" hidden>Rematch</button>
+      </div>
       <div class="bj-row"><div class="bj-label">You <span id="pvpMT"></span></div><div class="bj-cards" id="pvpMe"></div></div>
     </div>
     <div class="card pvp-hist" id="pvpHist" hidden>
+      <label>Your record</label>
       <div class="pvp-rec" id="pvpRec"></div>
-      <div id="pvpRecent"></div>
+      <div class="pvp-recent" id="pvpRecent"></div>
     </div>
   </div>
 
@@ -935,16 +947,17 @@ async function loadPvpHistory(){
   if (error || !data) { $('pvpHist').hidden = true; return; }
   const total = Number(data.wins) + Number(data.losses) + Number(data.ties);
   $('pvpHist').hidden = !total;
-  const net = Number(data.net);
-  $('pvpRec').innerHTML = `Your record: ${data.wins}W · ${data.losses}L · ${data.ties}T <span>(${net >= 0 ? '+' : '−'}${fmt(Math.abs(net))} coins from money matches)</span>`;
+  const net = Number(data.net), hasMoney = data.recent.some(r => !r.friendly) || net !== 0;
+  $('pvpRec').innerHTML = `<span class="n w">${data.wins}<small>W</small></span><span class="n l">${data.losses}<small>L</small></span><span class="n t">${data.ties}<small>T</small></span>`
+    + (hasMoney ? `<span class="net">${net >= 0 ? '+' : '−'}${short(Math.abs(net))} from money matches</span>` : '');
   const box = $('pvpRecent'); box.innerHTML = '';
   for (const r of data.recent) {
-    const row = document.createElement('div'); row.className = 'pvp-row';
-    const left = document.createElement('span'); left.textContent = `vs ${r.opp}` + (r.friendly ? ' · friendly' : ` · ${fmt(r.stake)}`);
-    const right = document.createElement('span');
-    right.className = r.outcome === 'win' ? 'w' : r.outcome === 'lose' ? 'l' : 't';
-    right.textContent = r.outcome === 'win' ? 'Won' : r.outcome === 'lose' ? 'Lost' : 'Tie';
-    row.append(left, right); box.appendChild(row);
+    const c = document.createElement('span');
+    c.className = 'pvp-chip ' + (r.outcome === 'win' ? 'w' : r.outcome === 'lose' ? 'l' : 't');
+    const b = document.createElement('b'); b.textContent = r.outcome === 'win' ? 'W' : r.outcome === 'lose' ? 'L' : 'T';
+    c.append(b, r.opp);
+    if (!r.friendly) { const s = document.createElement('span'); s.textContent = short(r.stake); c.appendChild(s); }
+    box.appendChild(c);
   }
 }
 // who's online right now: tap a name to fill in the challenge box
@@ -998,7 +1011,7 @@ function renderPvp(st){
   $('pvpForm').hidden = live || !!st.outgoing;
   $('pvpActs').hidden = !(live && !m.my_done);
   $('pvpRematch').hidden = !(m && m.status === 'done' && !st.outgoing);
-  if (m && m.status === 'done') { $('pvpRematch').textContent = `Rematch ${m.opp}` + (m.friendly ? ' (friendly)' : ` · ${fmt(m.stake)}`); pvpLast = m; }
+  if (m && m.status === 'done') { $('pvpRematch').textContent = '↻ Rematch' + (m.friendly ? '' : ` · ${short(m.stake)}`); pvpLast = m; }
   if (m && m.status === 'done' && pvpHistFor !== m.id) { pvpHistFor = m.id; loadPvpHistory(); }
   const draw = (el, cards, extraBacks) => { el.innerHTML = ''; (cards || []).forEach(c => el.appendChild(cardEl(c))); for (let i = 0; i < extraBacks; i++) el.appendChild(cardEl(null)); };
   if (!m) { draw($('pvpOpp'), [], 0); draw($('pvpMe'), [], 0); $('pvpOT').textContent = $('pvpMT').textContent = ''; $('pvpOppName').textContent = 'Opponent'; $('pvpMsg').textContent = 'Challenge someone to start'; $('pvpMsg').className = 'bj-msg'; return; }
