@@ -186,7 +186,7 @@ tr.me td{color:var(--accent)}
 .tile:hover:not(:disabled){border-color:var(--ink);transform:translateY(-2px)}
 .tile:disabled{cursor:default}
 .tile svg{width:58%;height:58%}
-.tile.gem{background:rgba(47,191,107,.16);border-color:var(--win);animation:pop .22s}
+.tile.gem{background:rgba(155,92,246,.16);border-color:#9b5cf6;animation:pop .22s}
 .tile.bomb{background:rgba(255,77,69,.2);border-color:var(--lose);animation:pop .22s}
 .tile.dim{opacity:.35;animation:none}
 @keyframes pop{0%{transform:scale(.7)}60%{transform:scale(1.08)}100%{transform:none}}
@@ -963,7 +963,7 @@ async function resumeBJ(){
 
 /* ---------- mines ---------- */
 let mn = null, mnBusy = false;
-const GEM = '<svg viewBox="0 0 24 24"><path d="M6 3h12l4 6-10 12L2 9z" fill="#2fbf6b"/><path d="M2 9h20M8 3l4 18 4-18" stroke="#1d7a45" stroke-width="1.2" fill="none"/></svg>';
+const GEM = '<svg viewBox="0 0 24 24"><path d="M12 2l8.66 5v10L12 22l-8.66-5V7z" fill="#9b5cf6"/><path d="M12 6.5l4.76 2.75v5.5L12 17.5l-4.76-2.75v-5.5z" fill="#c4a1ff"/><path d="M12 2l8.66 5L12 12 3.34 7z" fill="#fff" opacity=".18"/></svg>';
 const BOMB = '<svg viewBox="0 0 24 24"><circle cx="11" cy="14" r="7.5" fill="#ff4d45"/><path d="M15 8l3-3" stroke="#e8b23a" stroke-width="2.2" stroke-linecap="round"/><circle cx="19" cy="4" r="1.6" fill="#e8b23a"/></svg>';
 (function(){ const g = $('minesGrid'); for (let i = 0; i < 25; i++) { const b = document.createElement('button'); b.className = 'tile'; b.disabled = true; b.onclick = () => minesPick(i); g.appendChild(b); } })();
 function showMines(v){
