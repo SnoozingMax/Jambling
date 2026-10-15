@@ -409,9 +409,9 @@ tr.me td{color:var(--accent)}
       </div>
       <div class="field">
         <label>Bombs</label>
-        <input id="minesCount" type="number" min="1" max="24" step="1" value="3">
+        <input id="minesCount" type="number" min="1" max="15" step="1" value="3">
         <div class="mines-n" id="minesN">
-          <button data-n="1">1</button><button data-n="3" class="on">3</button><button data-n="5">5</button><button data-n="10">10</button><button data-n="24">24</button>
+          <button data-n="1">1</button><button data-n="3" class="on">3</button><button data-n="5">5</button><button data-n="10">10</button><button data-n="15">15</button>
         </div>
       </div>
       <button class="go" id="minesStart">Start</button>
@@ -1009,7 +1009,7 @@ $('minesCount').oninput = () => $('minesN').querySelectorAll('button').forEach(b
 $('minesStart').onclick = () => {
   const bet = readBet('minesBet'); if (!bet) return;
   const n = parseInt($('minesCount').value, 10);
-  if (!(n >= 1 && n <= 24)) return toast('Pick 1 to 24 bombs');
+  if (!(n >= 1 && n <= 15)) return toast('Pick 1 to 15 bombs');
   minesCall('mines_start', { p_bet: bet, p_mines: n }, $('minesStart'));
 };
 $('minesCash').onclick = () => mn && minesCall('mines_cashout', { p_id: mn.id }, $('minesCash'));
