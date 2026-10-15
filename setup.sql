@@ -1446,7 +1446,7 @@ begin
   if auth.uid() is null then raise exception 'Not signed in'; end if;
   p_bet := round(p_bet, 2);
   if p_bet is null or p_bet <= 0 then raise exception 'Invalid bet'; end if;
-  if p_bet > 1000000 then raise exception 'Max Coin Flip bet is 1,000,000'; end if;
+  if p_bet > 10000000 then raise exception 'Max Coin Flip bet is 10,000,000'; end if;
   if p_pick not in ('heads', 'tails') then raise exception 'Invalid pick'; end if;
 
   select balance into bal from profiles where id = auth.uid() for update;
