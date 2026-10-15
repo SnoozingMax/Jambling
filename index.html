@@ -34,8 +34,9 @@ header{display:flex;align-items:center;justify-content:space-between;gap:12px;fl
 .ghost:hover{border-color:var(--ink)}
 
 /* tabs */
-nav{display:flex;gap:22px;margin:18px 0 22px}
-nav button{background:none;border:0;padding:4px 0;cursor:pointer;font-family:Fraunces;font-weight:600;font-size:20px;color:var(--muted);border-bottom:3px solid transparent}
+nav{display:flex;flex-wrap:wrap;gap:6px 22px;margin:18px 0 22px}
+@media (max-width:720px){nav{gap:4px 16px} nav button{font-size:18px} #tab-mines .mines-stage{order:-1;min-height:0}}
+nav button{white-space:nowrap;background:none;border:0;padding:4px 0;cursor:pointer;font-family:Fraunces;font-weight:600;font-size:20px;color:var(--muted);border-bottom:3px solid transparent}
 nav button.on{color:var(--ink);border-color:var(--accent)}
 
 /* panels */
@@ -176,6 +177,22 @@ tr.me td{color:var(--accent)}
 /* toast */
 .toast{position:fixed;z-index:100;left:50%;bottom:24px;transform:translateX(-50%) translateY(20px);background:var(--ink);color:var(--paper);padding:10px 16px;border-radius:10px;opacity:0;transition:.2s;pointer-events:none;font-size:14px}
 .toast.show{opacity:1;transform:translateX(-50%)}
+.mines-stage{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;min-height:340px}
+.mines-top{display:flex;align-items:baseline;gap:12px;font-family:"IBM Plex Mono";font-weight:600}
+.mines-top #mMult{font-size:34px}
+.mines-top #mNext{font-size:14px;color:var(--muted)}
+.mines-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;width:100%;max-width:360px}
+.tile{aspect-ratio:1;border-radius:10px;border:1px solid var(--line);background:var(--field);cursor:pointer;display:grid;place-items:center;padding:0;transition:transform .08s,border-color .15s}
+.tile:hover:not(:disabled){border-color:var(--ink);transform:translateY(-2px)}
+.tile:disabled{cursor:default}
+.tile svg{width:58%;height:58%}
+.tile.gem{background:rgba(47,191,107,.16);border-color:var(--win);animation:pop .22s}
+.tile.bomb{background:rgba(255,77,69,.2);border-color:var(--lose);animation:pop .22s}
+.tile.dim{opacity:.35;animation:none}
+@keyframes pop{0%{transform:scale(.7)}60%{transform:scale(1.08)}100%{transform:none}}
+.mines-n{display:flex;gap:6px;margin-top:8px}
+.mines-n button{flex:1;padding:6px 0;border:1px solid var(--line);background:var(--field);border-radius:8px;cursor:pointer;font-family:"IBM Plex Mono";font-size:13px}
+.mines-n button.on{background:var(--ink);color:var(--paper);border-color:var(--ink)}
 [hidden]{display:none!important}
 </style>
 </head>
@@ -247,6 +264,7 @@ tr.me td{color:var(--accent)}
     <button data-tab="crash">Rocket</button>
     <button data-tab="ride">Ride</button>
     <button data-tab="bj">Blackjack</button>
+    <button data-tab="mines">Mines</button>
     <button data-tab="pvp">1v1 <span class="dot" id="pvpDot" hidden></span></button>
     <button data-tab="board">Leaderboard</button>
   </nav>
@@ -358,6 +376,34 @@ tr.me td{color:var(--accent)}
       <div class="bj-row"><div class="bj-label">Dealer <span id="bjDT"></span></div><div class="bj-cards" id="bjDealer"></div></div>
       <div class="bj-msg" id="bjMsg"></div>
       <div class="bj-row"><div class="bj-label">You <span id="bjPT"></span></div><div class="bj-cards" id="bjPlayer"></div></div>
+    </div>
+  </div>
+
+  <!-- mines -->
+  <div id="tab-mines" class="game" hidden>
+    <div class="card">
+      <div class="field">
+        <label>Bet</label>
+        <input id="minesBet" type="number" min="0.01" step="0.01" value="10">
+        <div class="chips" data-for="minesBet">
+          <button data-op="half">½</button><button data-op="double">2×</button><button data-op="max">Max</button>
+        </div>
+      </div>
+      <div class="field">
+        <label>Bombs</label>
+        <input id="minesCount" type="number" min="1" max="24" step="1" value="3">
+        <div class="mines-n" id="minesN">
+          <button data-n="1">1</button><button data-n="3" class="on">3</button><button data-n="5">5</button><button data-n="10">10</button><button data-n="24">24</button>
+        </div>
+      </div>
+      <button class="go" id="minesStart">Start</button>
+      <button class="go cash" id="minesCash" hidden>Cash out</button>
+      <div class="hint">Tap tiles to find gems. Every gem raises your multiplier. Hit a bomb and you lose the bet. More bombs = bigger jumps. Max bet 100k, max win 5m.</div>
+    </div>
+    <div class="card mines-stage">
+      <div class="mines-top"><span id="mMult">1.00×</span><span id="mNext"></span></div>
+      <div class="mines-grid" id="minesGrid"></div>
+      <div class="result" id="minesMsg"></div>
     </div>
   </div>
 
@@ -868,6 +914,63 @@ async function resumeBJ(){
   if (data) { showBJ(data); toast('Your blackjack hand is still waiting'); }
 }
 
+/* ---------- mines ---------- */
+let mn = null, mnBusy = false;
+const GEM = '<svg viewBox="0 0 24 24"><path d="M6 3h12l4 6-10 12L2 9z" fill="#2fbf6b"/><path d="M2 9h20M8 3l4 18 4-18" stroke="#1d7a45" stroke-width="1.2" fill="none"/></svg>';
+const BOMB = '<svg viewBox="0 0 24 24"><circle cx="11" cy="14" r="7.5" fill="#ff4d45"/><path d="M15 8l3-3" stroke="#e8b23a" stroke-width="2.2" stroke-linecap="round"/><circle cx="19" cy="4" r="1.6" fill="#e8b23a"/></svg>';
+(function(){ const g = $('minesGrid'); for (let i = 0; i < 25; i++) { const b = document.createElement('button'); b.className = 'tile'; b.disabled = true; b.onclick = () => minesPick(i); g.appendChild(b); } })();
+function showMines(v){
+  mn = v;
+  const live = v && v.status === 'live';
+  const rev = v ? v.revealed : [], bombs = (v && v.bombs) || [];
+  [...$('minesGrid').children].forEach((b, i) => {
+    const gem = rev.includes(i), bomb = bombs.includes(i);
+    const over = v && !live;
+    b.disabled = !live || gem;
+    const hit = bomb && v.status === 'boom' && (i === v.hitTile || v.hitTile == null && i === bombs[0]);
+    b.className = 'tile' + (gem ? ' gem' : !over ? '' : bomb ? (hit ? ' bomb' : ' bomb dim') : ' gem dim');
+    b.innerHTML = gem || (over && !bomb) ? GEM : bomb ? BOMB : '';
+  });
+  $('minesStart').hidden = live; $('minesCash').hidden = !live;
+  $('minesCash').disabled = !(live && rev.length > 0);
+  $('minesCash').textContent = live && v.cashout != null ? `Cash out ${fmt(v.cashout)}` : 'Cash out';
+  $('mMult').textContent = (v ? Number(v.mult) : 1).toFixed(2) + '×';
+  $('mNext').textContent = live && v.next_mult ? `next ${Number(v.next_mult).toFixed(2)}×` : '';
+  const m = $('minesMsg');
+  if (v && v.balance != null) setBalance(v.balance);
+  if (!v || live) { m.textContent = live ? (rev.length ? '' : 'Pick a tile') : ''; m.className = 'result'; return; }
+  if (v.status === 'boom') { m.textContent = `Boom −${fmt(v.bet)}`; m.className = 'result lose'; }
+  else { m.textContent = `+${fmt(Number(v.payout) - Number(v.bet))}`; m.className = 'result win'; }
+}
+async function minesCall(fn, args, btn){
+  if (mnBusy) return; mnBusy = true;
+  if (btn) btn.disabled = true;
+  const { data, error } = await sb.rpc(fn, args);
+  mnBusy = false;
+  if (btn) btn.disabled = false;
+  if (error) { toast(error.message); return; }
+  if (fn === 'mines_pick' && data.status === 'boom') data.hitTile = args.p_tile;
+  showMines(data);
+}
+function minesPick(i){ if (mn && mn.status === 'live') minesCall('mines_pick', { p_id: mn.id, p_tile: i }); }
+$('minesN').onclick = e => {
+  const n = e.target.dataset.n; if (!n) return;
+  $('minesCount').value = n;
+  $('minesN').querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.n === n));
+};
+$('minesCount').oninput = () => $('minesN').querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.n === $('minesCount').value));
+$('minesStart').onclick = () => {
+  const bet = readBet('minesBet'); if (!bet) return;
+  const n = parseInt($('minesCount').value, 10);
+  if (!(n >= 1 && n <= 24)) return toast('Pick 1 to 24 bombs');
+  minesCall('mines_start', { p_bet: bet, p_mines: n }, $('minesStart'));
+};
+$('minesCash').onclick = () => mn && minesCall('mines_cashout', { p_id: mn.id }, $('minesCash'));
+async function resumeMines(){
+  const { data } = await sb.rpc('mines_current');
+  if (data) { showMines(data); toast('Your Mines round is still open'); }
+}
+
 /* ---------- admin: ban ---------- */
 async function adminBan(on){
   const n = adminName(); if (!n) return;
@@ -883,6 +986,7 @@ $('refill').onclick = async () => {
   if (ride && !ride.done) return toast('Stop your Ride round first');
   if (round) return toast('Cash out or let your Rocket crash first');
   if (bj && bj.status === 'live') return toast('Finish your Blackjack hand first');
+  if (mn && mn.status === 'live') return toast('Cash out your Mines round first');
   const { data, error } = await sb.rpc('claim_refill');
   if (error) { adminStatus(error.message, false); return toast(error.message); }
   setBalance(data.balance); toast('Refilled to 500');
@@ -1235,6 +1339,7 @@ async function loadProfile(){
   if (data.approved === false) { showWaiting(data.username, !!data.rejected_at); return; }
   $('waiting').hidden = true; $('app').hidden = false; clearInterval(waitPoll);
   resumeBJ();
+  resumeMines();
   setBalance(data.balance);
   checkGifts();
   const nd = await sb.rpc('daily_next');
@@ -1268,7 +1373,7 @@ $('daily').onclick = async () => {
 /* ---------- tabs ---------- */
 document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
   document.querySelectorAll('nav button').forEach(x => x.classList.toggle('on', x === b));
-  ['coin', 'crash', 'ride', 'bj', 'pvp', 'board'].forEach(t => $('tab-' + t).hidden = t !== b.dataset.tab);
+  ['coin', 'crash', 'ride', 'bj', 'mines', 'pvp', 'board'].forEach(t => $('tab-' + t).hidden = t !== b.dataset.tab);
   if (b.dataset.tab === 'board') loadBoard();
   if (b.dataset.tab === 'pvp') { loadPvpOnline(); loadPvpHistory(); pollPvp(); }
   if (b.dataset.tab === 'ride') drawRide();
