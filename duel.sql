@@ -5,6 +5,10 @@
 --   Different   -> you dodged: it becomes YOUR turn to attack (no point), their streak resets.
 -- First to land 3 hits in a row wins. You can't pick the same side twice in a row.
 
+alter table pvp_matches add column if not exists a_move text;
+alter table pvp_matches add column if not exists b_move text;
+alter table pvp_matches add column if not exists round int not null default 1;
+alter table pvp_matches add column if not exists log jsonb not null default '[]';
 alter table pvp_matches add column if not exists attacker uuid;
 alter table pvp_matches add column if not exists streak int not null default 0;
 alter table pvp_matches add column if not exists a_last text;
