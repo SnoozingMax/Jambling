@@ -144,6 +144,20 @@ canvas{width:100%;height:100%;display:block}
 .pvp-chip b{font:600 11px "IBM Plex Mono",monospace;width:16px;height:16px;border-radius:50%;display:inline-grid;place-items:center;color:var(--paper)}
 .pvp-chip.w b{background:var(--win)} .pvp-chip.l b{background:var(--lose)} .pvp-chip.t b{background:var(--muted)}
 .pvp-chip span{color:var(--muted)}
+/* shadow boxing */
+.box-table{display:flex;flex-direction:column;justify-content:space-between;min-height:340px;gap:14px}
+.box-name{font:600 13px "IBM Plex Mono",monospace;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:8px}
+.box-name .box-lock{color:var(--win);font-size:11px;text-transform:none;letter-spacing:0}
+.hpbar{height:16px;border-radius:999px;background:var(--field);border:1px solid var(--line);overflow:hidden}
+.hpfill{display:block;height:100%;width:100%;border-radius:999px;transition:width .45s ease,background .3s}
+.hpfill.hi{background:var(--win)} .hpfill.mid{background:var(--gold)} .hpfill.lo{background:var(--lose)}
+.hp-num{font:600 12px "IBM Plex Mono",monospace;color:var(--muted);margin-top:5px}
+.box-round{font:600 13px "IBM Plex Mono",monospace;color:var(--accent);letter-spacing:.08em;min-height:18px}
+.box-last{font:600 14px "IBM Plex Mono",monospace;color:var(--ink);text-align:center;min-height:20px;line-height:1.5}
+.box-moves{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.box-moves button{padding:14px;border:1px solid var(--line);background:var(--field);border-radius:10px;cursor:pointer;font-weight:600;font-size:15px}
+.box-moves button:hover:not(:disabled){border-color:var(--ink)}
+.box-moves button:disabled{opacity:.45;cursor:default}
 /* stacked big buttons never touch */
 .card > .go + .go, form > .go + .go, .modal-card > .go + .go, .card > .go:not([hidden]) ~ .go:not([hidden]){margin-top:10px}
 .notice{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:16px 0 0;padding:12px 14px;border-radius:12px;background:rgba(232,178,58,.12);border:1px solid var(--gold);color:var(--ink);font-weight:500}
@@ -453,7 +467,7 @@ tr.me td{color:var(--accent)}
     </div>
   </div>
 
-  <!-- 1v1 blackjack -->
+  <!-- 1v1 shadow boxing -->
   <div id="tab-pvp" class="game" hidden>
     <div class="card">
       <div id="pvpIncoming"></div>
@@ -474,19 +488,31 @@ tr.me td{color:var(--accent)}
         </div>
         <button class="go" id="pvpSend">Send challenge</button>
       </form>
-      <div class="pick" id="pvpActs" hidden style="grid-template-columns:1fr 1fr">
-        <button type="button" class="go cash" id="pvpHit">Hit</button>
-        <button type="button" class="go" id="pvpStand" style="background:var(--line);color:var(--ink)">Stand</button>
+      <div class="box-moves" id="pvpMoves" hidden>
+        <button type="button" data-mv="jab">👊 Jab</button>
+        <button type="button" data-mv="hook">🥊 Hook</button>
+        <button type="button" data-mv="block">🛡️ Block</button>
+        <button type="button" data-mv="dodge">💨 Dodge</button>
       </div>
-      <div class="hint">You both play your own hand at the same time. Closer to 21 without going over wins. Tie or both bust = stakes back. Idle for 90s = auto-stand.</div>
+      <div class="hint">Both pick a move at the same time, then the round plays out. Nothing depends on reaction time. Jab beats Hook and Dodge · Hook smashes Block · Block stops Jab · Dodge counters Hook. First to drop the other to 0 HP wins. Idle 75s = auto-Block.</div>
     </div>
-    <div class="card bj-table">
-      <div class="bj-row"><div class="bj-label"><span id="pvpOppName">Opponent</span> <span id="pvpOT"></span></div><div class="bj-cards" id="pvpOpp"></div></div>
+    <div class="card box-table">
+      <div class="box-fighter">
+        <div class="box-name"><span id="pvpOppName">Opponent</span> <span class="box-lock" id="pvpOppLock"></span></div>
+        <div class="hpbar"><span class="hpfill hi" id="pvpOppHp"></span></div>
+        <div class="hp-num" id="pvpOppHpN"></div>
+      </div>
       <div class="pvp-mid">
+        <div class="box-round" id="pvpRound"></div>
         <div class="bj-msg" id="pvpMsg">Challenge someone to start</div>
+        <div class="box-last" id="pvpRoundLog"></div>
         <button type="button" class="pvp-rematch" id="pvpRematch" hidden>Rematch</button>
       </div>
-      <div class="bj-row"><div class="bj-label">You <span id="pvpMT"></span></div><div class="bj-cards" id="pvpMe"></div></div>
+      <div class="box-fighter">
+        <div class="box-name">You <span class="box-lock" id="pvpMeLock"></span></div>
+        <div class="hpbar"><span class="hpfill hi" id="pvpMeHp"></span></div>
+        <div class="hp-num" id="pvpMeHpN"></div>
+      </div>
     </div>
     <div class="card pvp-hist" id="pvpHist" hidden>
       <label>Your record</label>
@@ -1197,7 +1223,7 @@ function renderPvp(st){
     acc.onclick = async () => { acc.disabled = true; const { data, error } = await sb.rpc('pvp_accept', { p_id: c.id }); if (error) { acc.disabled = false; return toast(error.message); } pollPvp(); };
     dec.onclick = async () => { const { error } = await sb.rpc('pvp_decline', { p_id: c.id }); if (error) return toast(error.message); pollPvp(); };
     inc.appendChild(d);
-    if (!pvpSeen.has(c.id)) { pvpSeen.add(c.id); toast(`${c.from} challenged you to 1v1 blackjack!`); }
+    if (!pvpSeen.has(c.id)) { pvpSeen.add(c.id); toast(`${c.from} challenged you to a 1v1 boxing match!`); }
   });
   $('pvpDot').hidden = !(st.incoming || []).length;
   // my waiting challenge
@@ -1209,32 +1235,54 @@ function renderPvp(st){
     d.querySelector('button').onclick = async () => { const { data, error } = await sb.rpc('pvp_decline', { p_id: st.outgoing.id }); if (error) return toast(error.message); if (data.balance != null) setBalance(data.balance); pollPvp(); };
     out.appendChild(d);
   }
-  // the table
+  // the ring
   const m = st.match; pvp = m;
   const live = m && m.status === 'live';
   $('pvpForm').hidden = live || !!st.outgoing;
-  $('pvpActs').hidden = !(live && !m.my_done);
+  const canMove = live && !m.my_move;
+  $('pvpMoves').hidden = !canMove;
+  if (canMove) document.querySelectorAll('#pvpMoves button').forEach(b => b.disabled = false);
   $('pvpRematch').hidden = !(m && m.status === 'done' && !st.outgoing);
   if (m && m.status === 'done') { $('pvpRematch').textContent = '↻ Rematch' + (m.friendly ? '' : ` · ${short(m.stake)}`); pvpLast = m; }
   if (m && m.status === 'done' && pvpHistFor !== m.id) { pvpHistFor = m.id; loadPvpHistory(); }
-  const draw = (el, cards, extraBacks) => { el.innerHTML = ''; (cards || []).forEach(c => el.appendChild(cardEl(c))); for (let i = 0; i < extraBacks; i++) el.appendChild(cardEl(null)); };
-  if (!m) { draw($('pvpOpp'), [], 0); draw($('pvpMe'), [], 0); $('pvpOT').textContent = $('pvpMT').textContent = ''; $('pvpOppName').textContent = 'Opponent'; $('pvpMsg').textContent = 'Challenge someone to start'; $('pvpMsg').className = 'bj-msg'; return; }
-  $('pvpOppName').textContent = m.opp;
-  draw($('pvpOpp'), m.opp_cards, Math.max(0, m.opp_count - (m.opp_cards || []).length));
-  draw($('pvpMe'), m.my_cards, 0);
-  $('pvpMT').textContent = m.my_total;
-  $('pvpOT').textContent = m.status === 'done' ? m.opp_total : m.opp_total + ' + ?';
   const msg = $('pvpMsg');
+  if (!m) {
+    $('pvpOppName').textContent = 'Opponent'; setHp('pvpOppHp', 'pvpOppHpN', 100); setHp('pvpMeHp', 'pvpMeHpN', 100);
+    $('pvpRound').textContent = ''; $('pvpRoundLog').textContent = ''; $('pvpOppLock').textContent = ''; $('pvpMeLock').textContent = '';
+    msg.textContent = 'Challenge someone to start'; msg.className = 'bj-msg'; return;
+  }
+  $('pvpOppName').textContent = m.opp;
+  setHp('pvpOppHp', 'pvpOppHpN', m.opp_hp);
+  setHp('pvpMeHp', 'pvpMeHpN', m.my_hp);
+  const lg = m.log || [], last = lg[lg.length - 1];
+  $('pvpRoundLog').innerHTML = last ? punchLine(last, m.challenger, m.opp) : '';
   if (live) {
+    $('pvpRound').textContent = 'Round ' + m.round;
+    $('pvpMeLock').textContent = m.my_move ? 'locked in ✓' : '';
+    $('pvpOppLock').textContent = m.opp_locked ? 'locked in ✓' : '';
     msg.className = 'bj-msg';
-    msg.textContent = m.my_done ? (m.my_total > 21 ? 'Bust. Waiting on ' + m.opp + '…' : 'Standing. Waiting on ' + m.opp + '…') : (m.opp_done ? m.opp + ' is done. Your move' : 'Your move');
+    msg.textContent = m.my_move ? (m.opp_locked ? '' : `Waiting on ${m.opp}…`) : 'Pick your move';
   } else {
-    const label = { win: 'You win!', lose: m.opp + ' wins', tie: 'Tie' }[m.outcome];
+    $('pvpRound').textContent = ''; $('pvpMeLock').textContent = ''; $('pvpOppLock').textContent = '';
+    const label = { win: 'You win!', lose: m.opp + ' wins', tie: 'Draw' }[m.outcome];
     const money = m.friendly ? ' (friendly)' : m.outcome === 'win' ? ` +${fmt(m.stake)}` : m.outcome === 'lose' ? ` −${fmt(m.stake)}` : ' · stakes back';
     msg.textContent = label + money;
     msg.className = 'bj-msg ' + (m.outcome === 'win' ? 'win' : m.outcome === 'lose' ? 'lose' : '');
     if (pvp && m.balance != null) setBalance(m.balance);
   }
+}
+const MV = { jab: { n: 'Jab', e: '👊' }, hook: { n: 'Hook', e: '🥊' }, block: { n: 'Block', e: '🛡️' }, dodge: { n: 'Dodge', e: '💨' } };
+function setHp(barId, numId, hp){
+  const p = Math.max(0, Math.min(100, hp)); const el = $(barId);
+  el.style.width = p + '%'; el.className = 'hpfill ' + (p > 50 ? 'hi' : p > 25 ? 'mid' : 'lo');
+  $(numId).textContent = hp + ' HP';
+}
+function punchLine(r, isA, oppName){
+  // show the move each fighter threw and the damage they TOOK (so it tracks the HP bars)
+  const mine = isA ? { mv: r.am, took: r.bd } : { mv: r.bm, took: r.ad };
+  const opp = isA ? { mv: r.bm, took: r.ad } : { mv: r.am, took: r.bd };
+  const part = (who, x) => `${who} ${MV[x.mv].e} ${MV[x.mv].n}${x.took ? ` <span class="lose">−${x.took}</span>` : ''}`;
+  return part('You', mine) + '　·　' + part(oppName, opp);
 }
 let pvpBusy = false;
 async function pollPvp(){
@@ -1257,16 +1305,15 @@ $('pvpForm').onsubmit = async e => {
   toast(`Challenge sent to ${data.opp}`);
   pollPvp();
 };
-const pvpMove = async hit => {
-  if (!pvp) return;
-  const btn = hit ? $('pvpHit') : $('pvpStand'); btn.disabled = true;
-  const { data, error } = await sb.rpc('pvp_move', { p_id: pvp.id, p_hit: hit });
-  btn.disabled = false;
-  if (error) return toast(error.message);
+const pvpBoxMove = async mv => {
+  if (!pvp || pvp.status !== 'live') return;
+  document.querySelectorAll('#pvpMoves button').forEach(b => b.disabled = true);
+  const { data, error } = await sb.rpc('pvp_box', { p_id: pvp.id, p_move: mv });
+  if (error) { document.querySelectorAll('#pvpMoves button').forEach(b => b.disabled = false); return toast(error.message); }
+  if (data) renderPvp({ incoming: [], outgoing: null, match: data });
   pollPvp();
 };
-$('pvpHit').onclick = () => pvpMove(true);
-$('pvpStand').onclick = () => pvpMove(false);
+$('pvpMoves').onclick = e => { const b = e.target.closest('button'); if (b && b.dataset.mv) pvpBoxMove(b.dataset.mv); };
 
 /* ---------- moderators + bad luck ---------- */
 function modStatus(msg, ok){
