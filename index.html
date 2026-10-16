@@ -151,8 +151,22 @@ canvas{width:100%;height:100%;display:block}
 .duel-role.atk{color:var(--accent)} .duel-role.def{color:var(--muted)}
 .box-round{font:600 13px "IBM Plex Mono",monospace;color:var(--muted);letter-spacing:.08em;min-height:16px}
 .box-last{font:600 15px "IBM Plex Mono",monospace;color:var(--ink);text-align:center;min-height:22px;line-height:1.5}
-.duel-seq{display:flex;gap:6px;flex-wrap:wrap;justify-content:center;max-width:100%}
+.duel-seq{display:flex;gap:5px;flex-wrap:nowrap;justify-content:flex-start;max-width:100%;overflow-x:auto;padding:2px}
 .duel-seq:empty{display:none}
+.seqx{flex:none}
+/* filler */
+.fill-pad{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.fill-pad button{height:46px;border-radius:10px;border:2px solid rgba(255,255,255,.15);cursor:pointer}
+.fill-pad button:disabled{opacity:.28;cursor:default;border-color:var(--line)}
+.fill-table{display:flex;flex-direction:column;gap:12px;min-height:340px;align-items:center;justify-content:center}
+.fill-top{display:flex;justify-content:space-between;align-items:center;width:100%;max-width:300px;font:600 13px "IBM Plex Mono",monospace}
+.fill-tag{display:inline-flex;gap:6px;align-items:center;text-transform:uppercase;letter-spacing:.06em}
+.fill-tag.me{color:var(--win)} .fill-tag.opp{color:var(--lose)}
+.fill-turn{color:var(--muted);text-transform:none;letter-spacing:0;font-weight:600}
+.fill-grid{display:grid;grid-template-columns:repeat(6,1fr);grid-template-rows:repeat(7,1fr);gap:3px;width:min(300px,82vw);aspect-ratio:6/7}
+.fill-cell{border-radius:4px}
+.fill-cell.me{box-shadow:inset 0 0 0 3px rgba(255,255,255,.92)}
+.fill-cell.opp{box-shadow:inset 0 0 0 3px rgba(0,0,0,.6)}
 .seqx{display:flex;flex-direction:column;align-items:center;gap:2px;padding:4px 7px;border-radius:8px;border:1px solid var(--line);font:600 15px "IBM Plex Mono",monospace;line-height:1}
 .seqx .o{color:var(--muted);font-size:13px}
 .seqx.hit{border-color:var(--lose);background:rgba(255,77,69,.08)}
@@ -488,6 +502,11 @@ tr.me td{color:var(--accent)}
           <input id="pvpUser" type="text" required maxlength="20" autocapitalize="off" spellcheck="false" autocomplete="off" placeholder="Username">
           <div class="pvp-online" id="pvpOnline"></div>
         </div>
+        <label>Game</label>
+        <div class="pick" id="pvpGame" style="margin-bottom:14px">
+          <button type="button" data-g="duel" class="on">Shadow Boxing</button>
+          <button type="button" data-g="filler">Filler</button>
+        </div>
         <div class="pick" id="pvpMode" style="margin-bottom:14px">
           <button type="button" data-m="friendly" class="on">Friendly</button>
           <button type="button" data-m="money">Money</button>
@@ -504,9 +523,10 @@ tr.me td{color:var(--accent)}
         <button type="button" data-mv="right" class="dir-right">→</button>
         <button type="button" data-mv="down" class="dir-down">↓</button>
       </div>
-      <div class="hint">Basically shadow boxing. Land 3 hits in a row to win. Can't pick the same side twice in a row.</div>
+      <div class="fill-pad" id="pvpColors" hidden></div>
+      <div class="hint" id="pvpHintText">Basically shadow boxing. Land 3 hits in a row to win. Can't pick the same side twice in a row.</div>
     </div>
-    <div class="card box-table">
+    <div class="card box-table" id="pvpDuelCard">
       <div class="box-fighter">
         <div class="box-name"><span id="pvpOppName">Opponent</span> <span class="duel-role" id="pvpOppRole"></span></div>
       </div>
@@ -521,6 +541,16 @@ tr.me td{color:var(--accent)}
       <div class="box-fighter">
         <div class="box-name">You <span class="duel-role" id="pvpMeRole"></span></div>
       </div>
+    </div>
+    <div class="card fill-table" id="pvpFillCard" hidden>
+      <div class="fill-top">
+        <span class="fill-tag opp"><b id="fillOppName">Opp</b> <span id="fillOppCount">0</span></span>
+        <span class="fill-turn" id="fillTurn"></span>
+        <span class="fill-tag me">You <span id="fillMeCount">0</span></span>
+      </div>
+      <div class="fill-grid" id="fillGrid"></div>
+      <div class="bj-msg" id="fillMsg"></div>
+      <button type="button" class="pvp-rematch" id="fillRematch" hidden>Rematch</button>
     </div>
     <div class="card pvp-hist" id="pvpHist" hidden>
       <label>Your record</label>
@@ -1169,17 +1199,20 @@ $('adminNoticeSave').onclick = async () => {
 
 
 /* ---------- 1v1 blackjack ---------- */
-let pvpMode = 'friendly', pvp = null, pvpSeen = new Set(), pvpLast = null, pvpHistFor = null;
-$('pvpRematch').onclick = async () => {
+let pvpMode = 'friendly', pvpGameSel = 'duel', pvp = null, pvpSeen = new Set(), pvpLast = null, pvpHistFor = null;
+const GAME_NAME = { duel: 'Shadow Boxing', filler: 'Filler' };
+async function pvpRematch(){
   const m = pvpLast; if (!m) return;
-  $('pvpRematch').disabled = true;
-  const { data, error } = await sb.rpc('pvp_challenge', { p_user: m.opp, p_stake: m.friendly ? 0 : Number(m.stake), p_friendly: !!m.friendly });
-  $('pvpRematch').disabled = false;
+  $('pvpRematch').disabled = $('fillRematch').disabled = true;
+  const { data, error } = await sb.rpc('pvp_challenge', { p_user: m.opp, p_stake: m.friendly ? 0 : Number(m.stake), p_friendly: !!m.friendly, p_game: m.game || 'duel' });
+  $('pvpRematch').disabled = $('fillRematch').disabled = false;
   if (error) return toast(error.message);
   if (data.balance != null) setBalance(data.balance);
   toast(`Rematch sent to ${data.opp}`);
   pollPvp();
-};
+}
+$('pvpRematch').onclick = pvpRematch;
+$('fillRematch').onclick = pvpRematch;
 async function loadPvpHistory(){
   const { data, error } = await sb.rpc('pvp_history');
   if (error || !data) { $('pvpHist').hidden = true; return; }
@@ -1219,7 +1252,16 @@ document.querySelectorAll('#pvpMode button').forEach(b => b.onclick = () => {
   document.querySelectorAll('#pvpMode button').forEach(x => x.classList.toggle('on', x === b));
   $('pvpStakeField').hidden = pvpMode !== 'money';
 });
-const stakeText = c => c.friendly ? 'Friendly' : `${fmt(c.stake)} coins each`;
+const HINTS = {
+  duel: 'Basically shadow boxing. Land 3 hits in a row to win. Can\'t pick the same side twice in a row.',
+  filler: 'You own bottom-left, they own top-right. Take turns picking a color to grow your blob (not your or their current color). Most of the board when it fills up wins.'
+};
+document.querySelectorAll('#pvpGame button').forEach(b => b.onclick = () => {
+  pvpGameSel = b.dataset.g;
+  document.querySelectorAll('#pvpGame button').forEach(x => x.classList.toggle('on', x === b));
+  $('pvpHintText').textContent = HINTS[pvpGameSel];
+});
+const stakeText = c => `${GAME_NAME[c.game] || ''}${c.game ? ' · ' : ''}${c.friendly ? 'Friendly' : fmt(c.stake) + ' coins each'}`;
 function renderPvp(st){
   // incoming challenges
   const inc = $('pvpIncoming'); inc.innerHTML = '';
@@ -1231,7 +1273,7 @@ function renderPvp(st){
     acc.onclick = async () => { acc.disabled = true; const { data, error } = await sb.rpc('pvp_accept', { p_id: c.id }); if (error) { acc.disabled = false; return toast(error.message); } pollPvp(); };
     dec.onclick = async () => { const { error } = await sb.rpc('pvp_decline', { p_id: c.id }); if (error) return toast(error.message); pollPvp(); };
     inc.appendChild(d);
-    if (!pvpSeen.has(c.id)) { pvpSeen.add(c.id); toast(`${c.from} challenged you to a 1v1 duel!`); }
+    if (!pvpSeen.has(c.id)) { pvpSeen.add(c.id); toast(`${c.from} challenged you to ${GAME_NAME[c.game] || '1v1'}!`); }
   });
   $('pvpDot').hidden = !(st.incoming || []).length;
   // my waiting challenge
@@ -1246,12 +1288,18 @@ function renderPvp(st){
   // the ring
   const m = st.match; pvp = m;
   const live = m && m.status === 'live';
+  const filler = m && m.game === 'filler';
   $('pvpForm').hidden = live || !!st.outgoing;
-  const canMove = live && !m.my_move;
+  $('pvpDuelCard').hidden = !!filler;
+  $('pvpFillCard').hidden = !filler;
+  const canMove = live && !filler && !m.my_move;
   $('pvpMoves').hidden = !canMove;
   if (canMove) document.querySelectorAll('#pvpMoves button').forEach(b => b.disabled = false);
-  $('pvpRematch').hidden = !(m && m.status === 'done' && !st.outgoing);
-  if (m && m.status === 'done') { $('pvpRematch').textContent = '↻ Rematch' + (m.friendly ? '' : ` · ${short(m.stake)}`); pvpLast = m; }
+  $('pvpColors').hidden = !(live && filler && m.my_turn);
+  const doneRematch = m && m.status === 'done' && !st.outgoing;
+  $('pvpRematch').hidden = !(doneRematch && !filler);
+  $('fillRematch').hidden = !(doneRematch && filler);
+  if (m && m.status === 'done') { const rt = '↻ Rematch' + (m.friendly ? '' : ` · ${short(m.stake)}`); $('pvpRematch').textContent = rt; $('fillRematch').textContent = rt; pvpLast = m; }
   if (m && m.status === 'done' && pvpHistFor !== m.id) { pvpHistFor = m.id; loadPvpHistory(); }
   const msg = $('pvpMsg');
   if (!m) {
@@ -1259,6 +1307,7 @@ function renderPvp(st){
     $('pvpOppRole').textContent = ''; $('pvpMeRole').textContent = ''; renderStreak(null);
     msg.textContent = 'Challenge someone to start'; msg.className = 'bj-msg'; return;
   }
+  if (filler) { renderFiller(m); return; }
   $('pvpOppName').textContent = m.opp;
   const lg = m.log || [], last = lg[lg.length - 1];
   $('pvpRoundLog').innerHTML = last ? exchangeLine(last, m.challenger, m.opp) : '';
@@ -1306,6 +1355,49 @@ function exchangeLine(r, isA, oppName){
   const res = r.hit ? '<span class="lose">HIT</span>' : '<span class="win">DODGE</span>';
   return `You ${ARROW[mine]}　·　${oppName} ${ARROW[theirs]}　—　${res}`;
 }
+/* ----- filler ----- */
+const FILL = ['#e8554e', '#f0a830', '#f4e04d', '#4caf7d', '#4a90d9', '#9b5cf6'];
+(function(){
+  const g = $('fillGrid'); for (let i = 0; i < 42; i++) { const d = document.createElement('div'); d.className = 'fill-cell'; g.appendChild(d); }
+  const pad = $('pvpColors'); FILL.forEach((c, i) => { const b = document.createElement('button'); b.type = 'button'; b.dataset.c = i; b.style.background = c; pad.appendChild(b); });
+})();
+let fillBusy = false;
+function renderFiller(m){
+  $('fillOppName').textContent = m.opp;
+  $('fillMeCount').textContent = m.my_count;
+  $('fillOppCount').textContent = m.opp_count;
+  const cells = $('fillGrid').children;
+  for (let i = 0; i < 42; i++) {
+    const own = m.owner[i];
+    cells[i].style.background = FILL[m.board[i]];
+    cells[i].className = 'fill-cell' + (own === m.me_p ? ' me' : own === 3 - m.me_p ? ' opp' : '');
+  }
+  const live = m.status === 'live';
+  document.querySelectorAll('#pvpColors button').forEach(b => {
+    const c = +b.dataset.c;
+    b.disabled = !live || !m.my_turn || c === m.my_color || c === m.opp_color;
+  });
+  const fm = $('fillMsg');
+  if (live) { fm.className = 'bj-msg'; fm.textContent = m.my_turn ? 'Your turn — pick a color' : `Waiting on ${m.opp}…`; $('fillTurn').textContent = m.my_turn ? 'Your move' : `${m.opp}'s move`; }
+  else {
+    $('fillTurn').textContent = '';
+    const label = { win: 'You win!', lose: m.opp + ' wins', tie: 'Draw' }[m.outcome];
+    const money = m.friendly ? ' (friendly)' : m.outcome === 'win' ? ` +${fmt(m.stake)}` : m.outcome === 'lose' ? ` −${fmt(m.stake)}` : ' · stakes back';
+    fm.textContent = label + money; fm.className = 'bj-msg ' + (m.outcome === 'win' ? 'win' : m.outcome === 'lose' ? 'lose' : '');
+    if (m.balance != null) setBalance(m.balance);
+  }
+}
+const pvpFill = async c => {
+  if (!pvp || pvp.status !== 'live' || fillBusy) return;
+  fillBusy = true;
+  document.querySelectorAll('#pvpColors button').forEach(b => b.disabled = true);
+  const { data, error } = await sb.rpc('pvp_fill', { p_id: pvp.id, p_color: c });
+  fillBusy = false;
+  if (error) { pollPvp(); return toast(error.message); }
+  if (data) renderPvp({ incoming: [], outgoing: null, match: data });
+  pollPvp();
+};
+$('pvpColors').onclick = e => { const b = e.target.closest('button'); if (b && !b.disabled) pvpFill(+b.dataset.c); };
 let pvpBusy = false, pvpWaiting = false;
 async function pollPvp(){
   if (!user || pvpBusy) return;
@@ -1325,7 +1417,7 @@ setTimeout(pvpLoop, 800);
 $('pvpForm').onsubmit = async e => {
   e.preventDefault();
   $('pvpSend').disabled = true;
-  const { data, error } = await sb.rpc('pvp_challenge', { p_user: $('pvpUser').value.trim(), p_stake: parseFloat($('pvpStake').value) || 0, p_friendly: pvpMode === 'friendly' });
+  const { data, error } = await sb.rpc('pvp_challenge', { p_user: $('pvpUser').value.trim(), p_stake: parseFloat($('pvpStake').value) || 0, p_friendly: pvpMode === 'friendly', p_game: pvpGameSel });
   $('pvpSend').disabled = false;
   if (error) return toast(error.message);
   if (data.balance != null) setBalance(data.balance);
