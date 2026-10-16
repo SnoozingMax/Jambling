@@ -144,20 +144,24 @@ canvas{width:100%;height:100%;display:block}
 .pvp-chip b{font:600 11px "IBM Plex Mono",monospace;width:16px;height:16px;border-radius:50%;display:inline-grid;place-items:center;color:var(--paper)}
 .pvp-chip.w b{background:var(--win)} .pvp-chip.l b{background:var(--lose)} .pvp-chip.t b{background:var(--muted)}
 .pvp-chip span{color:var(--muted)}
-/* shadow boxing */
+/* 1v1 juke duel */
 .box-table{display:flex;flex-direction:column;justify-content:space-between;min-height:340px;gap:14px}
-.box-name{font:600 13px "IBM Plex Mono",monospace;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:8px}
-.box-name .box-lock{color:var(--win);font-size:11px;text-transform:none;letter-spacing:0}
-.hpbar{height:16px;border-radius:999px;background:var(--field);border:1px solid var(--line);overflow:hidden}
-.hpfill{display:block;height:100%;width:100%;border-radius:999px;transition:width .45s ease,background .3s}
-.hpfill.hi{background:var(--win)} .hpfill.mid{background:var(--gold)} .hpfill.lo{background:var(--lose)}
-.hp-num{font:600 12px "IBM Plex Mono",monospace;color:var(--muted);margin-top:5px}
-.box-round{font:600 13px "IBM Plex Mono",monospace;color:var(--accent);letter-spacing:.08em;min-height:18px}
-.box-last{font:600 14px "IBM Plex Mono",monospace;color:var(--ink);text-align:center;min-height:20px;line-height:1.5}
-.box-moves{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-.box-moves button{padding:14px;border:1px solid var(--line);background:var(--field);border-radius:10px;cursor:pointer;font-weight:600;font-size:15px}
-.box-moves button:hover:not(:disabled){border-color:var(--ink)}
-.box-moves button:disabled{opacity:.45;cursor:default}
+.box-name{font:600 13px "IBM Plex Mono",monospace;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;display:flex;justify-content:space-between;align-items:center;gap:8px}
+.duel-role{font-size:12px;text-transform:none;letter-spacing:0;font-weight:600}
+.duel-role.atk{color:var(--accent)} .duel-role.def{color:var(--muted)}
+.box-round{font:600 13px "IBM Plex Mono",monospace;color:var(--muted);letter-spacing:.08em;min-height:16px}
+.box-last{font:600 15px "IBM Plex Mono",monospace;color:var(--ink);text-align:center;min-height:22px;line-height:1.5}
+.duel-streak{display:flex;flex-direction:column;align-items:center;gap:7px}
+.duel-streak .slabel{font:600 12px "IBM Plex Mono",monospace;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+.duel-streak .sdots{display:flex;gap:9px}
+.sdot{width:16px;height:16px;border-radius:50%;background:var(--field);border:2px solid var(--line);transition:.2s}
+.sdot.on.me{background:var(--win);border-color:var(--win);box-shadow:0 0 8px rgba(47,191,107,.5)}
+.sdot.on.opp{background:var(--lose);border-color:var(--lose);box-shadow:0 0 8px rgba(255,77,69,.5)}
+.dir-pad{display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(3,54px);gap:8px;max-width:240px;margin:0 auto}
+.dir-pad button{font-size:26px;border:1px solid var(--line);background:var(--field);border-radius:12px;cursor:pointer;color:var(--ink);line-height:1}
+.dir-pad button:hover:not(:disabled){border-color:var(--ink)}
+.dir-pad button:disabled{opacity:.3;cursor:default}
+.dir-up{grid-area:1/2} .dir-left{grid-area:2/1} .dir-right{grid-area:2/3} .dir-down{grid-area:3/2}
 /* stacked big buttons never touch */
 .card > .go + .go, form > .go + .go, .modal-card > .go + .go, .card > .go:not([hidden]) ~ .go:not([hidden]){margin-top:10px}
 .notice{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:16px 0 0;padding:12px 14px;border-radius:12px;background:rgba(232,178,58,.12);border:1px solid var(--gold);color:var(--ink);font-weight:500}
@@ -488,30 +492,27 @@ tr.me td{color:var(--accent)}
         </div>
         <button class="go" id="pvpSend">Send challenge</button>
       </form>
-      <div class="box-moves" id="pvpMoves" hidden>
-        <button type="button" data-mv="jab">👊 Jab</button>
-        <button type="button" data-mv="hook">🥊 Hook</button>
-        <button type="button" data-mv="block">🛡️ Block</button>
-        <button type="button" data-mv="dodge">💨 Dodge</button>
+      <div class="dir-pad" id="pvpMoves" hidden>
+        <button type="button" data-mv="up" class="dir-up">↑</button>
+        <button type="button" data-mv="left" class="dir-left">←</button>
+        <button type="button" data-mv="right" class="dir-right">→</button>
+        <button type="button" data-mv="down" class="dir-down">↓</button>
       </div>
-      <div class="hint">Both pick a move at the same time, then the round plays out. Nothing depends on reaction time. Jab beats Hook and Dodge · Hook smashes Block · Block stops Jab · Dodge counters Hook. First to drop the other to 0 HP wins. Idle 75s = auto-Block.</div>
+      <div class="hint">Both pick a side at the same time, so reaction speed never matters. The attacker reads the dodge: same side = HIT, different side = you dodged and it's your turn to attack. First to land 3 hits in a row wins. You can't pick the same side twice in a row. Idle 75s = random pick.</div>
     </div>
     <div class="card box-table">
       <div class="box-fighter">
-        <div class="box-name"><span id="pvpOppName">Opponent</span> <span class="box-lock" id="pvpOppLock"></span></div>
-        <div class="hpbar"><span class="hpfill hi" id="pvpOppHp"></span></div>
-        <div class="hp-num" id="pvpOppHpN"></div>
+        <div class="box-name"><span id="pvpOppName">Opponent</span> <span class="duel-role" id="pvpOppRole"></span></div>
       </div>
       <div class="pvp-mid">
+        <div class="duel-streak" id="pvpStreak"></div>
         <div class="box-round" id="pvpRound"></div>
         <div class="bj-msg" id="pvpMsg">Challenge someone to start</div>
         <div class="box-last" id="pvpRoundLog"></div>
         <button type="button" class="pvp-rematch" id="pvpRematch" hidden>Rematch</button>
       </div>
       <div class="box-fighter">
-        <div class="box-name">You <span class="box-lock" id="pvpMeLock"></span></div>
-        <div class="hpbar"><span class="hpfill hi" id="pvpMeHp"></span></div>
-        <div class="hp-num" id="pvpMeHpN"></div>
+        <div class="box-name">You <span class="duel-role" id="pvpMeRole"></span></div>
       </div>
     </div>
     <div class="card pvp-hist" id="pvpHist" hidden>
@@ -1223,7 +1224,7 @@ function renderPvp(st){
     acc.onclick = async () => { acc.disabled = true; const { data, error } = await sb.rpc('pvp_accept', { p_id: c.id }); if (error) { acc.disabled = false; return toast(error.message); } pollPvp(); };
     dec.onclick = async () => { const { error } = await sb.rpc('pvp_decline', { p_id: c.id }); if (error) return toast(error.message); pollPvp(); };
     inc.appendChild(d);
-    if (!pvpSeen.has(c.id)) { pvpSeen.add(c.id); toast(`${c.from} challenged you to a 1v1 boxing match!`); }
+    if (!pvpSeen.has(c.id)) { pvpSeen.add(c.id); toast(`${c.from} challenged you to a 1v1 duel!`); }
   });
   $('pvpDot').hidden = !(st.incoming || []).length;
   // my waiting challenge
@@ -1247,23 +1248,28 @@ function renderPvp(st){
   if (m && m.status === 'done' && pvpHistFor !== m.id) { pvpHistFor = m.id; loadPvpHistory(); }
   const msg = $('pvpMsg');
   if (!m) {
-    $('pvpOppName').textContent = 'Opponent'; setHp('pvpOppHp', 'pvpOppHpN', 100); setHp('pvpMeHp', 'pvpMeHpN', 100);
-    $('pvpRound').textContent = ''; $('pvpRoundLog').textContent = ''; $('pvpOppLock').textContent = ''; $('pvpMeLock').textContent = '';
+    $('pvpOppName').textContent = 'Opponent'; $('pvpRound').textContent = ''; $('pvpRoundLog').textContent = '';
+    $('pvpOppRole').textContent = ''; $('pvpMeRole').textContent = ''; renderStreak(null);
     msg.textContent = 'Challenge someone to start'; msg.className = 'bj-msg'; return;
   }
   $('pvpOppName').textContent = m.opp;
-  setHp('pvpOppHp', 'pvpOppHpN', m.opp_hp);
-  setHp('pvpMeHp', 'pvpMeHpN', m.my_hp);
   const lg = m.log || [], last = lg[lg.length - 1];
-  $('pvpRoundLog').innerHTML = last ? punchLine(last, m.challenger, m.opp) : '';
+  $('pvpRoundLog').innerHTML = last ? exchangeLine(last, m.challenger, m.opp) : '';
   if (live) {
-    $('pvpRound').textContent = 'Round ' + m.round;
-    $('pvpMeLock').textContent = m.my_move ? 'locked in ✓' : '';
-    $('pvpOppLock').textContent = m.opp_locked ? 'locked in ✓' : '';
+    renderStreak(m);
+    $('pvpRound').textContent = 'Exchange ' + m.round;
+    $('pvpMeRole').textContent = m.attacking ? '⚔ Attacking' : '🏃 Dodging';
+    $('pvpMeRole').className = 'duel-role ' + (m.attacking ? 'atk' : 'def');
+    $('pvpOppRole').textContent = m.attacking ? '🏃 Dodging' : '⚔ Attacking';
+    $('pvpOppRole').className = 'duel-role ' + (m.attacking ? 'def' : 'atk');
+    // disable the side you just used
+    document.querySelectorAll('#pvpMoves button').forEach(b => b.disabled = (b.dataset.mv === m.my_last));
     msg.className = 'bj-msg';
-    msg.textContent = m.my_move ? (m.opp_locked ? '' : `Waiting on ${m.opp}…`) : 'Pick your move';
+    if (m.my_move) msg.textContent = m.opp_locked ? '' : `Locked in. Waiting on ${m.opp}…`;
+    else msg.textContent = m.attacking ? `Guess where ${m.opp} dodges` : `Pick a side to dodge ${m.opp}`;
   } else {
-    $('pvpRound').textContent = ''; $('pvpMeLock').textContent = ''; $('pvpOppLock').textContent = '';
+    renderStreak(null);
+    $('pvpRound').textContent = ''; $('pvpMeRole').textContent = ''; $('pvpOppRole').textContent = '';
     const label = { win: 'You win!', lose: m.opp + ' wins', tie: 'Draw' }[m.outcome];
     const money = m.friendly ? ' (friendly)' : m.outcome === 'win' ? ` +${fmt(m.stake)}` : m.outcome === 'lose' ? ` −${fmt(m.stake)}` : ' · stakes back';
     msg.textContent = label + money;
@@ -1271,18 +1277,19 @@ function renderPvp(st){
     if (pvp && m.balance != null) setBalance(m.balance);
   }
 }
-const MV = { jab: { n: 'Jab', e: '👊' }, hook: { n: 'Hook', e: '🥊' }, block: { n: 'Block', e: '🛡️' }, dodge: { n: 'Dodge', e: '💨' } };
-function setHp(barId, numId, hp){
-  const p = Math.max(0, Math.min(100, hp)); const el = $(barId);
-  el.style.width = p + '%'; el.className = 'hpfill ' + (p > 50 ? 'hi' : p > 25 ? 'mid' : 'lo');
-  $(numId).textContent = hp + ' HP';
+const ARROW = { up: '↑', down: '↓', left: '←', right: '→' };
+function renderStreak(m){
+  const el = $('pvpStreak');
+  if (!m || m.status !== 'live') { el.innerHTML = ''; return; }
+  const who = m.attacking ? 'You' : m.opp, cls = m.attacking ? 'me' : 'opp';
+  let dots = '';
+  for (let i = 0; i < 3; i++) dots += `<span class="sdot ${i < m.streak ? 'on ' + cls : ''}"></span>`;
+  el.innerHTML = `<span class="slabel">${who} on ${m.streak} in a row</span><span class="sdots">${dots}</span>`;
 }
-function punchLine(r, isA, oppName){
-  // show the move each fighter threw and the damage they TOOK (so it tracks the HP bars)
-  const mine = isA ? { mv: r.am, took: r.bd } : { mv: r.bm, took: r.ad };
-  const opp = isA ? { mv: r.bm, took: r.ad } : { mv: r.am, took: r.bd };
-  const part = (who, x) => `${who} ${MV[x.mv].e} ${MV[x.mv].n}${x.took ? ` <span class="lose">−${x.took}</span>` : ''}`;
-  return part('You', mine) + '　·　' + part(oppName, opp);
+function exchangeLine(r, isA, oppName){
+  const mine = isA ? r.am : r.bm, theirs = isA ? r.bm : r.am;
+  const res = r.hit ? '<span class="lose">HIT</span>' : '<span class="win">DODGE</span>';
+  return `You ${ARROW[mine]}　·　${oppName} ${ARROW[theirs]}　—　${res}`;
 }
 let pvpBusy = false;
 async function pollPvp(){
@@ -1305,15 +1312,15 @@ $('pvpForm').onsubmit = async e => {
   toast(`Challenge sent to ${data.opp}`);
   pollPvp();
 };
-const pvpBoxMove = async mv => {
+const pvpPick = async dir => {
   if (!pvp || pvp.status !== 'live') return;
   document.querySelectorAll('#pvpMoves button').forEach(b => b.disabled = true);
-  const { data, error } = await sb.rpc('pvp_box', { p_id: pvp.id, p_move: mv });
-  if (error) { document.querySelectorAll('#pvpMoves button').forEach(b => b.disabled = false); return toast(error.message); }
+  const { data, error } = await sb.rpc('pvp_pick', { p_id: pvp.id, p_dir: dir });
+  if (error) { document.querySelectorAll('#pvpMoves button').forEach(b => b.disabled = (b.dataset.mv === (pvp && pvp.my_last))); return toast(error.message); }
   if (data) renderPvp({ incoming: [], outgoing: null, match: data });
   pollPvp();
 };
-$('pvpMoves').onclick = e => { const b = e.target.closest('button'); if (b && b.dataset.mv) pvpBoxMove(b.dataset.mv); };
+$('pvpMoves').onclick = e => { const b = e.target.closest('button'); if (b && b.dataset.mv && !b.disabled) pvpPick(b.dataset.mv); };
 
 /* ---------- moderators + bad luck ---------- */
 function modStatus(msg, ok){
