@@ -1306,17 +1306,22 @@ function exchangeLine(r, isA, oppName){
   const res = r.hit ? '<span class="lose">HIT</span>' : '<span class="win">DODGE</span>';
   return `You ${ARROW[mine]}　·　${oppName} ${ARROW[theirs]}　—　${res}`;
 }
-let pvpBusy = false;
+let pvpBusy = false, pvpWaiting = false;
 async function pollPvp(){
   if (!user || pvpBusy) return;
   pvpBusy = true;
   const { data, error } = await sb.rpc('pvp_state');
   pvpBusy = false;
-  if (!error && data) renderPvp(data);
+  if (!error && data) { pvpWaiting = !!(data.match && data.match.status === 'live' && data.match.my_move && !data.match.opp_locked); renderPvp(data); }
 }
-// fast while you're in a match, slower otherwise (so challenges still pop up on other tabs)
-setInterval(() => { if (pvp && pvp.status === 'live') pollPvp(); }, 1500);
-setInterval(() => { if (!(pvp && pvp.status === 'live')) pollPvp(); }, 5000);
+// adaptive polling: quick when an opponent's move or challenge could land, relaxed when nothing's pending
+function pvpLoop(){
+  let delay = 3000;
+  if (pvp && pvp.status === 'live') delay = pvpWaiting ? 450 : 1000;   // waiting on their pick = check fast
+  pollPvp();
+  setTimeout(pvpLoop, delay);
+}
+setTimeout(pvpLoop, 800);
 $('pvpForm').onsubmit = async e => {
   e.preventDefault();
   $('pvpSend').disabled = true;
