@@ -446,14 +446,14 @@ tr.me td{color:var(--accent)}
       </div>
       <div class="field">
         <label>Bombs</label>
-        <input id="minesCount" type="number" min="1" max="15" step="1" value="3">
+        <input id="minesCount" type="number" min="1" max="18" step="1" value="3">
         <div class="mines-n" id="minesN">
-          <button data-n="1">1</button><button data-n="3" class="on">3</button><button data-n="5">5</button><button data-n="10">10</button><button data-n="15">15</button>
+          <button data-n="1">1</button><button data-n="3" class="on">3</button><button data-n="5">5</button><button data-n="10">10</button><button data-n="18">18</button>
         </div>
       </div>
       <button class="go" id="minesStart">Start</button>
       <button class="go cash" id="minesCash" hidden>Cash out</button>
-      <div class="hint">High risk, high reward. Tap tiles to find gems, and every gem raises your multiplier fast. Hit a bomb and you lose the bet. More bombs = bigger jumps. Max bet 100k, max win 20m.</div>
+      <div class="hint">High risk, high reward. Tap tiles to find gems, and every gem raises your multiplier fast. Hit a bomb and you lose the bet. More bombs = bigger jumps. Max bet 1m, max win 20m.</div>
     </div>
     <div class="card mines-stage">
       <div class="mines-top"><span id="mMult">1.00×</span><span id="mNext"></span></div>
@@ -482,7 +482,7 @@ tr.me td{color:var(--accent)}
         <div class="rl-nums" id="rlNums"></div>
       </div>
       <button class="go" id="roulSpin">Spin</button>
-      <div class="hint">Colors, odd/even and halves pay 2×. Dozens pay 3×. A single number pays 36×. 0 is green and only wins if you picked it. Max bet 100k.</div>
+      <div class="hint">Colors, odd/even and halves pay 2×. Dozens pay 3×. A single number pays 36×. 0 is green and only wins if you picked it. Max bet 1m.</div>
     </div>
     <div class="card rl-stage">
       <div class="rl-wheelbox"><div class="rl-ptr"></div><svg class="rl-wheel" id="rlWheel" viewBox="-100 -100 200 200"></svg><div class="rl-center" id="rlCenter">–</div></div>
@@ -752,7 +752,7 @@ function toast(msg, ms = 2400){ const t = $('toast'); t.textContent = msg; t.cla
 function readBet(id){
   const v = Math.round(parseFloat($(id).value) * 100) / 100;
   if (!(v > 0)) { toast('Enter a bet'); return 0; }
-  const maxBet = id === 'coinBet' ? 10000000 : 100000;   // Coin Flip 10m, everything else 100k
+  const maxBet = id === 'coinBet' ? 10000000 : (id === 'roulBet' || id === 'minesBet') ? 1000000 : 100000;   // Coin 10m, Roulette & Mines 1m, else 100k
   if (v > maxBet) { toast(`Max bet is ${maxBet.toLocaleString()}`); return 0; }
   if (v > balance) { toast('Not enough coins'); return 0; }
   return v;
@@ -1072,7 +1072,7 @@ $('minesCount').oninput = () => $('minesN').querySelectorAll('button').forEach(b
 $('minesStart').onclick = () => {
   const bet = readBet('minesBet'); if (!bet) return;
   const n = parseInt($('minesCount').value, 10);
-  if (!(n >= 1 && n <= 15)) return toast('Pick 1 to 15 bombs');
+  if (!(n >= 1 && n <= 18)) return toast('Pick 1 to 18 bombs');
   minesCall('mines_start', { p_bet: bet, p_mines: n }, $('minesStart'));
 };
 $('minesCash').onclick = () => mn && minesCall('mines_cashout', { p_id: mn.id }, $('minesCash'));
@@ -1652,7 +1652,7 @@ document.querySelectorAll('.chips').forEach(c => c.onclick = e => {
   if (op === 'half') v = v / 2;
   if (op === 'double') v = v * 2;
   if (op === 'max') v = balance;
-  const cap = Math.min(balance, inp.id === 'coinBet' ? 10000000 : 100000);
+  const cap = Math.min(balance, inp.id === 'coinBet' ? 10000000 : (inp.id === 'roulBet' || inp.id === 'minesBet') ? 1000000 : 100000);
   inp.value = (Math.floor(Math.min(v, cap) * 100) / 100).toFixed(2);
 });
 
