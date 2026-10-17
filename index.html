@@ -398,7 +398,7 @@ tr.me td{color:var(--accent)}
       <button class="go" id="rideStart">Start</button>
       <button class="holdbtn" id="holdBtn" hidden>HOLD</button>
       <button class="go cash" id="rideCash" hidden style="margin-top:10px">Stop</button>
-      <div class="hint">Hold to ride: while you hold, your bet moves with the chart. Let go to lock it in. Each hold costs 1%. No bet cap, max win 10m. Bigger bets raise the rug-pull chance. Press Stop to cash out.</div>
+      <div class="hint">Hold to ride: while you hold, your bet moves with the chart. Let go to lock it in. Each hold costs 1%. No bet cap and no win cap. Bigger bets raise the rug-pull chance. Press Stop to cash out.</div>
       <div class="warn">Closing the tab mid-round stops your bet (like pressing Stop).</div>
     </div>
     <div class="card" style="padding:10px">
@@ -1892,7 +1892,7 @@ window.addEventListener('resize', () => { if (!round && !ghost) drawGraph(1); })
 // MUST match _ride_path() in ride.sql.
 const STEP_MS = 100, WINDOW = 120; // 12s visible
 const RIDE_VERSION = 38;            // must match ride_version() in ride.sql
-const RIDE_MAX_WIN = 10000000;      // Ride max profit per round, must match the SQL
+const RIDE_MAX_WIN = Infinity;      // Ride has no profit cap
 const FEED_BUF = 6;                  // keep this many streamed points ahead of what's drawn; playback eases to match
 
 // pull new chart points from the server (only points up to "now" exist)
