@@ -446,9 +446,9 @@ tr.me td{color:var(--accent)}
       </div>
       <div class="field">
         <label>Bombs</label>
-        <input id="minesCount" type="number" min="1" max="18" step="1" value="3">
+        <input id="minesCount" type="number" min="1" max="15" step="1" value="3">
         <div class="mines-n" id="minesN">
-          <button data-n="1">1</button><button data-n="3" class="on">3</button><button data-n="5">5</button><button data-n="10">10</button><button data-n="18">18</button>
+          <button data-n="1">1</button><button data-n="3" class="on">3</button><button data-n="5">5</button><button data-n="10">10</button><button data-n="15">15</button>
         </div>
       </div>
       <button class="go" id="minesStart">Start</button>
@@ -720,7 +720,7 @@ const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 const K = 0.09; // growth rate, must match setup.sql
 const $ = id => document.getElementById(id);
 let user = null, balance = 0, rebirths = 0, accessToken = null, boostUntil = 0;
-const luck = () => 1 + 0.1 * rebirths;
+const luck = () => 1 + 0.05 * rebirths;
 const boost = (bet, val) => val > bet ? bet + (val - bet) * luck() : val;   // profit x luck
 
 const fmt = n => Number(n).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
@@ -737,7 +737,7 @@ function setBalance(b){ balance = Number(b); $('balance').textContent = fmt(bala
 function setRebirths(n){
   rebirths = Number(n) || 0;
   $('rbBadge').hidden = !rebirths;
-  $('rbBadge').textContent = `▲${rebirths} · +${rebirths * 10}% wins`;
+  $('rbBadge').textContent = `▲${rebirths} · +${rebirths * 5}% wins`;
   updateGoal();
 }
 let toastT;
@@ -1072,7 +1072,7 @@ $('minesCount').oninput = () => $('minesN').querySelectorAll('button').forEach(b
 $('minesStart').onclick = () => {
   const bet = readBet('minesBet'); if (!bet) return;
   const n = parseInt($('minesCount').value, 10);
-  if (!(n >= 1 && n <= 18)) return toast('Pick 1 to 18 bombs');
+  if (!(n >= 1 && n <= 15)) return toast('Pick 1 to 15 bombs');
   minesCall('mines_start', { p_bet: bet, p_mines: n }, $('minesStart'));
 };
 $('minesCash').onclick = () => mn && minesCall('mines_cashout', { p_id: mn.id }, $('minesCash'));
@@ -1517,7 +1517,7 @@ $('rbYes').onclick = async () => {
   $('rbYes').disabled = false; $('rbModal').hidden = true;
   if (error) return toast(error.message);
   setBalance(data.balance); setRebirths(data.rebirths);
-  toast(`Rebirth ▲${data.rebirths}! Winnings now +${data.rebirths * 10}%`);
+  toast(`Rebirth ▲${data.rebirths}! Winnings now +${data.rebirths * 5}%`);
 };
 
 /* ---------- gifting ---------- */
