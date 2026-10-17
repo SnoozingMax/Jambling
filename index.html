@@ -388,7 +388,7 @@ tr.me td{color:var(--accent)}
     <div class="card">
       <div class="field">
         <label>Bet</label>
-        <input id="rideBet" type="number" min="0.01" max="100000" step="0.01" value="10">
+        <input id="rideBet" type="number" min="0.01" max="1000000" step="0.01" value="10">
         <div class="chips" data-for="rideBet">
           <button data-op="half">½</button><button data-op="double">2×</button><button data-op="max">Max</button>
         </div>
@@ -396,7 +396,7 @@ tr.me td{color:var(--accent)}
       <button class="go" id="rideStart">Start</button>
       <button class="holdbtn" id="holdBtn" hidden>HOLD</button>
       <button class="go cash" id="rideCash" hidden style="margin-top:10px">Stop</button>
-      <div class="hint">Hold to ride: while you hold, your bet moves with the chart. Let go to lock it in. Each hold costs 1%. Max bet 100k, max win 5m. Press Stop to cash out.</div>
+      <div class="hint">Hold to ride: while you hold, your bet moves with the chart. Let go to lock it in. Each hold costs 1%. Max bet 1m, max win 10m. Press Stop to cash out.</div>
       <div class="warn">Closing the tab mid-round stops your bet (like pressing Stop).</div>
     </div>
     <div class="card" style="padding:10px">
@@ -752,7 +752,7 @@ function toast(msg, ms = 2400){ const t = $('toast'); t.textContent = msg; t.cla
 function readBet(id){
   const v = Math.round(parseFloat($(id).value) * 100) / 100;
   if (!(v > 0)) { toast('Enter a bet'); return 0; }
-  const maxBet = id === 'coinBet' ? 10000000 : (id === 'roulBet' || id === 'minesBet') ? 1000000 : 100000;   // Coin 10m, Roulette & Mines 1m, else 100k
+  const maxBet = id === 'coinBet' ? 10000000 : (id === 'roulBet' || id === 'minesBet' || id === 'rideBet') ? 1000000 : 100000;   // Coin 10m, Ride/Roulette/Mines 1m, else 100k
   if (v > maxBet) { toast(`Max bet is ${maxBet.toLocaleString()}`); return 0; }
   if (v > balance) { toast('Not enough coins'); return 0; }
   return v;
@@ -1652,7 +1652,7 @@ document.querySelectorAll('.chips').forEach(c => c.onclick = e => {
   if (op === 'half') v = v / 2;
   if (op === 'double') v = v * 2;
   if (op === 'max') v = balance;
-  const cap = Math.min(balance, inp.id === 'coinBet' ? 10000000 : (inp.id === 'roulBet' || inp.id === 'minesBet') ? 1000000 : 100000);
+  const cap = Math.min(balance, inp.id === 'coinBet' ? 10000000 : (inp.id === 'roulBet' || inp.id === 'minesBet' || inp.id === 'rideBet') ? 1000000 : 100000);
   inp.value = (Math.floor(Math.min(v, cap) * 100) / 100).toFixed(2);
 });
 
@@ -1881,7 +1881,7 @@ window.addEventListener('resize', () => { if (!round && !ghost) drawGraph(1); })
 // MUST match _ride_path() in ride.sql.
 const STEP_MS = 100, WINDOW = 120; // 12s visible
 const RIDE_VERSION = 38;            // must match ride_version() in ride.sql
-const RIDE_MAX_WIN = 5000000;       // max profit per round on every game, must match the SQL
+const RIDE_MAX_WIN = 10000000;      // Ride max profit per round, must match the SQL
 const FEED_BUF = 6;                  // keep this many streamed points ahead of what's drawn; playback eases to match
 
 // pull new chart points from the server (only points up to "now" exist)
