@@ -680,8 +680,8 @@ tr.me td{color:var(--accent)}
       <div style="display:flex;gap:8px"><input id="adminNewName" type="text" maxlength="20" autocapitalize="off" spellcheck="false" autocomplete="off" placeholder="New name"><button type="button" class="ghost" id="adminRename" style="white-space:nowrap">Rename</button></div>
     </div>
     <div class="field">
-      <label>Take rebirths</label>
-      <div style="display:flex;gap:8px"><input id="adminRb" type="number" min="1" step="1" placeholder="How many"><button type="button" class="ghost" id="adminTakeRb" style="white-space:nowrap">Take</button></div>
+      <label>Rebirths</label>
+      <div style="display:flex;gap:8px"><input id="adminRb" type="number" min="1" step="1" placeholder="How many"><button type="button" class="ghost owner-only" id="adminGiveRb" style="white-space:nowrap">Give</button><button type="button" class="ghost" id="adminTakeRb" style="white-space:nowrap">Take</button></div>
     </div>
     <div class="field">
       <label>Coins</label>
@@ -2176,6 +2176,13 @@ $('adminRename').onclick = async () => {
 $('adminTakeRb').onclick = async () => {
   const n = adminName(); if (!n) return;
   const { data, error } = await sb.rpc('admin_take_rebirths', { p_user: n, p_n: parseInt($('adminRb').value) });
+  if (error) { adminStatus(error.message, false); return toast(error.message); }
+  { const _m = `${data.user} now has ▲${data.rebirths}`; adminStatus(_m, true); toast(_m); }
+  if (data.user.toLowerCase() === $('who').textContent.toLowerCase()) setRebirths(data.rebirths);
+};
+$('adminGiveRb').onclick = async () => {
+  const n = adminName(); if (!n) return;
+  const { data, error } = await sb.rpc('admin_give_rebirths', { p_user: n, p_n: parseInt($('adminRb').value) });
   if (error) { adminStatus(error.message, false); return toast(error.message); }
   { const _m = `${data.user} now has ▲${data.rebirths}`; adminStatus(_m, true); toast(_m); }
   if (data.user.toLowerCase() === $('who').textContent.toLowerCase()) setRebirths(data.rebirths);
