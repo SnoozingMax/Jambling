@@ -398,7 +398,7 @@ tr.me td{color:var(--accent)}
       <button class="go" id="rideStart">Start</button>
       <button class="holdbtn" id="holdBtn" hidden>HOLD</button>
       <button class="go cash" id="rideCash" hidden style="margin-top:10px">Stop</button>
-      <div class="hint">Hold to ride: while you hold, your bet moves with the chart. Let go to lock it in. Each hold costs 1%. No bet cap and no win cap. Bigger bets raise the rug-pull chance. Press Stop to cash out.</div>
+      <div class="hint">Hold to ride: while you hold, your bet moves with the chart. Let go to lock it in. Each hold costs 2%. No bet cap and no win cap. Bigger bets raise the rug-pull chance. Press Stop to cash out.</div>
       <div class="warn">Closing the tab mid-round stops your bet (like pressing Stop).</div>
     </div>
     <div class="card" style="padding:10px">
@@ -1943,7 +1943,7 @@ function rideMult(r){
   let m = 1;
   for (const sp of r.spans) {
     const end = sp.b == null ? r.cur : sp.b;
-    m *= 0.99 * priceAt(r, end) / r.path[sp.a];   // 1% fee per hold
+    m *= 0.98 * priceAt(r, end) / r.path[sp.a];   // 2% fee per hold
   }
   return Number.isFinite(m) ? Math.min(m, 1e15) : 1;
 }
