@@ -182,6 +182,8 @@ canvas{width:100%;height:100%;display:block}
 .dir-pad button:hover:not(:disabled){border-color:var(--ink)}
 .dir-pad button:disabled{opacity:.3;cursor:default}
 .dir-up{grid-area:1/2} .dir-left{grid-area:2/1} .dir-right{grid-area:2/3} .dir-down{grid-area:3/2}
+.pvp-clock{font:700 14px "IBM Plex Mono",monospace;color:var(--muted);min-height:16px}
+.pvp-clock.warn{color:var(--lose)}
 /* stacked big buttons never touch */
 .card > .go + .go, form > .go + .go, .modal-card > .go + .go, .card > .go:not([hidden]) ~ .go:not([hidden]){margin-top:10px}
 .notice{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:16px 0 0;padding:12px 14px;border-radius:12px;background:rgba(232,178,58,.12);border:1px solid var(--gold);color:var(--ink);font-weight:500}
@@ -535,6 +537,7 @@ tr.me td{color:var(--accent)}
       <div class="pvp-mid">
         <div class="duel-streak" id="pvpStreak"></div>
         <div class="box-round" id="pvpRound"></div>
+        <div class="pvp-clock" id="pvpClock"></div>
         <div class="bj-msg" id="pvpMsg">Challenge someone to start</div>
         <div class="box-last" id="pvpRoundLog"></div>
         <div class="duel-seq" id="pvpSeq"></div>
@@ -547,7 +550,7 @@ tr.me td{color:var(--accent)}
     <div class="card fill-table" id="pvpFillCard" hidden>
       <div class="fill-top">
         <span class="fill-tag opp"><b id="fillOppName">Opp</b> <span id="fillOppCount">0</span></span>
-        <span class="fill-turn" id="fillTurn"></span>
+        <span class="fill-turn" id="fillTurn"></span><span class="pvp-clock" id="fillClock"></span>
         <span class="fill-tag me">You <span id="fillMeCount">0</span></span>
       </div>
       <div class="fill-grid" id="fillGrid"></div>
@@ -1396,7 +1399,7 @@ const pvpFill = async c => {
   const { data, error } = await sb.rpc('pvp_fill', { p_id: pvp.id, p_color: c });
   fillBusy = false;
   if (error) { pollPvp(); return toast(error.message); }
-  if (data) renderPvp({ incoming: [], outgoing: null, match: data });
+  if (data) { renderPvp({ incoming: [], outgoing: null, match: data }); setPvpDeadline(data); }
   pollPvp();
 };
 $('pvpColors').onclick = e => { const b = e.target.closest('button'); if (b && !b.disabled) pvpFill(+b.dataset.c); };
@@ -1407,6 +1410,7 @@ async function pollPvp(){
   const { data, error } = await sb.rpc('pvp_state');
   pvpBusy = false;
   if (!error && data) { pvpWaiting = !!(data.match && data.match.status === 'live' && data.match.my_move && !data.match.opp_locked); renderPvp(data); }
+  if (data && data.match) setPvpDeadline(data.match);
 }
 // adaptive polling: quick when an opponent's move or challenge could land, relaxed when nothing's pending
 function pvpLoop(){
@@ -1416,6 +1420,23 @@ function pvpLoop(){
   setTimeout(pvpLoop, delay);
 }
 setTimeout(pvpLoop, 800);
+let pvpDeadline = null;
+function setPvpDeadline(m){
+  // secs_left is how long until the player on the clock forfeits (15s). null = not my clock.
+  if (m && m.status === 'live' && m.secs_left != null) pvpDeadline = Date.now() + Number(m.secs_left) * 1000;
+  else pvpDeadline = null;
+}
+setInterval(() => {
+  const dEl = $('pvpClock'), fEl = $('fillClock');
+  if (dEl) dEl.textContent = ''; if (fEl) fEl.textContent = '';
+  if (pvpDeadline == null || !pvp || pvp.status !== 'live') return;
+  const left = Math.max(0, Math.ceil((pvpDeadline - Date.now()) / 1000));
+  const el = pvp.game === 'filler' ? fEl : dEl;
+  if (!el) return;
+  el.textContent = `⏱ ${left}s`;
+  el.className = 'pvp-clock' + (left <= 5 ? ' warn' : '');
+  if (left <= 0) pollPvp();   // time's up: pull the forfeit result
+}, 250);
 $('pvpForm').onsubmit = async e => {
   e.preventDefault();
   $('pvpSend').disabled = true;
@@ -1431,7 +1452,7 @@ const pvpPick = async dir => {
   document.querySelectorAll('#pvpMoves button').forEach(b => b.disabled = true);
   const { data, error } = await sb.rpc('pvp_pick', { p_id: pvp.id, p_dir: dir });
   if (error) { document.querySelectorAll('#pvpMoves button').forEach(b => b.disabled = (b.dataset.mv === (pvp && pvp.my_last))); return toast(error.message); }
-  if (data) renderPvp({ incoming: [], outgoing: null, match: data });
+  if (data) { renderPvp({ incoming: [], outgoing: null, match: data }); setPvpDeadline(data); }
   pollPvp();
 };
 $('pvpMoves').onclick = e => { const b = e.target.closest('button'); if (b && b.dataset.mv && !b.disabled) pvpPick(b.dataset.mv); };
