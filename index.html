@@ -755,7 +755,8 @@ function adminStatus(msg, ok){
 }
 function toast(msg, ms = 2400){ const t = $('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), ms); }
 function readBet(id){
-  const v = Math.round(parseFloat($(id).value) * 100) / 100;
+  const raw = parseFloat($(id).value);
+  const v = raw >= 1e12 ? Math.floor(raw) : Math.round(raw * 100) / 100;   // *100 overflows JS past ~9e13, so floor big bets
   if (!(v > 0)) { toast('Enter a bet'); return 0; }
   const maxBet = (id === 'coinBet' || id === 'rideBet') ? Infinity : (id === 'roulBet' || id === 'minesBet') ? 1000000 : 100000;   // Coin & Ride uncapped, Roulette/Mines 1m, else 100k
   if (v > maxBet) { toast(`Max bet is ${maxBet.toLocaleString()}`); return 0; }
@@ -1676,7 +1677,8 @@ document.querySelectorAll('.chips').forEach(c => c.onclick = e => {
   if (op === 'double') v = v * 2;
   if (op === 'max') v = balance;
   const cap = Math.min(balance, (inp.id === 'coinBet' || inp.id === 'rideBet') ? Infinity : (inp.id === 'roulBet' || inp.id === 'minesBet') ? 1000000 : 100000);
-  inp.value = (Math.floor(Math.min(v, cap) * 100) / 100).toFixed(2);
+  const capped = Math.min(v, cap);
+  inp.value = capped >= 1e12 ? String(Math.floor(capped)) : (Math.floor(capped * 100) / 100).toFixed(2);
   if (inp.id === 'rideBet') updateRideRug();
 });
 function updateRideRug(){
