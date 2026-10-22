@@ -256,6 +256,8 @@ tr.me td{color:var(--accent)}
 .title-chip.t-coin{background:rgba(232,178,58,.18);color:var(--gold);border:1px solid var(--gold)}
 .title-chip.t-rb{background:rgba(155,92,246,.18);color:#b794ff;border:1px solid #9b5cf6}
 .title-chip.t-rank{background:var(--accent);color:#fff}
+.title-chip.gifted{color:#fff;border:none;background:linear-gradient(90deg,#ff5a3c,#f0a830,#f4e04d,#4caf7d,#4a90d9,#9b5cf6,#ff5a3c);background-size:300% 100%;animation:giftedShift 3s linear infinite;text-shadow:0 1px 2px rgba(0,0,0,.45)}
+@keyframes giftedShift{to{background-position:300% 0}}
 .t-cat{font:700 11px "IBM Plex Mono",monospace;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:14px 0 8px}
 .t-row{display:flex;align-items:center;gap:10px;padding:5px 0}
 .t-row span:last-child{color:var(--muted);font-size:13px}
@@ -735,6 +737,10 @@ tr.me td{color:var(--accent)}
     <div class="field">
       <label>Coins</label>
       <input id="adminCost" type="number" min="0.01" step="0.01" placeholder="Amount">
+    </div>
+    <div class="field owner-only">
+      <label>Gifted title (rainbow, max only)</label>
+      <div style="display:flex;gap:8px"><button type="button" class="ghost" id="adminGiftTitle" style="flex:1">Grant Gifted</button><button type="button" class="ghost" id="adminUnGiftTitle" style="flex:1">Remove</button></div>
     </div>
     <div style="display:flex;gap:8px"><button type="button" class="go" id="adminGive" style="flex:1">Gift coins</button><button type="button" class="go" id="adminTake" style="flex:1">Take coins</button></div>
     <div class="owner-only">
@@ -1601,16 +1607,17 @@ async function openGift(name){
 /* ---------- titles ---------- */
 const COIN_TITLES = [[1e21, 'Touchable', '1 sextillion coins'], [1e18, 'Untouchable', '1 quintillion coins'], [1e15, 'Goated', '1 quadrillion coins'], [1e12, 'Spoiled', '1 trillion coins'], [1e9, 'Rich', '1 billion coins']];
 const RB_TITLES = [[100, 'The Golden', '100+ rebirths'], [50, 'Ascended', '50+ rebirths'], [10, 'Reborn', '10+ rebirths']];
-function titleChips(bal, rb, rank){
+function titleChips(bal, rb, rank, gifted){
   const out = [];
+  if (gifted) out.push(['gifted', 'Gifted']);
   for (const [n, t] of COIN_TITLES) if (bal >= n) { out.push(['t-coin', t]); break; }
   for (const [n, t] of RB_TITLES) if (rb >= n) { out.push(['t-rb', t]); break; }
   if (rank === 0) out.push(['t-rank', 'King']); else if (rank >= 0 && rank < 3) out.push(['t-rank', 'Elite']);
   return out;
 }
-function renderTitles(el, bal, rb, rank){
+function renderTitles(el, bal, rb, rank, gifted){
   el.innerHTML = '';
-  for (const [c, t] of titleChips(Number(bal) || 0, Number(rb) || 0, rank == null ? -1 : rank)) {
+  for (const [c, t] of titleChips(Number(bal) || 0, Number(rb) || 0, rank == null ? -1 : rank, gifted)) {
     const s = document.createElement('span'); s.className = 'title-chip ' + c; s.textContent = t; el.appendChild(s);
   }
 }
@@ -1624,6 +1631,8 @@ function openTitles(){
   COIN_TITLES.slice().reverse().forEach(([n, t, req]) => rows.push(line('t-coin', t, req)));
   rows.push('<div class="t-cat">Rebirths</div>');
   RB_TITLES.slice().reverse().forEach(([n, t, req]) => rows.push(line('t-rb', t, req)));
+  rows.push('<div class="t-cat">Special</div>');
+  rows.push(line('gifted', 'Gifted', 'Hand-picked by max'));
   rows.push('<div class="t-cat">Leaderboard</div>');
   rows.push(line('t-rank', 'King', '#1 on the money board'));
   rows.push(line('t-rank', 'Elite', 'Top 3 on the money board'));
@@ -1714,7 +1723,7 @@ async function loadProfile(){
   const { data, error } = await sb.from('profiles').select('*').eq('id', user.id).single();
   if (error) return toast(error.message);
   $('who').textContent = data.username;
-  renderTitles($('whoTitles'), data.balance, data.rebirths || 0, -1);
+  renderTitles($('whoTitles'), data.balance, data.rebirths || 0, -1, data.gifted);
   setRebirths(data.rebirths || 0);
   boostUntil = data.boost_until ? new Date(data.boost_until).getTime() : 0;
   if (data.banned) { toast('This account is banned.'); setTimeout(() => sb.auth.signOut(), 1500); return; }
@@ -2240,7 +2249,7 @@ function boardRow(i, p, isMe, right){
   tr.children[1].textContent = p.username;   // safe from HTML injection
   if (isOnline(p)) { const d = document.createElement('span'); d.className = 'online-dot'; d.title = 'Online'; tr.children[1].appendChild(d); }
   if (p.rebirths && boardMode !== 'rebirths') { const b = document.createElement('span'); b.className = 'lb-rb'; b.textContent = '▲' + p.rebirths; tr.children[1].appendChild(b); }
-  { const tb = document.createElement('span'); tb.className = 'titles'; renderTitles(tb, p.balance, p.rebirths || 0, boardMode === 'money' ? i : -1); tr.children[1].appendChild(tb); }
+  { const tb = document.createElement('span'); tb.className = 'titles'; renderTitles(tb, p.balance, p.rebirths || 0, boardMode === 'money' ? i : -1, p.gifted); tr.children[1].appendChild(tb); }
   tr.children[2].textContent = right;
   return tr;
 }
@@ -2309,6 +2318,15 @@ $('adminTakeRb').onclick = async () => {
   { const _m = `${data.user} now has ▲${data.rebirths}`; adminStatus(_m, true); toast(_m); }
   if (data.user.toLowerCase() === $('who').textContent.toLowerCase()) setRebirths(data.rebirths);
 };
+async function giftTitle(on){
+  const n = adminName(); if (!n) return;
+  const { data, error } = await sb.rpc('admin_gift_title', { p_user: n, p_on: on });
+  if (error) { adminStatus(error.message, false); return toast(error.message); }
+  const m = `${data.user} ${on ? 'now has' : 'no longer has'} the Gifted title`; adminStatus(m, true); toast(m);
+  if (!$('tab-board').hidden) loadBoard();
+}
+$('adminGiftTitle').onclick = () => giftTitle(true);
+$('adminUnGiftTitle').onclick = () => giftTitle(false);
 $('adminGiveRb').onclick = async () => {
   const n = adminName(); if (!n) return;
   const { data, error } = await sb.rpc('admin_give_rebirths', { p_user: n, p_n: parseInt($('adminRb').value) });
