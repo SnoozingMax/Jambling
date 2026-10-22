@@ -1618,7 +1618,9 @@ function titleChips(bal, rb, rank, gifted){
 function renderTitles(el, bal, rb, rank, gifted){
   el.innerHTML = '';
   for (const [c, t] of titleChips(Number(bal) || 0, Number(rb) || 0, rank == null ? -1 : rank, gifted)) {
-    const s = document.createElement('span'); s.className = 'title-chip ' + c; s.textContent = t; el.appendChild(s);
+    const s = document.createElement('span'); s.className = 'title-chip ' + c; s.textContent = t;
+    if (c === 'gifted') s.style.animationDelay = -(Date.now() % 3500) + 'ms';   // sync shimmer to a global clock so the 10s refresh doesn't restart it
+    el.appendChild(s);
   }
 }
 /* ---------- shop ---------- */
