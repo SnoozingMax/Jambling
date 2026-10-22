@@ -256,6 +256,9 @@ tr.me td{color:var(--accent)}
 .title-chip.t-coin{background:rgba(232,178,58,.18);color:var(--gold);border:1px solid var(--gold)}
 .title-chip.t-rb{background:rgba(155,92,246,.18);color:#b794ff;border:1px solid #9b5cf6}
 .title-chip.t-rank{background:var(--accent);color:#fff}
+.t-cat{font:700 11px "IBM Plex Mono",monospace;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:14px 0 8px}
+.t-row{display:flex;align-items:center;gap:10px;padding:5px 0}
+.t-row span:last-child{color:var(--muted);font-size:13px}
 .shop-item{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 0;border-bottom:1px solid var(--line)}
 .shop-info{display:flex;flex-direction:column;gap:2px}
 .shop-info b{font-size:15px} .shop-info span{font-size:12px;color:var(--muted)}
@@ -317,6 +320,7 @@ tr.me td{color:var(--accent)}
       <button class="ghost daily" id="daily" disabled>Daily</button>
       <button class="ghost" id="giftOpen">Gift</button>
       <button class="ghost" id="shopOpen">Shop</button>
+      <button class="ghost" id="titlesOpen" title="All titles">🪐</button>
       <button class="ghost" id="refill" hidden>Refill</button>
       <button class="ghost" id="logout">Sign out</button>
     </div>
@@ -613,6 +617,14 @@ tr.me td{color:var(--accent)}
   </form>
 </div>
 
+<div class="modal" id="titlesModal" hidden>
+  <div class="card modal-card">
+    <h2>🪐 Titles</h2>
+    <p class="rb-text">Earn these as you play. You show the top one you've hit in each group, all at once.</p>
+    <div id="titlesList"></div>
+    <button type="button" class="ghost" id="titlesCancel" style="width:100%;margin-top:14px;padding:10px">Close</button>
+  </div>
+</div>
 <div class="modal" id="shopModal" hidden>
   <div class="card modal-card">
     <h2>Shop</h2>
@@ -1587,8 +1599,8 @@ async function openGift(name){
   (name ? $('giftAmt') : $('giftTo')).focus();
 }
 /* ---------- titles ---------- */
-const COIN_TITLES = [[1e18, 'Mogul'], [1e15, 'Tycoon'], [1e12, 'Spoiled'], [1e9, 'Rich']];
-const RB_TITLES = [[100, 'Eternal'], [50, 'Ascended'], [10, 'Reborn']];
+const COIN_TITLES = [[1e21, 'Touchable', '1 sextillion coins'], [1e18, 'Untouchable', '1 quintillion coins'], [1e15, 'Goated', '1 quadrillion coins'], [1e12, 'Spoiled', '1 trillion coins'], [1e9, 'Rich', '1 billion coins']];
+const RB_TITLES = [[100, 'The Golden', '100+ rebirths'], [50, 'Ascended', '50+ rebirths'], [10, 'Reborn', '10+ rebirths']];
 function titleChips(bal, rb, rank){
   const out = [];
   for (const [n, t] of COIN_TITLES) if (bal >= n) { out.push(['t-coin', t]); break; }
@@ -1605,6 +1617,21 @@ function renderTitles(el, bal, rb, rank){
 /* ---------- shop ---------- */
 function shopStatus(m, ok){ const el = $('shopStatus'); el.hidden = false; el.className = 'admin-status' + (ok ? '' : ' err'); el.textContent = (ok ? '\u2713 ' : '\u2717 ') + m; }
 $('shopOpen').onclick = () => { $('shopStatus').hidden = true; $('shopModal').hidden = false; };
+function openTitles(){
+  const rows = [];
+  const line = (cls, t, req) => `<div class="t-row"><span class="title-chip ${cls}">${t}</span><span>${req}</span></div>`;
+  rows.push('<div class="t-cat">Coins</div>');
+  COIN_TITLES.slice().reverse().forEach(([n, t, req]) => rows.push(line('t-coin', t, req)));
+  rows.push('<div class="t-cat">Rebirths</div>');
+  RB_TITLES.slice().reverse().forEach(([n, t, req]) => rows.push(line('t-rb', t, req)));
+  rows.push('<div class="t-cat">Leaderboard</div>');
+  rows.push(line('t-rank', 'King', '#1 on the money board'));
+  rows.push(line('t-rank', 'Elite', 'Top 3 on the money board'));
+  $('titlesList').innerHTML = rows.join('');
+  $('titlesModal').hidden = false;
+}
+$('titlesOpen').onclick = openTitles;
+$('titlesCancel').onclick = () => { $('titlesModal').hidden = true; };
 $('shopCancel').onclick = () => { $('shopModal').hidden = true; };
 async function shopBuy(fn, args, btn, okMsg){
   btn.disabled = true;
