@@ -251,6 +251,16 @@ tr.me td{color:var(--accent)}
 .rl-nums button{padding:6px 0;font-family:"IBM Plex Mono";color:#fff}
 .rl-nums button.zero{grid-column:1/-1}
 .rl-nums button.rl-r{background:#d23a2f;border-color:#d23a2f} .rl-nums button.rl-b{background:#26262c;border-color:#3a3a42} .rl-nums button.rl-g{background:#1f9a55;border-color:#1f9a55}
+.titles{display:inline-flex;gap:4px;flex-wrap:wrap;vertical-align:middle;margin-left:6px}
+.title-chip{font:700 10px Inter,sans-serif;text-transform:uppercase;letter-spacing:.04em;padding:2px 7px;border-radius:999px;white-space:nowrap}
+.title-chip.t-coin{background:rgba(232,178,58,.18);color:var(--gold);border:1px solid var(--gold)}
+.title-chip.t-rb{background:rgba(155,92,246,.18);color:#b794ff;border:1px solid #9b5cf6}
+.title-chip.t-rank{background:var(--accent);color:#fff}
+.shop-item{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 0;border-bottom:1px solid var(--line)}
+.shop-info{display:flex;flex-direction:column;gap:2px}
+.shop-info b{font-size:15px} .shop-info span{font-size:12px;color:var(--muted)}
+.shop-info input{margin-top:6px;width:150px;padding:7px 10px;border:1px solid var(--line);border-radius:8px;background:var(--field)}
+.shop-item .go{width:auto;padding:10px 16px;white-space:nowrap}
 [hidden]{display:none!important}
 </style>
 </head>
@@ -295,7 +305,7 @@ tr.me td{color:var(--accent)}
   <header>
     <div class="logo">Jambling</div>
     <div class="right">
-      <span class="who" id="who"></span>
+      <span class="who" id="who"></span><span id="whoTitles" class="titles"></span>
       <span class="rb" id="rbBadge" hidden></span>
       <span class="rb rush" id="rushBadge" hidden></span>
       <span class="rb" id="boostBadge" hidden></span>
@@ -306,6 +316,7 @@ tr.me td{color:var(--accent)}
       <div class="bal"><i></i><span id="balance">0.00</span></div>
       <button class="ghost daily" id="daily" disabled>Daily</button>
       <button class="ghost" id="giftOpen">Gift</button>
+      <button class="ghost" id="shopOpen">Shop</button>
       <button class="ghost" id="refill" hidden>Refill</button>
       <button class="ghost" id="logout">Sign out</button>
     </div>
@@ -602,6 +613,27 @@ tr.me td{color:var(--accent)}
   </form>
 </div>
 
+<div class="modal" id="shopModal" hidden>
+  <div class="card modal-card">
+    <h2>Shop</h2>
+    <div class="shop-item">
+      <div class="shop-info"><b>Rush Hour</b><span>Rush-hour odds for everyone, 30 sec</span></div>
+      <button class="go" id="shopRush">1 Qa</button>
+    </div>
+    <div class="shop-item">
+      <div class="shop-info"><b>Good Luck</b><span>Guaranteed-win boost for you, 10 sec</span></div>
+      <button class="go" id="shopBoost">1 De</button>
+    </div>
+    <div class="shop-item">
+      <div class="shop-info"><b>Steal 5%</b><span>Take 5% of a player's coins</span>
+        <input id="shopStealTo" type="text" maxlength="20" autocapitalize="off" spellcheck="false" autocomplete="off" placeholder="Username">
+      </div>
+      <button class="go" id="shopSteal">10 B</button>
+    </div>
+    <div class="admin-status" id="shopStatus" hidden></div>
+    <button type="button" class="ghost" id="shopCancel" style="width:100%;margin-top:14px;padding:10px">Close</button>
+  </div>
+</div>
 <div class="modal" id="modModal" hidden>
   <div class="card modal-card">
     <h2>Moderator</h2>
@@ -1554,6 +1586,40 @@ async function openGift(name){
   $('giftModal').hidden = false;
   (name ? $('giftAmt') : $('giftTo')).focus();
 }
+/* ---------- titles ---------- */
+const COIN_TITLES = [[1e18, 'Mogul'], [1e15, 'Tycoon'], [1e12, 'Spoiled'], [1e9, 'Rich']];
+const RB_TITLES = [[100, 'Eternal'], [50, 'Ascended'], [10, 'Reborn']];
+function titleChips(bal, rb, rank){
+  const out = [];
+  for (const [n, t] of COIN_TITLES) if (bal >= n) { out.push(['t-coin', t]); break; }
+  for (const [n, t] of RB_TITLES) if (rb >= n) { out.push(['t-rb', t]); break; }
+  if (rank === 0) out.push(['t-rank', 'King']); else if (rank >= 0 && rank < 3) out.push(['t-rank', 'Elite']);
+  return out;
+}
+function renderTitles(el, bal, rb, rank){
+  el.innerHTML = '';
+  for (const [c, t] of titleChips(Number(bal) || 0, Number(rb) || 0, rank == null ? -1 : rank)) {
+    const s = document.createElement('span'); s.className = 'title-chip ' + c; s.textContent = t; el.appendChild(s);
+  }
+}
+/* ---------- shop ---------- */
+function shopStatus(m, ok){ const el = $('shopStatus'); el.hidden = false; el.className = 'admin-status' + (ok ? '' : ' err'); el.textContent = (ok ? '\u2713 ' : '\u2717 ') + m; }
+$('shopOpen').onclick = () => { $('shopStatus').hidden = true; $('shopModal').hidden = false; };
+$('shopCancel').onclick = () => { $('shopModal').hidden = true; };
+async function shopBuy(fn, args, btn, okMsg){
+  btn.disabled = true;
+  const { data, error } = await sb.rpc(fn, args);
+  btn.disabled = false;
+  if (error) { shopStatus(error.message, false); return; }
+  if (data && data.balance != null) setBalance(data.balance);
+  shopStatus(okMsg(data), true);
+}
+$('shopRush').onclick = () => shopBuy('shop_rush', {}, $('shopRush'), () => 'Rush hour is on for everyone!');
+$('shopBoost').onclick = () => shopBuy('shop_boost', {}, $('shopBoost'), () => 'Good luck active for 10 sec!');
+$('shopSteal').onclick = () => {
+  const t = $('shopStealTo').value.trim(); if (!t) return shopStatus('Enter a username to steal from', false);
+  shopBuy('shop_steal', { p_target: t }, $('shopSteal'), d => `Stole ${fmt(d.stolen)} from ${d.target}`);
+};
 $('giftOpen').onclick = () => openGift();
 $('giftCancel').onclick = () => { $('giftModal').hidden = true; };
 $('giftModal').onclick = e => { if (e.target === $('giftModal')) $('giftModal').hidden = true; };
@@ -1621,6 +1687,7 @@ async function loadProfile(){
   const { data, error } = await sb.from('profiles').select('*').eq('id', user.id).single();
   if (error) return toast(error.message);
   $('who').textContent = data.username;
+  renderTitles($('whoTitles'), data.balance, data.rebirths || 0, -1);
   setRebirths(data.rebirths || 0);
   boostUntil = data.boost_until ? new Date(data.boost_until).getTime() : 0;
   if (data.banned) { toast('This account is banned.'); setTimeout(() => sb.auth.signOut(), 1500); return; }
@@ -2146,6 +2213,7 @@ function boardRow(i, p, isMe, right){
   tr.children[1].textContent = p.username;   // safe from HTML injection
   if (isOnline(p)) { const d = document.createElement('span'); d.className = 'online-dot'; d.title = 'Online'; tr.children[1].appendChild(d); }
   if (p.rebirths && boardMode !== 'rebirths') { const b = document.createElement('span'); b.className = 'lb-rb'; b.textContent = '▲' + p.rebirths; tr.children[1].appendChild(b); }
+  { const tb = document.createElement('span'); tb.className = 'titles'; renderTitles(tb, p.balance, p.rebirths || 0, boardMode === 'money' ? i : -1); tr.children[1].appendChild(tb); }
   tr.children[2].textContent = right;
   return tr;
 }
