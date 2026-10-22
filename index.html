@@ -739,8 +739,8 @@ tr.me td{color:var(--accent)}
       <input id="adminCost" type="number" min="0.01" step="0.01" placeholder="Amount">
     </div>
     <div class="field owner-only">
-      <label>Gifted title (rainbow, max only)</label>
-      <div style="display:flex;gap:8px"><button type="button" class="ghost" id="adminGiftTitle" style="flex:1">Grant Gifted</button><button type="button" class="ghost" id="adminUnGiftTitle" style="flex:1">Remove</button></div>
+      <label>Aurora title (rainbow, max only)</label>
+      <div style="display:flex;gap:8px"><button type="button" class="ghost" id="adminGiftTitle" style="flex:1">Grant Aurora</button><button type="button" class="ghost" id="adminUnGiftTitle" style="flex:1">Remove</button></div>
     </div>
     <div style="display:flex;gap:8px"><button type="button" class="go" id="adminGive" style="flex:1">Gift coins</button><button type="button" class="go" id="adminTake" style="flex:1">Take coins</button></div>
     <div class="owner-only">
@@ -1609,7 +1609,7 @@ const COIN_TITLES = [[1e21, 'Touchable', '1 sextillion coins'], [1e18, 'Untoucha
 const RB_TITLES = [[100, 'The Golden', '100+ rebirths'], [50, 'Ascended', '50+ rebirths'], [10, 'Reborn', '10+ rebirths']];
 function titleChips(bal, rb, rank, gifted){
   const out = [];
-  if (gifted) out.push(['gifted', 'Gifted']);
+  if (gifted) out.push(['gifted', 'Aurora']);
   for (const [n, t] of COIN_TITLES) if (bal >= n) { out.push(['t-coin', t]); break; }
   for (const [n, t] of RB_TITLES) if (rb >= n) { out.push(['t-rb', t]); break; }
   if (rank === 0) out.push(['t-rank', 'King']); else if (rank >= 0 && rank < 3) out.push(['t-rank', 'Elite']);
@@ -1632,7 +1632,7 @@ function openTitles(){
   rows.push('<div class="t-cat">Rebirths</div>');
   RB_TITLES.slice().reverse().forEach(([n, t, req]) => rows.push(line('t-rb', t, req)));
   rows.push('<div class="t-cat">Special</div>');
-  rows.push(line('gifted', 'Gifted', 'Hand-picked by max'));
+  rows.push(line('gifted', 'Aurora', 'Hand-picked by max'));
   rows.push('<div class="t-cat">Leaderboard</div>');
   rows.push(line('t-rank', 'King', '#1 on the money board'));
   rows.push(line('t-rank', 'Elite', 'Top 3 on the money board'));
@@ -2322,7 +2322,7 @@ async function giftTitle(on){
   const n = adminName(); if (!n) return;
   const { data, error } = await sb.rpc('admin_gift_title', { p_user: n, p_on: on });
   if (error) { adminStatus(error.message, false); return toast(error.message); }
-  const m = `${data.user} ${on ? 'now has' : 'no longer has'} the Gifted title`; adminStatus(m, true); toast(m);
+  const m = `${data.user} ${on ? 'now has' : 'no longer has'} the Aurora title`; adminStatus(m, true); toast(m);
   if (!$('tab-board').hidden) loadBoard();
 }
 $('adminGiftTitle').onclick = () => giftTitle(true);
