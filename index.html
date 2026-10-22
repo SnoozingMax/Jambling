@@ -2222,7 +2222,7 @@ window.addEventListener('pageshow', () => { leftAlready = false; });
 // 10700 -> 10.7k  (leaderboard only)
 function short(n){
   n = Number(n);
-  const u = [[1e12, 't'], [1e9, 'b'], [1e6, 'm'], [1e3, 'k']];
+  const u = [[1e24, 'Sp'], [1e21, 'Sx'], [1e18, 'Qi'], [1e15, 'Qa'], [1e12, 't'], [1e9, 'b'], [1e6, 'm'], [1e3, 'k']];
   for (const [v, l] of u) if (Math.abs(n) >= v) { const x = n / v; return (x >= 100 ? x.toFixed(0) : x.toFixed(1).replace(/\.0$/, '')) + l; }
   return n.toFixed(0);
 }
