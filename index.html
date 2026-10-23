@@ -723,6 +723,10 @@ tr.me td{color:var(--accent)}
       <button type="button" class="ghost" id="adminUnmod" style="padding:10px">Remove mod</button>
     </div>
     <div class="owner-only" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:0 0 18px">
+      <button type="button" class="ghost" id="adminAddAdmin" style="padding:10px">Add admin</button>
+      <button type="button" class="ghost" id="adminDelAdmin" style="padding:10px">Remove admin</button>
+    </div>
+    <div class="owner-only" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:0 0 18px">
       <button type="button" class="go" id="adminBan" style="background:var(--lose)">Ban</button>
       <button type="button" class="go" id="adminUnban" style="background:var(--line);color:var(--ink)">Unban</button>
     </div>
@@ -1581,6 +1585,14 @@ $('adminClearBad').onclick = () => clearEffect($('adminUser').value.trim(), 'bad
 $('modClearBad').onclick = () => clearEffect($('modUser').value.trim(), 'bad', (m, ok) => { modStatus(m, ok); toast(m); });
 $('adminMod').onclick = () => setMod(true);
 $('adminUnmod').onclick = () => setMod(false);
+async function setAdmin(on){
+  const n = adminName(); if (!n) return;
+  const { data, error } = await sb.rpc('owner_set_admin', { p_user: n, p_on: on });
+  if (error) { adminStatus(error.message, false); return toast(error.message); }
+  const m = `${data.user} is ${data.admin ? 'now an admin' : 'no longer an admin'}`; adminStatus(m, true); toast(m);
+}
+$('adminAddAdmin').onclick = () => setAdmin(true);
+$('adminDelAdmin').onclick = () => setAdmin(false);
 
 /* ---------- rebirth ---------- */
 $('rebirthBtn').onclick = () => {
