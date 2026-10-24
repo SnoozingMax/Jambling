@@ -258,7 +258,7 @@ tr.me td{color:var(--accent)}
 .title-chip.t-rank{background:var(--accent);color:#fff}
 .title-chip.gifted{color:#6b5416;border:1px solid rgba(232,178,58,.7);background:repeating-linear-gradient(90deg,#fffdf5 0px,#fff 16px,#f6e6b8 32px,#fff 48px,#fffdf5 64px);box-shadow:0 0 10px rgba(255,240,190,.75),0 0 3px rgba(232,178,58,.5);text-shadow:0 1px 0 rgba(255,255,255,.6);animation:giftedShimmer 3s linear infinite}
 @keyframes giftedShimmer{to{background-position:64px 0}}
-.title-chip.tester{position:relative;z-index:0;border:none;color:transparent;-webkit-text-fill-color:transparent;background:linear-gradient(90deg,#ff6b81,#ffb14d,#ffe95c,#5cf08a,#5cd0ff,#c99bff,#ff6b81);background-size:200% 100%;-webkit-background-clip:text;background-clip:text;animation:testerRainbow 2.5s linear infinite;animation-delay:var(--td,0ms)}
+.title-chip.tester{display:inline-flex;align-items:center;justify-content:center;vertical-align:middle;padding:3px 8px;position:relative;z-index:0;border:none;color:transparent;-webkit-text-fill-color:transparent;background:linear-gradient(90deg,#ff6b81,#ffb14d,#ffe95c,#5cf08a,#5cd0ff,#c99bff,#ff6b81);background-size:200% 100%;-webkit-background-clip:text;background-clip:text;animation:testerRainbow 2.5s linear infinite;animation-delay:var(--td,0ms)}
 .title-chip.tester::before{content:"";position:absolute;inset:0;z-index:-1;border-radius:999px;padding:1.5px;background:linear-gradient(90deg,#ff6b81,#ffb14d,#ffe95c,#5cf08a,#5cd0ff,#c99bff,#ff6b81);background-size:200% 100%;-webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude;animation:testerRainbow 2.5s linear infinite;animation-delay:var(--td,0ms)}
 @keyframes testerRainbow{to{background-position:200% 0}}
 .t-cat{font:700 11px "IBM Plex Mono",monospace;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:14px 0 8px}
@@ -733,7 +733,7 @@ tr.me td{color:var(--accent)}
     </div>
     <div class="field">
       <label>Rebirths</label>
-      <div style="display:flex;gap:8px"><input id="adminRb" type="number" min="1" step="1" placeholder="How many"><button type="button" class="ghost owner-only" id="adminGiveRb" style="white-space:nowrap">Give</button><button type="button" class="ghost" id="adminTakeRb" style="white-space:nowrap">Take</button></div>
+      <div style="display:flex;gap:8px"><input id="adminRb" type="number" min="1" step="1" placeholder="How many"><button type="button" class="ghost" id="adminGiveRb" style="white-space:nowrap">Give</button><button type="button" class="ghost" id="adminTakeRb" style="white-space:nowrap">Take</button></div>
     </div>
     <div class="field">
       <label>Coins</label>
@@ -749,7 +749,7 @@ tr.me td{color:var(--accent)}
     </div>
     <div style="display:flex;gap:8px"><button type="button" class="go" id="adminGive" style="flex:1">Gift coins</button><button type="button" class="go" id="adminTake" style="flex:1">Take coins</button></div>
     <div class="owner-only">
-      <button type="button" class="ghost" id="adminStaffLog" style="width:100%;padding:10px;margin-top:18px">Staff activity (what other admins + mods did)</button>
+      <button type="button" class="ghost" id="adminStaffLog" style="width:100%;padding:10px;margin-top:18px">Staff log (admins + mods: actions, titles, roles)</button>
       <div id="staffLog" hidden style="max-height:260px;overflow:auto;margin-top:8px;border:1px solid var(--line);border-radius:10px;font-size:13px"></div>
     </div>
     <button type="button" class="ghost" id="adminGiftLog" style="width:100%;padding:10px;margin-top:18px">Gift log (player above, or everyone if blank)</button>
@@ -987,19 +987,30 @@ async function boardBan(hide){
 }
 $('adminBoardHide').onclick = () => boardBan(true);
 $('adminBoardShow').onclick = () => boardBan(false);
+function logActionColor(what){
+  const w = (what || '').toLowerCase();
+  if (/^(gave|granted|accepted|unhid|made )/.test(w)) return 'var(--win)';
+  if (/^(took|removed|deleted|banned|hid |rejected|sent to)/.test(w)) return 'var(--lose)';
+  return '';
+}
 $('adminStaffLog').onclick = async () => {
   const box = $('staffLog'); box.hidden = false; box.textContent = 'Loading...';
   const { data, error } = await sb.rpc('staff_activity', { p_limit: 200 });
   if (error) { box.textContent = error.message; return; }
   if (!data.length) { box.textContent = 'Nothing yet'; return; }
   box.innerHTML = '';
+  const head = document.createElement('div');
+  head.style.cssText = 'padding:7px 10px;border-bottom:1px solid var(--line);color:var(--muted);font-weight:600;position:sticky;top:0;background:var(--card)';
+  head.textContent = `${data.length} action${data.length === 1 ? '' : 's'} logged (newest first)`;
+  box.appendChild(head);
   for (const s of data) {
     const d = document.createElement('div');
     d.style.cssText = 'padding:6px 10px;border-bottom:1px dashed var(--line)';
     const when = document.createElement('span'); when.style.cssText = 'color:var(--muted);margin-right:6px';
     when.textContent = new Date(s.at).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
     const who = document.createElement('b'); who.textContent = s.who || '?';
-    const rest = document.createElement('span'); rest.textContent = (s.target ? ` → ${s.target}: ` : ': ') + s.what;
+    const rest = document.createElement('span'); rest.style.color = logActionColor(s.what);
+    rest.textContent = (s.target ? ` → ${s.target}: ` : ': ') + s.what;
     d.append(when, who, rest); box.appendChild(d);
   }
 };
@@ -1011,6 +1022,10 @@ $('adminGiftLog').onclick = async () => {
   if (!data.length) { box.textContent = 'No gifts' + (who ? ' for ' + who : ''); return; }
   box.innerHTML = '';
   const esc = x => String(x).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const head = document.createElement('div');
+  head.style.cssText = 'padding:7px 10px;border-bottom:1px solid var(--line);color:var(--muted);font-weight:600;position:sticky;top:0;background:var(--card)';
+  head.textContent = `${data[0].cnt} gift${Number(data[0].cnt) === 1 ? '' : 's'}${who ? ' for ' + who : ''} · total ${short(Number(data[0].total))}`;
+  box.appendChild(head);
   for (const g of data) {
     const d = document.createElement('div');
     d.style.cssText = 'display:flex;gap:8px;padding:6px 10px;border-bottom:1px dashed var(--line)';
