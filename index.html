@@ -1814,10 +1814,11 @@ async function startCrash(){
   $('crashBtn').disabled = true;
   $('crashMsg').textContent = ''; $('crashMsg').className = 'sub';
   $('mult').className = 'mult';
+  const t0 = performance.now();   // anchor before the request so the on-screen rocket is never behind the server's clock
   const { data, error } = await sb.rpc('crash_start', { p_bet: bet });
   if (error) { toast(error.message); $('crashBtn').disabled = false; return; }
   setBalance(data.balance);
-  round = { id: data.round_id, bet, t0: performance.now(), done: false, cashing: false };
+  round = { id: data.round_id, bet, t0, done: false, cashing: false };
   setCrashBtn(true);
   raf = requestAnimationFrame(tick);
   poll = setInterval(checkCrash, 250);
@@ -1847,8 +1848,8 @@ async function cashOut(){
   const id = round.id;
   const { data, error } = await sb.rpc('crash_cashout', { p_round: id });
   if (!round || round.id !== id || round.done) return;
-  if (error) { // probably already crashed; let status check finish it
-    round.cashing = false; checkCrash(); return;
+  if (error) { // probably already crashed; let the status check finish it, and re-enable so a transient error can be retried
+    round.cashing = false; $('crashBtn').disabled = false; checkCrash(); return;
   }
   setBalance(data.balance);
   data.won ? endRound(true, data.multiplier, data.payout, data.crash_point) : endRound(false, data.crash_point);
