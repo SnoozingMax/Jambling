@@ -6711,3 +6711,634 @@ begin
 end $$;
 
 notify pgrst, 'reload schema';
+
+-- ========== owner_admins ==========
+-- Jambling: let ONLY max add/remove admins. Run once in Supabase > SQL Editor.
+-- Other admins can't use this (gated on am_owner, not is_admin). The owner (max) can never be removed (existing trigger).
+
+create or replace function owner_set_admin(p_user text, p_on boolean) returns json
+language plpgsql security definer set search_path = public as $$
+declare them uuid; them_name text;
+begin
+  if not am_owner() then raise exception 'Only max can change admins'; end if;
+  select id, username into them, them_name from profiles where lower(username) = lower(trim(p_user)) order by created_at limit 1;
+  if them is null then raise exception 'No player named %', p_user; end if;
+  if exists (select 1 from site_owner where id = them) then raise exception 'max is always an admin'; end if;
+  if p_on then insert into admins values (them) on conflict do nothing;
+  else delete from admins where user_id = them; end if;
+  return json_build_object('user', them_name, 'admin', p_on);
+end $$;
+revoke execute on function owner_set_admin(text, boolean) from public, anon;
+grant execute on function owner_set_admin(text, boolean) to authenticated;
+
+notify pgrst, 'reload schema';
+
+-- ========== make_laoo_admin ==========
+-- Make laoo an admin. Run once in Supabase > SQL Editor.
+insert into admins select id from profiles where lower(username) = 'laoo' on conflict do nothing;
+-- check it worked (should list laoo):
+select username from profiles p join admins a on a.user_id = p.id order by username;
+
+-- ========== tester_title ==========
+-- Jambling: new "Tester" title (rainbow outlined, animated) + remove Steal/Poison from the shop.
+-- Run once in Supabase > SQL Editor.
+
+-- Tester title: a boolean on profiles, granted by max only (like Aurora).
+alter table profiles add column if not exists tester boolean not null default false;
+
+create or replace function admin_gift_tester(p_user text, p_on boolean) returns json
+language plpgsql security definer set search_path = public as $$
+declare them uuid; them_name text;
+begin
+  if not am_owner() then raise exception 'Only max can grant the Tester title'; end if;
+  select id, username into them, them_name from profiles where lower(username) = lower(trim(p_user)) order by created_at limit 1;
+  if them is null then raise exception 'No player named %', p_user; end if;
+  update profiles set tester = p_on where id = them;
+  return json_build_object('user', them_name, 'tester', p_on);
+end $$;
+revoke execute on function admin_gift_tester(text, boolean) from anon;
+grant execute on function admin_gift_tester(text, boolean) to authenticated;
+
+-- Remove Steal + Poison from the shop: make the RPCs refuse so no old client can still buy them.
+create or replace function shop_steal(p_target text) returns json
+language plpgsql security definer set search_path = public as $$
+begin raise exception 'Steal has been removed from the shop'; end $$;
+
+create or replace function shop_poison() returns json
+language plpgsql security definer set search_path = public as $$
+begin raise exception 'Poison has been removed from the shop'; end $$;
+
+create or replace function poison_pulse() returns json
+language plpgsql security definer set search_path = public as $$
+begin return json_build_object('ok', true); end $$;
+
+notify pgrst, 'reload schema';
+
+-- ========== shop_daily ==========
+-- Jambling: Good Luck now costs 1 sextillion, and every shop item can be bought once per day (Pacific).
+-- max (owner) is exempt from the daily limit. Run once in Supabase > SQL Editor.
+
+create table if not exists shop_log (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references profiles(id) on delete cascade,
+  item text not null,
+  at timestamptz not null default now()
+);
+create index if not exists shop_log_user_day on shop_log (user_id, item, at);
+alter table shop_log enable row level security;   -- functions only
+
+-- true if this player already bought p_item today (Pacific). Owner is never limited.
+create or replace function _shop_used_today(p_item text) returns boolean
+language sql stable security definer set search_path = public as $$
+  select not am_owner() and exists (
+    select 1 from shop_log
+     where user_id = auth.uid() and item = p_item
+       and (at at time zone 'America/Los_Angeles')::date = (now() at time zone 'America/Los_Angeles')::date)
+$$;
+revoke execute on function _shop_used_today(text) from public, anon, authenticated;
+
+create or replace function shop_rush() returns json
+language plpgsql security definer set search_path = public as $$
+declare cost numeric := 1e15; bal numeric; until timestamptz;
+begin
+  if auth.uid() is null then raise exception 'Not signed in'; end if;
+  if _shop_used_today('rush') then raise exception 'You already bought Rush Hour today. Come back tomorrow.'; end if;
+  select balance into bal from profiles where id = auth.uid() for update;
+  if bal < cost then raise exception 'You need 1 quadrillion coins for Rush Hour'; end if;
+  update profiles set balance = balance - cost where id = auth.uid() returning balance into bal;
+  perform set_config('jambling.shop', '1', true);
+  update site_state set rush_until = greatest(coalesce(rush_until, clock_timestamp()), clock_timestamp()) + interval '30 seconds'
+    where id = 1 returning rush_until into until;
+  if not am_owner() then insert into shop_log (user_id, item) values (auth.uid(), 'rush'); end if;
+  return json_build_object('ok', true, 'balance', bal, 'until', until);
+end $$;
+
+-- Good Luck: 1 sextillion -> buyer gets good luck for 10 seconds
+create or replace function shop_boost() returns json
+language plpgsql security definer set search_path = public as $$
+declare cost numeric := 1e21; bal numeric; until timestamptz;
+begin
+  if auth.uid() is null then raise exception 'Not signed in'; end if;
+  if _shop_used_today('boost') then raise exception 'You already bought Good Luck today. Come back tomorrow.'; end if;
+  select balance into bal from profiles where id = auth.uid() for update;
+  if bal < cost then raise exception 'You need 1 sextillion coins for Good Luck'; end if;
+  update profiles set balance = balance - cost where id = auth.uid() returning balance into bal;
+  perform set_config('jambling.shop', '1', true);
+  update profiles set boost_until = greatest(coalesce(boost_until, clock_timestamp()), clock_timestamp()) + interval '10 seconds'
+    where id = auth.uid() returning boost_until into until;
+  if not am_owner() then insert into shop_log (user_id, item) values (auth.uid(), 'boost'); end if;
+  return json_build_object('ok', true, 'balance', bal, 'until', until);
+end $$;
+
+revoke execute on function shop_rush() from anon;
+revoke execute on function shop_boost() from anon;
+
+notify pgrst, 'reload schema';
+
+-- ========== logs_v2 ==========
+-- Jambling: admins can give rebirths + much better staff/gift logging. Run once in Supabase > SQL Editor.
+-- (Order-independent: safe to run before or after tester_title.sql / shop_daily.sql.)
+
+-- make sure the tester column exists before the trigger below references it
+alter table profiles add column if not exists tester boolean not null default false;
+
+-- 1) Admins (not just max) can give rebirths
+create or replace function admin_give_rebirths(p_user text, p_n int) returns json
+language plpgsql security definer set search_path = public as $$
+declare them uuid; them_name text; rb int;
+begin
+  if not is_admin() then raise exception 'Admins only'; end if;
+  if p_n is null or p_n <= 0 then raise exception 'Enter how many'; end if;
+  select id, username into them, them_name from profiles where lower(username) = lower(trim(p_user)) order by created_at limit 1;
+  if them is null then raise exception 'No player named %', p_user; end if;
+  update profiles set rebirths = rebirths + p_n where id = them returning rebirths into rb;
+  return json_build_object('user', them_name, 'rebirths', rb);
+end $$;
+revoke execute on function admin_give_rebirths(text, int) from anon;
+
+-- 2) Log role changes (admin/mod promotions + removals) by anyone, so max has a record
+create or replace function _watch_roles() returns trigger
+language plpgsql security definer set search_path = public as $$
+declare uname text; role text := case tg_table_name when 'admins' then 'admin' else 'mod' end;
+begin
+  if tg_op = 'INSERT' then
+    select username into uname from profiles where id = new.user_id;
+    perform _log_staff(uname, 'made ' || case when role = 'admin' then 'an admin' else 'a mod' end);
+    return new;
+  else
+    select username into uname from profiles where id = old.user_id;
+    perform _log_staff(uname, 'removed as ' || role);
+    return old;
+  end if;
+end $$;
+drop trigger if exists watch_admins on admins;
+create trigger watch_admins after insert or delete on admins for each row execute function _watch_roles();
+drop trigger if exists watch_mods on moderators;
+create trigger watch_mods after insert or delete on moderators for each row execute function _watch_roles();
+
+-- 3) Rewrite the profiles watcher: log title grants + leaderboard hides too, title changes by ANYONE (incl. max)
+create or replace function _watch_profiles() returns trigger
+language plpgsql security definer set search_path = public as $$
+declare w text[] := '{}'; actor uuid := auth.uid();
+begin
+  if tg_op = 'DELETE' then
+    if _is_staff_not_owner() and old.id <> actor then
+      perform _log_staff(old.username, 'deleted the account (had ' || to_char(old.balance, 'FM999,999,999,999,990') || ' coins)');
+    end if;
+    return old;
+  end if;
+
+  -- title grants: recorded no matter who does them (these are max-only, but max wants to see them)
+  if new.id is distinct from actor then
+    if new.gifted is distinct from old.gifted then
+      perform _log_staff(new.username, case when new.gifted then 'granted the Aurora title' else 'removed the Aurora title' end);
+    end if;
+    if new.tester is distinct from old.tester then
+      perform _log_staff(new.username, case when new.tester then 'granted the Tester title' else 'removed the Tester title' end);
+    end if;
+  end if;
+
+  -- everything else: only non-owner admins/mods acting on someone else
+  if not _is_staff_not_owner() or new.id = actor then return new; end if;
+  if new.balance > old.balance then w := w || ('gave ' || to_char(new.balance - old.balance, 'FM999,999,999,999,990.00') || ' coins'); end if;
+  if new.balance < old.balance then w := w || ('took ' || to_char(old.balance - new.balance, 'FM999,999,999,999,990.00') || ' coins'); end if;
+  if new.username is distinct from old.username then w := w || ('renamed ' || old.username || ' -> ' || new.username); end if;
+  if new.rebirths is distinct from old.rebirths then
+    w := w || ((case when new.rebirths > old.rebirths then 'gave ' || (new.rebirths - old.rebirths) || ' rebirths'
+                     else 'took ' || (old.rebirths - new.rebirths) || ' rebirths' end) || ' (now ' || new.rebirths || ')');
+  end if;
+  if new.badluck_until is distinct from old.badluck_until then
+    w := w || (case when new.badluck_until is null or new.badluck_until < now() then 'removed bad luck' else 'gave bad luck' end);
+  end if;
+  if new.boost_until is distinct from old.boost_until and new.boost_until is null then w := w || 'removed boost'::text; end if;
+  if new.board_hidden is distinct from old.board_hidden then w := w || (case when new.board_hidden then 'hid from leaderboard' else 'unhid from leaderboard' end); end if;
+  if new.approved is distinct from old.approved then w := w || (case when new.approved then 'accepted from waiting room' else 'sent to waiting room' end); end if;
+  if new.rejected_at is distinct from old.rejected_at and new.rejected_at is not null then w := w || 'rejected from waiting room'::text; end if;
+  if array_length(w, 1) > 0 then perform _log_staff(new.username, array_to_string(w, ', ')); end if;
+  return new;
+end $$;
+drop trigger if exists watch_profiles on profiles;
+create trigger watch_profiles after update or delete on profiles for each row execute function _watch_profiles();
+
+-- 4) Gift log: also return a running total so the client can show a summary
+drop function if exists admin_gift_log(text);
+create or replace function admin_gift_log(p_user text default null) returns table(at timestamptz, from_user text, to_user text, amount numeric, message text, total numeric, cnt bigint)
+language plpgsql stable security definer set search_path = public as $$
+begin
+  if not is_admin() then raise exception 'Admins only'; end if;
+  return query
+    with rows as (
+      select g.created_at, f.username as fu, t.username as tu, g.amount as amt, g.message as msg
+      from gifts g join profiles f on f.id = g.from_id join profiles t on t.id = g.to_id
+      where coalesce(trim(p_user), '') = ''
+         or lower(f.username) = lower(trim(p_user)) or lower(t.username) = lower(trim(p_user)))
+    select r.created_at, r.fu, r.tu, r.amt, r.msg,
+           sum(r.amt) over (), count(*) over ()
+    from rows r order by r.created_at desc limit 200;
+end $$;
+revoke execute on function admin_gift_log(text) from anon;
+
+notify pgrst, 'reload schema';
+
+-- ========== remove_shop ==========
+-- Jambling: shop removed. Make the shop RPCs refuse so nobody can call them with the anon key. Run once.
+create or replace function shop_rush() returns json
+language plpgsql security definer set search_path = public as $$
+begin raise exception 'The shop has been removed'; end $$;
+
+create or replace function shop_boost() returns json
+language plpgsql security definer set search_path = public as $$
+begin raise exception 'The shop has been removed'; end $$;
+
+notify pgrst, 'reload schema';
+
+-- ========== single_role ==========
+-- Jambling: a player can't be admin and mod at the same time. Run once in Supabase > SQL Editor.
+-- Making someone an admin drops their mod role; making someone a mod drops their admin role. The owner stays admin.
+
+create or replace function _one_role_only() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if tg_table_name = 'admins' then
+    delete from moderators where user_id = new.user_id;       -- admin supersedes mod
+  else
+    if exists (select 1 from site_owner where id = new.user_id) then
+      raise exception 'The owner is always an admin, not a mod';
+    end if;
+    delete from admins where user_id = new.user_id;           -- mod drops admin
+  end if;
+  return new;
+end $$;
+
+drop trigger if exists one_role_admins on admins;
+create trigger one_role_admins before insert on admins for each row execute function _one_role_only();
+drop trigger if exists one_role_mods on moderators;
+create trigger one_role_mods before insert on moderators for each row execute function _one_role_only();
+
+-- clean up anyone who is currently both (admin wins)
+delete from moderators where user_id in (select user_id from admins);
+
+notify pgrst, 'reload schema';
+
+-- ========== demote_bebewill ==========
+-- Demote Bebewill from admin to mod. Run once in Supabase > SQL Editor.
+-- (Works with or without single_role.sql: it removes admin and adds mod explicitly.)
+do $$
+declare uid uuid;
+begin
+  select id into uid from profiles where lower(username) = 'bebewill' order by created_at limit 1;
+  if uid is null then raise exception 'No player named Bebewill'; end if;
+  delete from admins where user_id = uid;
+  insert into moderators (user_id) values (uid) on conflict do nothing;
+end $$;
+
+-- confirm (should show bebewill as mod only):
+select p.username, 'admin' as role from admins a join profiles p on p.id = a.user_id where lower(p.username) = 'bebewill'
+union all
+select p.username, 'mod' from moderators m join profiles p on p.id = m.user_id where lower(p.username) = 'bebewill';
+
+-- ========== restore_rocket ==========
+-- Jambling: bring Rocket back and make it respect every effect. Run once in Supabase > SQL Editor.
+--   Bad luck  -> crashes instantly (you lose)
+--   Good luck -> flies to 1000x, so any cash-out is a win
+--   Rush hour -> much higher crash points (1.8x floor, ~7x typical)
+--   Rebirths  -> multiply your winnings (via _luck, applied on cash-out)
+
+create or replace function crash_start(p_bet numeric) returns json
+language plpgsql security definer set search_path = public as $$
+declare bal numeric; cp numeric; rid uuid; r float8;
+begin
+  if auth.uid() is null then raise exception 'Not signed in'; end if;
+  p_bet := round(p_bet, 2);
+  if p_bet is null or p_bet <= 0 then raise exception 'Invalid bet'; end if;
+  if p_bet > 100000 then raise exception 'Max bet is 100,000'; end if;
+
+  update crash_rounds set status = 'crashed' where user_id = auth.uid() and status = 'live';
+
+  select balance into bal from profiles where id = auth.uid() for update;
+  if bal < p_bet then raise exception 'Not enough coins'; end if;
+
+  if _bad_luck_now(auth.uid()) then
+    cp := 1.00;                                                        -- bad luck: blows up instantly
+  elsif (select boost_until > clock_timestamp() from profiles where id = auth.uid()) then
+    cp := 1000;                                                        -- good luck: flies high, any cash-out wins
+  elsif _rush_now() then
+    r := random();
+    cp := least(1000, greatest(1.8, floor(3.5 / (1 - r) * 100) / 100))::numeric;   -- rush hour: 1.8x floor, ~7x typical
+  else
+    r := random();
+    cp := least(1000, greatest(1.00, floor(0.97 / (1 - r) * 100) / 100))::numeric; -- normal
+  end if;
+
+  update profiles set balance = balance - p_bet where id = auth.uid() returning balance into bal;
+  insert into crash_rounds (user_id, bet, crash_point) values (auth.uid(), p_bet, cp) returning id into rid;
+  return json_build_object('round_id', rid, 'balance', bal);
+end $$;
+revoke execute on function crash_start(numeric) from anon;
+
+-- cash-out: winnings scale with rebirths (_luck), capped at +5m per round
+create or replace function crash_cashout(p_round uuid) returns json
+language plpgsql security definer set search_path = public as $$
+declare rd crash_rounds; m numeric; payout numeric; bal numeric;
+begin
+  select * into rd from crash_rounds where id = p_round and user_id = auth.uid() for update;
+  if not found then raise exception 'Round not found'; end if;
+  if rd.status <> 'live' then raise exception 'Round over'; end if;
+
+  m := floor(exp(0.09 * extract(epoch from clock_timestamp() - rd.started_at)) * 100) / 100;
+  if m >= rd.crash_point then
+    update crash_rounds set status = 'crashed' where id = rd.id;
+    select balance into bal from profiles where id = auth.uid();
+    return json_build_object('won', false, 'crash_point', rd.crash_point, 'balance', bal);
+  end if;
+
+  payout := round(rd.bet + rd.bet * (m - 1) * _luck(auth.uid()), 2);
+  payout := least(payout, rd.bet + 5000000);   -- max win 5m per round
+  update crash_rounds set status = 'cashed', cashout = m where id = rd.id;
+  update profiles set balance = balance + payout where id = auth.uid() returning balance into bal;
+  return json_build_object('won', true, 'multiplier', m, 'payout', payout, 'balance', bal, 'crash_point', rd.crash_point);
+end $$;
+revoke execute on function crash_cashout(uuid) from anon;
+
+notify pgrst, 'reload schema';
+
+-- ========== remove_roulette ==========
+-- Jambling: roulette removed from the site. Make its RPCs refuse so the anon key can't call them. Run once.
+create or replace function spin_roulette(p_bet numeric, p_kind text, p_num int default null) returns json
+language plpgsql security definer set search_path = public as $$
+begin raise exception 'Roulette has been removed'; end $$;
+
+create or replace function roulette_recent() returns int[]
+language plpgsql security definer set search_path = public as $$
+begin return '{}'::int[]; end $$;
+
+notify pgrst, 'reload schema';
+
+-- ========== mines_bet1b ==========
+-- Jambling: raise the Mines max bet to 1 billion. Run once in Supabase > SQL Editor.
+create or replace function mines_start(p_bet numeric, p_mines int) returns json
+language plpgsql security definer set search_path = public as $$
+declare bal numeric; r mines_rounds;
+begin
+  if auth.uid() is null then raise exception 'Not signed in'; end if;
+  if exists (select 1 from mines_rounds where user_id = auth.uid() and status = 'live') then
+    raise exception 'Finish your current Mines round first';
+  end if;
+  p_bet := round(p_bet, 2);
+  if p_bet is null or p_bet <= 0 then raise exception 'Invalid bet'; end if;
+  if p_bet > 1000000000 then raise exception 'Max bet is 1,000,000,000'; end if;
+  if p_mines is null or p_mines < 1 or p_mines > 15 then raise exception 'Pick 1 to 15 bombs'; end if;
+  select balance into bal from profiles where id = auth.uid() for update;
+  if bal < p_bet then raise exception 'Not enough coins'; end if;
+  update profiles set balance = balance - p_bet where id = auth.uid() returning balance into bal;
+  insert into mines_rounds (user_id, bet, mines) values (auth.uid(), p_bet, p_mines) returning * into r;
+  return _mines_view(r, bal);
+end $$;
+
+notify pgrst, 'reload schema';
+
+-- ========== celestial_grant ==========
+-- Jambling: let ONLY max grant the Celestial title to a player who has the Tester title
+-- (skips the 200-rebirth requirement). Run once in Supabase > SQL Editor.
+
+alter table profiles add column if not exists tester boolean not null default false;
+alter table profiles add column if not exists celestial boolean not null default false;
+
+create or replace function admin_grant_celestial(p_user text, p_on boolean) returns json
+language plpgsql security definer set search_path = public as $$
+declare them uuid; them_name text; has_tester boolean;
+begin
+  if not am_owner() then raise exception 'Only max can grant Celestial'; end if;
+  select id, username, tester into them, them_name, has_tester
+    from profiles where lower(username) = lower(trim(p_user)) order by created_at limit 1;
+  if them is null then raise exception 'No player named %', p_user; end if;
+  if p_on and not coalesce(has_tester, false) then
+    raise exception '% needs the Tester title before you can grant Celestial', them_name;
+  end if;
+  update profiles set celestial = p_on where id = them;
+  return json_build_object('user', them_name, 'celestial', p_on);
+end $$;
+revoke execute on function admin_grant_celestial(text, boolean) from anon;
+grant execute on function admin_grant_celestial(text, boolean) to authenticated;
+
+notify pgrst, 'reload schema';
+
+-- ========== archer ==========
+-- Jambling: 1v1 "Archers". Run once in Supabase > SQL Editor.
+-- Turn-based so lag never matters. Each turn: hop (back / stay / forward), then aim + pull back and fire.
+-- The SERVER simulates the arrow (gravity arc) and decides hits, so a hit can't be faked.
+--   Body hit 25 dmg · Headshot 40 dmg · 100 HP each · 15s to shoot or you forfeit · 40-shot cap (more HP wins).
+
+alter table pvp_matches add column if not exists ax numeric;   -- left archer x (player a)
+alter table pvp_matches add column if not exists bx numeric;   -- right archer x (player b)
+-- a_hp, b_hp, round (shot count), log, fturn (whose turn) already exist
+
+-- ---------- physics: MUST match the client exactly (same constants, same semi-implicit Euler order) ----------
+-- field x 0..100, ground y 0. Bow at y 4.5. Opponent hitbox: |x-ox| <= 1.6, 0 <= y <= 6; head is y >= 4.6.
+create or replace function _archer_sim(x0 numeric, dir int, angle numeric, power numeric, ox numeric) returns jsonb
+language plpgsql immutable as $$
+declare v float8; vx float8; vy float8; x float8 := x0; y float8 := 4.5; t float8 := 0;
+        dt float8 := 0.02; g float8 := 30; hit text := 'none'; a float8;
+begin
+  v := 10 + power * 0.45;                     -- pull-back strength 0..100 -> speed 10..55
+  a := radians(angle);
+  vx := v * cos(a) * dir; vy := v * sin(a);
+  loop
+    t := t + dt;
+    vy := vy - g * dt;
+    x := x + vx * dt;
+    y := y + vy * dt;
+    if y <= 0 then y := 0; exit; end if;
+    if x < -5 or x > 105 then exit; end if;
+    if abs(x - ox) <= 1.6 and y <= 6 then
+      hit := case when y >= 4.6 then 'head' else 'body' end;
+      exit;
+    end if;
+    if t > 20 then exit; end if;
+  end loop;
+  return jsonb_build_object('hit', hit, 'x', round(x::numeric, 2), 'y', round(y::numeric, 2), 't', round(t::numeric, 2));
+end $$;
+revoke execute on function _archer_sim(numeric, int, numeric, numeric, numeric) from public, anon, authenticated;
+
+-- ---------- challenge: allow the new game ----------
+create or replace function pvp_challenge(p_user text, p_stake numeric, p_friendly boolean, p_game text default 'duel') returns json
+language plpgsql security definer set search_path = public as $$
+declare me uuid := auth.uid(); them uuid; bal numeric; m pvp_matches;
+begin
+  if me is null then raise exception 'Not signed in'; end if;
+  if p_game not in ('duel','filler','archer') then p_game := 'duel'; end if;
+  perform _pvp_tidy();
+  select id into them from profiles where lower(username) = lower(trim(p_user)) and not banned order by created_at limit 1;
+  if them is null then raise exception 'No player named %', p_user; end if;
+  if them = me then raise exception 'You can''t challenge yourself'; end if;
+  if exists (select 1 from pvp_matches where (a = me or b = me) and status = 'live') then raise exception 'Finish your current match first'; end if;
+  if exists (select 1 from pvp_matches where a = me and status = 'pending') then raise exception 'You already have a challenge waiting. Cancel it first.'; end if;
+  if p_friendly then p_stake := 0;
+  else
+    p_stake := round(p_stake, 2);
+    if p_stake is null or p_stake <= 0 then raise exception 'Enter a stake'; end if;
+    select balance into bal from profiles where id = me for update;
+    if bal - p_stake < 1000 then raise exception 'You can only stake coins above 1,000 (you can stake %)', greatest(0, bal - 1000); end if;
+    update profiles set balance = balance - p_stake where id = me;
+  end if;
+  insert into pvp_matches (a, b, stake, friendly, game) values (me, them, p_stake, p_friendly, p_game) returning * into m;
+  return _pvp_view(m, me);
+end $$;
+
+-- ---------- accept: set up the field ----------
+create or replace function pvp_accept(p_id uuid) returns json
+language plpgsql security definer set search_path = public as $$
+declare me uuid := auth.uid(); m pvp_matches; bal numeric;
+begin
+  perform _pvp_tidy();
+  select * into m from pvp_matches where id = p_id and b = me for update;
+  if not found or m.status <> 'pending' then raise exception 'That challenge is gone'; end if;
+  if exists (select 1 from pvp_matches where (a = me or b = me) and status = 'live') then raise exception 'Finish your current match first'; end if;
+  if not m.friendly then
+    select balance into bal from profiles where id = me for update;
+    if bal - m.stake < 1000 then raise exception 'You need % coins above 1,000 to accept', m.stake; end if;
+    update profiles set balance = balance - m.stake where id = me;
+  end if;
+  if m.game = 'filler' then
+    declare brd int[] := _filler_start(); own0 int[];
+    begin
+      select array_agg(case when i = 37 then 1 when i = 6 then 2 else 0 end) into own0 from generate_series(1,42) i;
+      update pvp_matches set status = 'live', fb = brd, fo = own0, fturn = m.a, a_acted = now(), b_acted = now() where id = m.id;
+    end;
+  elsif m.game = 'archer' then
+    update pvp_matches set status = 'live', ax = 15, bx = 85, a_hp = 100, b_hp = 100, fturn = m.a, round = 0, log = '[]',
+           a_acted = now(), b_acted = now() where id = m.id;
+  else
+    update pvp_matches set status = 'live', attacker = m.a, streak = 0, round = 1,
+           a_move = null, b_move = null, a_last = null, b_last = null, log = '[]', a_acted = now(), b_acted = now()
+     where id = m.id;
+  end if;
+  select * into m from pvp_matches where id = p_id;
+  return _pvp_view(m, me);
+end $$;
+
+-- ---------- the shot ----------
+create or replace function archer_shoot(p_id uuid, p_jump int, p_angle numeric, p_power numeric) returns json
+language plpgsql security definer set search_path = public as $$
+declare me uuid := auth.uid(); m pvp_matches; is_a boolean; myx numeric; ox numeric; dir int;
+        res jsonb; dmg int; hit text; newhp int; zmin numeric; zmax numeric; entry jsonb;
+begin
+  if me is null then raise exception 'Not signed in'; end if;
+  perform _pvp_tidy();
+  select * into m from pvp_matches where id = p_id and (a = me or b = me) for update;
+  if not found or m.status <> 'live' or m.game <> 'archer' then raise exception 'No match in play'; end if;
+  if m.fturn <> me then raise exception 'Not your turn'; end if;
+  if p_jump is null or p_jump not in (-1, 0, 1) then raise exception 'Bad hop'; end if;
+  if p_angle is null or p_angle < 0 or p_angle > 90 then raise exception 'Bad angle'; end if;
+  if p_power is null or p_power < 0 or p_power > 100 then raise exception 'Bad power'; end if;
+  is_a := m.a = me;
+  if is_a then zmin := 5;  zmax := 45; myx := m.ax; ox := m.bx; dir := 1;
+  else         zmin := 55; zmax := 95; myx := m.bx; ox := m.ax; dir := -1; end if;
+  myx := least(zmax, greatest(zmin, myx + p_jump * 8 * dir));           -- hop 8 units toward (+1) / away from (-1) the opponent, stays in your zone
+  res := _archer_sim(myx, dir, p_angle, p_power, ox);
+  hit := res->>'hit';
+  dmg := case hit when 'head' then 40 when 'body' then 25 else 0 end;
+  newhp := greatest(0, (case when is_a then m.b_hp else m.a_hp end) - dmg);
+  entry := jsonb_build_object('by', case when is_a then 'a' else 'b' end, 'jump', p_jump, 'angle', p_angle, 'power', p_power,
+                              'from', myx, 'hit', hit, 'dmg', dmg, 'x', res->'x', 'y', res->'y', 't', res->'t', 'hp', newhp);
+  if is_a then
+    update pvp_matches set ax = myx, b_hp = newhp, fturn = m.b, round = m.round + 1, log = log || entry,
+           a_acted = now(), b_acted = now() where id = m.id;
+  else
+    update pvp_matches set bx = myx, a_hp = newhp, fturn = m.a, round = m.round + 1, log = log || entry,
+           a_acted = now(), b_acted = now() where id = m.id;
+  end if;
+  if newhp <= 0 then
+    perform _pvp_finish(m.id, me, 'win');
+  elsif m.round + 1 >= 40 then                                         -- shot cap: more HP wins
+    select * into m from pvp_matches where id = p_id;
+    if m.a_hp > m.b_hp then perform _pvp_finish(m.id, m.a, 'win');
+    elsif m.b_hp > m.a_hp then perform _pvp_finish(m.id, m.b, 'win');
+    else perform _pvp_finish(m.id, null, 'tie'); end if;
+  end if;
+  select * into m from pvp_matches where id = p_id;
+  return _pvp_view(m, me);
+end $$;
+revoke execute on function archer_shoot(uuid, int, numeric, numeric) from anon;
+
+-- ---------- view: duel / filler / archer ----------
+create or replace function _pvp_view(m pvp_matches, me uuid) returns json
+language plpgsql stable security definer set search_path = public as $$
+declare is_a boolean := m.a = me; p int := case when m.a = me then 1 else 2 end; sl numeric;
+begin
+  if m.game = 'archer' then
+    sl := case when m.status = 'live' and m.fturn = me
+               then greatest(0, 15 - extract(epoch from now() - case when is_a then m.a_acted else m.b_acted end)) end;
+    return json_build_object(
+      'id', m.id, 'status', m.status, 'friendly', m.friendly, 'stake', m.stake, 'game', 'archer', 'challenger', is_a,
+      'opp', (select username from profiles where id = case when is_a then m.b else m.a end),
+      'my_turn', m.fturn = me, 'secs_left', sl,
+      'me_side', case when is_a then 'left' else 'right' end,
+      'my_hp', case when is_a then m.a_hp else m.b_hp end, 'opp_hp', case when is_a then m.b_hp else m.a_hp end,
+      'my_x', case when is_a then m.ax else m.bx end, 'opp_x', case when is_a then m.bx else m.ax end,
+      'shots', m.round, 'log', m.log,
+      'outcome', case when m.status <> 'done' then null when m.winner is null then 'tie' when m.winner = me then 'win' else 'lose' end,
+      'balance', (select balance from profiles where id = me));
+  end if;
+  if m.game = 'filler' then
+    sl := case when m.status = 'live' and m.fturn = me
+               then greatest(0, 15 - extract(epoch from now() - case when is_a then m.a_acted else m.b_acted end)) end;
+    return json_build_object(
+      'id', m.id, 'status', m.status, 'friendly', m.friendly, 'stake', m.stake, 'game', 'filler', 'challenger', is_a,
+      'opp', (select username from profiles where id = case when is_a then m.b else m.a end),
+      'board', m.fb, 'owner', m.fo, 'me_p', p,
+      'my_turn', m.fturn = me, 'secs_left', sl,
+      'my_color', _filler_color(m.fb, m.fo, p), 'opp_color', _filler_color(m.fb, m.fo, 3 - p),
+      'my_count', _filler_count(m.fo, p), 'opp_count', _filler_count(m.fo, 3 - p),
+      'outcome', case when m.status <> 'done' then null when m.winner is null then 'tie' when m.winner = me then 'win' else 'lose' end,
+      'balance', (select balance from profiles where id = me));
+  end if;
+  sl := case when m.status = 'live' and (case when is_a then m.a_move else m.b_move end) is null
+             then greatest(0, 15 - extract(epoch from now() - case when is_a then m.a_acted else m.b_acted end)) end;
+  return json_build_object(
+    'id', m.id, 'status', m.status, 'friendly', m.friendly, 'stake', m.stake, 'game', 'duel', 'challenger', is_a,
+    'opp', (select username from profiles where id = case when is_a then m.b else m.a end),
+    'round', m.round, 'streak', m.streak, 'attacking', m.attacker = me,
+    'my_move', case when is_a then m.a_move else m.b_move end,
+    'my_last', case when is_a then m.a_last else m.b_last end,
+    'opp_locked', case when is_a then m.b_move is not null else m.a_move is not null end,
+    'secs_left', sl, 'log', m.log,
+    'outcome', case when m.status <> 'done' then null when m.winner is null then 'tie' when m.winner = me then 'win' else 'lose' end,
+    'balance', (select balance from profiles where id = me));
+end $$;
+revoke execute on function _pvp_view(pvp_matches, uuid) from public, anon, authenticated;
+
+-- ---------- housekeeping: archer forfeits after 15s on the clock, like filler ----------
+create or replace function _pvp_tidy() returns void
+language plpgsql security definer set search_path = public as $$
+declare m pvp_matches; idle uuid;
+begin
+  for m in select * from pvp_matches where (a = auth.uid() or b = auth.uid()) and status = 'pending'
+             and created_at < now() - interval '5 minutes' for update loop
+    if not m.friendly then update profiles set balance = balance + m.stake where id = m.a; end if;
+    update pvp_matches set status = 'expired' where id = m.id;
+  end loop;
+  for m in select * from pvp_matches where (a = auth.uid() or b = auth.uid()) and status = 'live' for update loop
+    if m.game in ('filler', 'archer') then
+      idle := case when m.fturn = m.a and m.a_acted < now() - interval '15 seconds' then m.a
+                   when m.fturn = m.b and m.b_acted < now() - interval '15 seconds' then m.b end;
+      if idle is not null then
+        perform _pvp_finish(m.id, case when idle = m.a then m.b else m.a end, 'win');
+      end if;
+    else
+      if m.a_move is null and m.a_acted < now() - interval '15 seconds'
+         and m.b_move is null and m.b_acted < now() - interval '15 seconds' then
+        perform _pvp_finish(m.id, null, 'tie');
+      elsif m.a_move is null and m.a_acted < now() - interval '15 seconds' then
+        perform _pvp_finish(m.id, m.b, 'win');
+      elsif m.b_move is null and m.b_acted < now() - interval '15 seconds' then
+        perform _pvp_finish(m.id, m.a, 'win');
+      else
+        perform _box_resolve(m.id);
+      end if;
+    end if;
+  end loop;
+end $$;
+revoke execute on function _pvp_tidy() from public, anon, authenticated;
+
+notify pgrst, 'reload schema';
