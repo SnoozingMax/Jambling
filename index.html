@@ -314,7 +314,6 @@ tr.me td{color:var(--accent)}
     <div class="logo">Jambling</div>
     <div class="right">
       <span class="who" id="who"></span><span id="whoTitles" class="titles"></span>
-      <span class="rb" id="rbBadge" hidden></span>
       <span class="rb rush" id="rushBadge" hidden></span>
       <span class="rb" id="boostBadge" hidden></span>
       <button class="ghost rebirth" id="rebirthBtn" hidden>Rebirth</button>
@@ -751,9 +750,6 @@ function updateGoal(){
 function setBalance(b){ balance = Number(b); $('balance').textContent = fmt(balance); $('refill').hidden = balance >= 10; updateGoal(); }
 function setRebirths(n){
   rebirths = Number(n) || 0;
-  $('rbBadge').hidden = !rebirths;
-  $('rbBadge').textContent = `▲${rebirths}`;
-  $('rbBadge').title = `${rebirths} rebirths · +${rebirths * 5}% win boost`;
   updateGoal();
 }
 let toastT;
