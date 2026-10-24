@@ -338,10 +338,10 @@ tr.me td{color:var(--accent)}
 
   <nav>
     <button data-tab="coin" class="on">Coin Flip</button>
+    <button data-tab="crash">Rocket</button>
     <button data-tab="ride">Ride</button>
     <button data-tab="bj">Blackjack</button>
     <button data-tab="mines">Mines</button>
-    <button data-tab="roul">Roulette</button>
     <button data-tab="pvp">1v1 <span class="dot" id="pvpDot" hidden></span></button>
     <button data-tab="board">Leaderboard</button>
   </nav>
@@ -482,35 +482,6 @@ tr.me td{color:var(--accent)}
       <div class="mines-top"><span id="mMult">1.00×</span><span id="mNext"></span></div>
       <div class="mines-grid" id="minesGrid"></div>
       <div class="result" id="minesMsg"></div>
-    </div>
-  </div>
-
-  <!-- roulette -->
-  <div id="tab-roul" class="game" hidden>
-    <div class="card">
-      <div class="field">
-        <label>Bet</label>
-        <input id="roulBet" type="number" min="0.01" step="0.01" value="10">
-        <div class="chips" data-for="roulBet">
-          <button data-op="half">½</button><button data-op="double">2×</button><button data-op="max">Max</button>
-        </div>
-      </div>
-      <div class="field">
-        <label>Bet on <span id="rlPickLbl" style="text-transform:none;letter-spacing:0;color:var(--ink)">Red · pays 2×</span></label>
-        <div class="rl-kinds" id="rlKinds">
-          <button data-k="red" class="red on">Red</button><button data-k="black" class="black">Black</button><button data-k="odd">Odd</button>
-          <button data-k="even">Even</button><button data-k="low">1-18</button><button data-k="high">19-36</button>
-          <button data-k="dozen1">1st 12</button><button data-k="dozen2">2nd 12</button><button data-k="dozen3">3rd 12</button>
-        </div>
-        <div class="rl-nums" id="rlNums"></div>
-      </div>
-      <button class="go" id="roulSpin">Spin</button>
-      <div class="hint">Colors, odd/even and halves pay 2×. Dozens pay 3×. A single number pays 36×. 0 is green and only wins if you picked it. Max bet 1m.</div>
-    </div>
-    <div class="card rl-stage">
-      <div class="rl-wheelbox"><div class="rl-ptr"></div><svg class="rl-wheel" id="rlWheel" viewBox="-100 -100 200 200"></svg><div class="rl-center" id="rlCenter">–</div></div>
-      <div class="result" id="roulMsg"></div>
-      <div class="rl-hist" id="rlHist"></div>
     </div>
   </div>
 
@@ -772,7 +743,7 @@ const rebirthCost = () => 100000 + 50000 * rebirths;   // 100k, 150k, 200k, ... 
 function updateGoal(){
   const cost = rebirthCost(), pct = Math.max(0, Math.min(100, balance / cost * 100));
   $('rebirthBtn').hidden = balance < cost;
-  $('rbGoal').hidden = false;
+  $('rbGoal').hidden = balance >= cost;
   $('rbGoalText').textContent = `▲${rebirths + 1} at ${short(cost)}`;
   $('rbGoalFill').style.width = pct + '%';
   $('rbGoal').title = `${fmt(balance)} / ${fmt(cost)} coins to your next rebirth`;
@@ -798,7 +769,7 @@ function readBet(id){
   const raw = parseFloat($(id).value);
   const v = raw >= 1e12 ? Math.floor(raw) : Math.round(raw * 100) / 100;   // *100 overflows JS past ~9e13, so floor big bets
   if (!(v > 0)) { toast('Enter a bet'); return 0; }
-  const maxBet = (id === 'coinBet' || id === 'rideBet') ? Infinity : (id === 'roulBet' || id === 'minesBet') ? 1000000 : 100000;   // Coin & Ride uncapped, Roulette/Mines 1m, else 100k
+  const maxBet = (id === 'coinBet' || id === 'rideBet') ? Infinity : (id === 'minesBet') ? 1000000 : 100000;   // Coin & Ride uncapped, Mines 1m, else 100k
   if (v > maxBet) { toast(`Max bet is ${maxBet.toLocaleString()}`); return 0; }
   if (v > balance) { toast('Not enough coins'); return 0; }
   return v;
@@ -1142,57 +1113,6 @@ async function resumeMines(){
   if (data) { showMines(data); toast('Your Mines round is still open'); }
 }
 
-/* ---------- roulette ---------- */
-const RL_ORDER = [0,32,15,19,4,21,2,25,17,34,6,27,13,36,11,30,8,23,10,5,24,16,33,1,20,14,31,9,22,18,29,7,28,12,35,3,26];
-const RL_RED = new Set([1,3,5,7,9,12,14,16,18,19,21,23,25,27,30,32,34,36]);
-const rlCls = n => n === 0 ? 'rl-g' : RL_RED.has(n) ? 'rl-r' : 'rl-b';
-const RL_LABEL = { red: 'Red · pays 2×', black: 'Black · pays 2×', odd: 'Odd · pays 2×', even: 'Even · pays 2×', low: '1-18 · pays 2×', high: '19-36 · pays 2×', dozen1: '1-12 · pays 3×', dozen2: '13-24 · pays 3×', dozen3: '25-36 · pays 3×' };
-let rlKind = 'red', rlNum = null, rlRot = 0, rlSpinning = false, rlHist = [];
-(function(){
-  const A = 360 / 37, svg = $('rlWheel'); let h = '';
-  RL_ORDER.forEach((n, i) => {
-    const a0 = (i - .5) * A * Math.PI / 180, a1 = (i + .5) * A * Math.PI / 180, R = 98;
-    const p = (a, r) => `${(r * Math.sin(a)).toFixed(2)} ${(-r * Math.cos(a)).toFixed(2)}`;
-    const fill = n === 0 ? '#1f9a55' : RL_RED.has(n) ? '#d23a2f' : '#26262c';
-    h += `<path d="M0 0 L${p(a0, R)} A${R} ${R} 0 0 1 ${p(a1, R)} Z" fill="${fill}" stroke="#0f0f12" stroke-width=".6"/>`;
-    h += `<text x="0" y="-84" transform="rotate(${i * A})" text-anchor="middle" font-size="8" font-family="IBM Plex Mono" font-weight="600" fill="#fff">${n}</text>`;
-  });
-  h += '<circle r="98" fill="none" stroke="#e8b23a" stroke-width="2"/>';
-  svg.innerHTML = h;
-  const nb = $('rlNums'); const z = document.createElement('button'); z.textContent = '0'; z.dataset.n = 0; z.className = 'zero rl-g'; nb.appendChild(z);
-  for (let n = 1; n <= 36; n++) { const b = document.createElement('button'); b.textContent = n; b.dataset.n = n; b.className = rlCls(n); nb.appendChild(b); }
-})();
-function rlSel(kind, num){
-  rlKind = kind; rlNum = num;
-  $('rlKinds').querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.k === kind));
-  $('rlNums').querySelectorAll('button').forEach(b => b.classList.toggle('on', kind === 'number' && +b.dataset.n === num));
-  $('rlPickLbl').textContent = kind === 'number' ? `Number ${num} · pays 36×` : RL_LABEL[kind];
-}
-$('rlKinds').onclick = e => { const k = e.target.dataset.k; if (k && !rlSpinning) rlSel(k, null); };
-$('rlNums').onclick = e => { const n = e.target.dataset.n; if (n != null && !rlSpinning) rlSel('number', +n); };
-function rlDrawHist(){ $('rlHist').innerHTML = rlHist.map(n => `<span class="rl-n ${rlCls(n)}">${n}</span>`).join(''); }
-$('roulSpin').onclick = async () => {
-  if (rlSpinning) return;
-  const bet = readBet('roulBet'); if (!bet) return;
-  rlSpinning = true; $('roulSpin').disabled = true; $('roulMsg').textContent = ''; $('roulMsg').className = 'result'; $('rlCenter').textContent = '';
-  const { data, error } = await sb.rpc('spin_roulette', { p_bet: bet, p_kind: rlKind, p_num: rlNum });
-  if (error) { rlSpinning = false; $('roulSpin').disabled = false; $('rlCenter').textContent = '–'; return toast(error.message); }
-  setBalance(Number(data.balance) - Number(data.payout));   // bet taken while it spins, winnings land when it stops
-  const A = 360 / 37, idx = RL_ORDER.indexOf(data.result);
-  const target = -idx * A + (Math.random() - .5) * A * .6;
-  rlRot = rlRot - ((rlRot % 360) + 360) % 360 + 360 * 6 + ((target % 360) + 360) % 360;
-  $('rlWheel').style.transform = `rotate(${rlRot}deg)`;
-  setTimeout(() => {
-    rlSpinning = false; $('roulSpin').disabled = false;
-    setBalance(data.balance);
-    $('rlCenter').textContent = data.result;
-    const m = $('roulMsg');
-    if (data.won) { m.textContent = `${data.result} · +${fmt(data.delta)}`; m.className = 'result win'; }
-    else { m.textContent = `${data.result} · −${fmt(bet)}`; m.className = 'result lose'; }
-    rlHist.unshift(data.result); rlHist = rlHist.slice(0, 12); rlDrawHist();
-  }, 4300);
-};
-async function loadRoulHist(){ const { data } = await sb.rpc('roulette_recent'); if (Array.isArray(data)) { rlHist = data; rlDrawHist(); } }
 
 /* ---------- admin: ban ---------- */
 async function adminBan(on){
@@ -1764,11 +1684,10 @@ $('daily').onclick = async () => {
 /* ---------- tabs ---------- */
 document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
   document.querySelectorAll('nav button').forEach(x => x.classList.toggle('on', x === b));
-  ['coin', 'crash', 'ride', 'bj', 'mines', 'roul', 'pvp', 'board'].forEach(t => $('tab-' + t).hidden = t !== b.dataset.tab);
+  ['coin', 'crash', 'ride', 'bj', 'mines', 'pvp', 'board'].forEach(t => $('tab-' + t).hidden = t !== b.dataset.tab);
   if (b.dataset.tab === 'board') loadBoard();
   if (b.dataset.tab === 'pvp') { loadPvpOnline(); loadPvpHistory(); pollPvp(); }
   if (b.dataset.tab === 'ride') { drawRide(); updateRideRug(); }
-  if (b.dataset.tab === 'roul' && !rlHist.length) loadRoulHist();
   if (b.dataset.tab === 'crash' && !round && !ghost) drawGraph(1);
 });
 
@@ -1779,7 +1698,7 @@ document.querySelectorAll('.chips').forEach(c => c.onclick = e => {
   if (op === 'half') v = v / 2;
   if (op === 'double') v = v * 2;
   if (op === 'max') v = balance;
-  const cap = Math.min(balance, (inp.id === 'coinBet' || inp.id === 'rideBet') ? Infinity : (inp.id === 'roulBet' || inp.id === 'minesBet') ? 1000000 : 100000);
+  const cap = Math.min(balance, (inp.id === 'coinBet' || inp.id === 'rideBet') ? Infinity : (inp.id === 'minesBet') ? 1000000 : 100000);
   const capped = Math.min(v, cap);
   inp.value = capped >= 1e12 ? String(Math.floor(capped)) : (Math.floor(capped * 100) / 100).toFixed(2);
   if (inp.id === 'rideBet') updateRideRug();
