@@ -742,7 +742,7 @@ const rebirthCost = () => 100000 + 50000 * rebirths;   // 100k, 150k, 200k, ... 
 function updateGoal(){
   const cost = rebirthCost(), pct = Math.max(0, Math.min(100, balance / cost * 100));
   $('rebirthBtn').hidden = balance < cost;
-  $('rbGoal').hidden = balance >= cost;
+  $('rbGoal').hidden = false;
   $('rbGoalText').textContent = `▲${rebirths + 1} at ${short(cost)}`;
   $('rbGoalFill').style.width = pct + '%';
   $('rbGoal').title = `${fmt(balance)} / ${fmt(cost)} coins to your next rebirth`;
