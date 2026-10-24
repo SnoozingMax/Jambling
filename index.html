@@ -707,6 +707,10 @@ tr.me td{color:var(--accent)}
       <label>Tester title (rainbow outline, max only)</label>
       <div style="display:flex;gap:8px"><button type="button" class="ghost" id="adminGiftTester" style="flex:1">Grant Tester</button><button type="button" class="ghost" id="adminUnGiftTester" style="flex:1">Remove</button></div>
     </div>
+    <div class="field">
+      <label>Celestial title (needs Tester, any admin)</label>
+      <div style="display:flex;gap:8px"><button type="button" class="ghost" id="adminGiftCelestial" style="flex:1">Grant Celestial</button><button type="button" class="ghost" id="adminUnGiftCelestial" style="flex:1">Remove</button></div>
+    </div>
     <div style="display:flex;gap:8px"><button type="button" class="go" id="adminGive" style="flex:1">Gift coins</button><button type="button" class="go" id="adminTake" style="flex:1">Take coins</button></div>
     <div class="owner-only">
       <button type="button" class="ghost" id="adminStaffLog" style="width:100%;padding:10px;margin-top:18px">Staff log (admins + mods: actions, titles, roles)</button>
@@ -1542,18 +1546,18 @@ async function openGift(name){
 /* ---------- titles ---------- */
 const COIN_TITLES = [[1e21, 'Touchable', '1 sextillion coins'], [1e18, 'Untouchable', '1 quintillion coins'], [1e15, 'Goated', '1 quadrillion coins'], [1e12, 'Spoiled', '1 trillion coins']];
 const RB_TITLES = [[200, 'Celestial', '200+ rebirths'], [100, 'The Golden', '100+ rebirths'], [50, 'Ascended', '50+ rebirths'], [10, 'Reborn', '10+ rebirths']];
-function titleChips(bal, rb, rank, gifted, tester){
+function titleChips(bal, rb, rank, gifted, tester, celestial){
   const out = [];
   if (gifted) out.push(['gifted', 'Aurora']);
   if (tester) out.push(['tester', 'Tester']);
   for (const [n, t] of COIN_TITLES) if (bal >= n) { out.push(['t-coin', t]); break; }
-  for (const [n, t] of RB_TITLES) if (rb >= n) { out.push([t === 'Celestial' ? 'celestial' : 't-rb', t]); break; }
+  for (const [n, t] of RB_TITLES) if (rb >= n || (t === 'Celestial' && celestial && tester)) { out.push([t === 'Celestial' ? 'celestial' : 't-rb', t]); break; }
   if (rank === 0) out.push(['t-rank', 'King']); else if (rank >= 0 && rank < 3) out.push(['t-rank', 'Elite']);
   return out;
 }
-function renderTitles(el, bal, rb, rank, gifted, tester){
+function renderTitles(el, bal, rb, rank, gifted, tester, celestial){
   el.innerHTML = '';
-  for (const [c, t] of titleChips(Number(bal) || 0, Number(rb) || 0, rank == null ? -1 : rank, gifted, tester)) {
+  for (const [c, t] of titleChips(Number(bal) || 0, Number(rb) || 0, rank == null ? -1 : rank, gifted, tester, celestial)) {
     const s = document.createElement('span'); s.className = 'title-chip ' + c; s.textContent = t;
     if (c === 'gifted') s.style.animationDelay = -(Date.now() % 3000) + 'ms';   // sync shimmer to a global clock so the 10s refresh doesn't restart it
     if (c === 'tester') s.style.setProperty('--td', -(Date.now() % 2500) + 'ms');
@@ -1646,7 +1650,7 @@ async function loadProfile(){
   const { data, error } = await sb.from('profiles').select('*').eq('id', user.id).single();
   if (error) return toast(error.message);
   $('who').textContent = data.username;
-  renderTitles($('whoTitles'), data.balance, data.rebirths || 0, -1, data.gifted, data.tester);
+  renderTitles($('whoTitles'), data.balance, data.rebirths || 0, -1, data.gifted, data.tester, data.celestial);
   setRebirths(data.rebirths || 0);
   boostUntil = data.boost_until ? new Date(data.boost_until).getTime() : 0;
   if (data.banned) { toast('This account is banned.'); setTimeout(() => sb.auth.signOut(), 1500); return; }
@@ -2172,7 +2176,7 @@ function boardRow(i, p, isMe, right){
   tr.children[1].textContent = p.username;   // safe from HTML injection
   if (isOnline(p)) { const d = document.createElement('span'); d.className = 'online-dot'; d.title = 'Online'; tr.children[1].appendChild(d); }
   if (p.rebirths && boardMode !== 'rebirths') { const b = document.createElement('span'); b.className = 'lb-rb'; b.textContent = '▲' + p.rebirths; tr.children[1].appendChild(b); }
-  { const tb = document.createElement('span'); tb.className = 'titles'; renderTitles(tb, p.balance, p.rebirths || 0, boardMode === 'money' ? i : -1, p.gifted, p.tester); tr.children[1].appendChild(tb); }
+  { const tb = document.createElement('span'); tb.className = 'titles'; renderTitles(tb, p.balance, p.rebirths || 0, boardMode === 'money' ? i : -1, p.gifted, p.tester, p.celestial); tr.children[1].appendChild(tb); }
   tr.children[2].textContent = right;
   return tr;
 }
@@ -2259,6 +2263,15 @@ async function giftTester(on){
 }
 $('adminGiftTester').onclick = () => giftTester(true);
 $('adminUnGiftTester').onclick = () => giftTester(false);
+async function giftCelestial(on){
+  const n = adminName(); if (!n) return;
+  const { data, error } = await sb.rpc('admin_grant_celestial', { p_user: n, p_on: on });
+  if (error) { adminStatus(error.message, false); return toast(error.message); }
+  const m = `${data.user} ${on ? 'now has' : 'no longer has'} the Celestial title`; adminStatus(m, true); toast(m);
+  if (!$('tab-board').hidden) loadBoard();
+}
+$('adminGiftCelestial').onclick = () => giftCelestial(true);
+$('adminUnGiftCelestial').onclick = () => giftCelestial(false);
 $('adminGiveRb').onclick = async () => {
   const n = adminName(); if (!n) return;
   const { data, error } = await sb.rpc('admin_give_rebirths', { p_user: n, p_n: parseInt($('adminRb').value) });
