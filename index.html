@@ -781,7 +781,8 @@ function setBalance(b){ balance = Number(b); $('balance').textContent = fmt(bala
 function setRebirths(n){
   rebirths = Number(n) || 0;
   $('rbBadge').hidden = !rebirths;
-  $('rbBadge').textContent = `▲${rebirths} · +${rebirths * 5}% wins`;
+  $('rbBadge').textContent = `▲${rebirths}`;
+  $('rbBadge').title = `${rebirths} rebirths · +${rebirths * 5}% win boost`;
   updateGoal();
 }
 let toastT;
