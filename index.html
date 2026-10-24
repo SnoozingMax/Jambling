@@ -475,7 +475,7 @@ tr.me td{color:var(--accent)}
       </div>
       <button class="go" id="minesStart">Start</button>
       <button class="go cash" id="minesCash" hidden>Cash out</button>
-      <div class="hint">High risk, high reward. Tap tiles to find gems, and every gem raises your multiplier fast. Hit a bomb and you lose the bet. More bombs = bigger jumps. Max bet 1m, max win 20m.</div>
+      <div class="hint">High risk, high reward. Tap tiles to find gems, and every gem raises your multiplier fast. Hit a bomb and you lose the bet. More bombs = bigger jumps. Max bet 1b, max win 20m.</div>
     </div>
     <div class="card mines-stage">
       <div class="mines-top"><span id="mMult">1.00×</span><span id="mNext"></span></div>
@@ -765,7 +765,7 @@ function readBet(id){
   const raw = parseFloat($(id).value);
   const v = raw >= 1e12 ? Math.floor(raw) : Math.round(raw * 100) / 100;   // *100 overflows JS past ~9e13, so floor big bets
   if (!(v > 0)) { toast('Enter a bet'); return 0; }
-  const maxBet = (id === 'coinBet' || id === 'rideBet') ? Infinity : (id === 'minesBet') ? 1000000 : 100000;   // Coin & Ride uncapped, Mines 1m, else 100k
+  const maxBet = (id === 'coinBet' || id === 'rideBet') ? Infinity : (id === 'minesBet') ? 1000000000 : 100000;   // Coin & Ride uncapped, Mines 1b, else 100k
   if (v > maxBet) { toast(`Max bet is ${maxBet.toLocaleString()}`); return 0; }
   if (v > balance) { toast('Not enough coins'); return 0; }
   return v;
@@ -1694,7 +1694,7 @@ document.querySelectorAll('.chips').forEach(c => c.onclick = e => {
   if (op === 'half') v = v / 2;
   if (op === 'double') v = v * 2;
   if (op === 'max') v = balance;
-  const cap = Math.min(balance, (inp.id === 'coinBet' || inp.id === 'rideBet') ? Infinity : (inp.id === 'minesBet') ? 1000000 : 100000);
+  const cap = Math.min(balance, (inp.id === 'coinBet' || inp.id === 'rideBet') ? Infinity : (inp.id === 'minesBet') ? 1000000000 : 100000);
   const capped = Math.min(v, cap);
   inp.value = capped >= 1e12 ? String(Math.floor(capped)) : (Math.floor(capped * 100) / 100).toFixed(2);
   if (inp.id === 'rideBet') updateRideRug();
