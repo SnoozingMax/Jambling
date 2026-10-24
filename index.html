@@ -258,7 +258,7 @@ tr.me td{color:var(--accent)}
 .title-chip.t-rank{background:var(--accent);color:#fff}
 .title-chip.gifted{color:#6b5416;border:1px solid rgba(232,178,58,.7);background:repeating-linear-gradient(90deg,#fffdf5 0px,#fff 16px,#f6e6b8 32px,#fff 48px,#fffdf5 64px);box-shadow:0 0 10px rgba(255,240,190,.75),0 0 3px rgba(232,178,58,.5);text-shadow:0 1px 0 rgba(255,255,255,.6);animation:giftedShimmer 3s linear infinite}
 @keyframes giftedShimmer{to{background-position:64px 0}}
-.title-chip.tester{color:#3a3a3a;border:2px solid transparent;background:linear-gradient(#fff,#fff) padding-box,linear-gradient(90deg,#ff2d55,#ff9500,#ffee00,#34c759,#00c3ff,#af52de,#ff2d55) border-box;background-size:auto,200% 100%;animation:testerRainbow 2.5s linear infinite}
+.title-chip.tester{color:#3a3a3a;border:2px solid transparent;background:linear-gradient(transparent,transparent) padding-box,linear-gradient(90deg,#ff2d55,#ff9500,#ffee00,#34c759,#00c3ff,#af52de,#ff2d55) border-box;background-size:auto,200% 100%;animation:testerRainbow 2.5s linear infinite}
 @keyframes testerRainbow{to{background-position:0 0,200% 0}}
 .t-cat{font:700 11px "IBM Plex Mono",monospace;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:14px 0 8px}
 .t-row{display:flex;align-items:center;gap:10px;padding:5px 0}
@@ -633,12 +633,12 @@ tr.me td{color:var(--accent)}
   <div class="card modal-card">
     <h2>Shop</h2>
     <div class="shop-item">
-      <div class="shop-info"><b>Rush Hour</b><span>Rush-hour odds for everyone, 30 sec</span></div>
+      <div class="shop-info"><b>Rush Hour</b><span>Rush-hour odds for everyone, 30 sec · once a day</span></div>
       <button class="go" id="shopRush">1 Qa</button>
     </div>
     <div class="shop-item">
-      <div class="shop-info"><b>Good Luck</b><span>Guaranteed-win boost for you, 10 sec</span></div>
-      <button class="go" id="shopBoost">1 De</button>
+      <div class="shop-info"><b>Good Luck</b><span>Guaranteed-win boost for you, 10 sec · once a day</span></div>
+      <button class="go" id="shopBoost">1 Sx</button>
     </div>
     <div class="admin-status" id="shopStatus" hidden></div>
     <button type="button" class="ghost" id="shopCancel" style="width:100%;margin-top:14px;padding:10px">Close</button>
