@@ -324,7 +324,6 @@ tr.me td{color:var(--accent)}
       <div class="bal"><i></i><span id="balance">0.00</span></div>
       <button class="ghost daily" id="daily" disabled>Daily</button>
       <button class="ghost" id="giftOpen">Gift</button>
-      <button class="ghost" id="shopOpen">Shop</button>
       <button class="ghost" id="titlesOpen" title="All titles">🪐</button>
       <button class="ghost" id="refill" hidden>Refill</button>
       <button class="ghost" id="logout">Sign out</button>
@@ -628,21 +627,6 @@ tr.me td{color:var(--accent)}
     <p class="rb-text">Earn these as you play. You show the top one you've hit in each group, all at once.</p>
     <div id="titlesList"></div>
     <button type="button" class="ghost" id="titlesCancel" style="width:100%;margin-top:14px;padding:10px">Close</button>
-  </div>
-</div>
-<div class="modal" id="shopModal" hidden>
-  <div class="card modal-card">
-    <h2>Shop</h2>
-    <div class="shop-item">
-      <div class="shop-info"><b>Rush Hour</b><span>Rush-hour odds for everyone, 30 sec · once a day</span></div>
-      <button class="go" id="shopRush">1 Qa</button>
-    </div>
-    <div class="shop-item">
-      <div class="shop-info"><b>Good Luck</b><span>Guaranteed-win boost for you, 10 sec · once a day</span></div>
-      <button class="go" id="shopBoost">1 Sx</button>
-    </div>
-    <div class="admin-status" id="shopStatus" hidden></div>
-    <button type="button" class="ghost" id="shopCancel" style="width:100%;margin-top:14px;padding:10px">Close</button>
   </div>
 </div>
 <div class="modal" id="modModal" hidden>
@@ -1653,9 +1637,6 @@ function renderTitles(el, bal, rb, rank, gifted, tester){
     el.appendChild(s);
   }
 }
-/* ---------- shop ---------- */
-function shopStatus(m, ok){ const el = $('shopStatus'); el.hidden = false; el.className = 'admin-status' + (ok ? '' : ' err'); el.textContent = (ok ? '\u2713 ' : '\u2717 ') + m; }
-$('shopOpen').onclick = () => { $('shopStatus').hidden = true; $('shopModal').hidden = false; };
 function openTitles(){
   const rows = [];
   const line = (cls, t, req) => `<div class="t-row"><span class="title-chip ${cls}">${t}</span><span>${req}</span></div>`;
@@ -1674,17 +1655,6 @@ function openTitles(){
 }
 $('titlesOpen').onclick = openTitles;
 $('titlesCancel').onclick = () => { $('titlesModal').hidden = true; };
-$('shopCancel').onclick = () => { $('shopModal').hidden = true; };
-async function shopBuy(fn, args, btn, okMsg){
-  btn.disabled = true;
-  const { data, error } = await sb.rpc(fn, args);
-  btn.disabled = false;
-  if (error) { shopStatus(error.message, false); return; }
-  if (data && data.balance != null) setBalance(data.balance);
-  shopStatus(okMsg(data), true);
-}
-$('shopRush').onclick = () => shopBuy('shop_rush', {}, $('shopRush'), () => 'Rush hour is on for everyone!');
-$('shopBoost').onclick = () => shopBuy('shop_boost', {}, $('shopBoost'), () => 'Good luck active for 10 sec!');
 $('giftOpen').onclick = () => openGift();
 $('giftCancel').onclick = () => { $('giftModal').hidden = true; };
 $('giftModal').onclick = e => { if (e.target === $('giftModal')) $('giftModal').hidden = true; };
