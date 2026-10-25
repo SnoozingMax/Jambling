@@ -5,6 +5,10 @@
 --   * 90s match: most HP wins (tie = stakes back). Leave the game for 25s = forfeit.
 --   Body 25 · Headshot 40 · 100 HP each.
 
+alter table pvp_matches add column if not exists a_hp int not null default 100;
+alter table pvp_matches add column if not exists b_hp int not null default 100;
+alter table pvp_matches add column if not exists round int not null default 1;
+alter table pvp_matches add column if not exists log jsonb not null default '[]';
 alter table pvp_matches add column if not exists ax numeric;
 alter table pvp_matches add column if not exists bx numeric;
 alter table pvp_matches add column if not exists rt_start timestamptz;
