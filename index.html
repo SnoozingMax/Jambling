@@ -1555,8 +1555,8 @@ function archDraw(){
   archStuck.forEach(s => archArrow(ctx, X(s.x), Y(s.y), Math.atan2(-s.vy * sy, s.vx * sx), 'rgba(210,205,225,.45)', sy));
   const me = css('--accent'), them = '#cfcbdb';
   const fl = side => archFlash && archFlash.side === side && (now - archFlash.t) < 420 && Math.floor((now - archFlash.t) / 70) % 2 === 0;
-  archStick(ctx, X(arch.me.x), Y(arch.me.y), arch.dir, fl('me') ? css('--lose') : me, sy, arch.aim);
-  archStick(ctx, X(arch.op.x), Y(arch.op.y), -arch.dir, fl('op') ? css('--lose') : them, sy, arch.op.aim);
+  archStick(ctx, X(arch.me.x), Y(arch.me.y), arch.dir, fl('me') ? css('--lose') : me, sy, arch.aim, now >= arch.reloadAt);
+  archStick(ctx, X(arch.op.x), Y(arch.op.y), -arch.dir, fl('op') ? css('--lose') : them, sy, arch.op.aim, true);
   // my aim: pull line + short preview
   if (arch.aim) {
     const bx = arch.me.x + arch.dir * 1.6, by = arch.me.y + ARCH.bowY;
@@ -1573,22 +1573,30 @@ function archDraw(){
   ctx.font = '600 11px Inter, sans-serif'; ctx.textAlign = 'center'; ctx.fillStyle = 'rgba(255,255,255,.45)';
   ctx.fillText('you', X(arch.me.x), gy + 11); ctx.fillText(($('archOppName').textContent || 'opp').slice(0, 12), X(arch.op.x), gy + 11);
 }
-function archStick(ctx, x, by, facing, color, s, aim){
+function archStick(ctx, x, by, facing, color, s, aim, ready){
   ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = Math.max(2, s * 0.28); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
   const hip = by - 1.6 * s, neck = by - 4.4 * s, sh = by - 4.0 * s, headY = by - 5.2 * s, r = 0.8 * s;
   ctx.beginPath(); ctx.moveTo(x, hip); ctx.lineTo(x - 0.7 * s, by); ctx.moveTo(x, hip); ctx.lineTo(x + 0.7 * s, by); ctx.stroke();
   ctx.beginPath(); ctx.moveTo(x, hip); ctx.lineTo(x, neck); ctx.stroke();
   ctx.beginPath(); ctx.arc(x, headY, r, 0, Math.PI * 2); ctx.fill();
-  const hx = x + facing * 1.6 * s, hy = by - 4.2 * s;
-  // bow arm toward the target; draw arm pulled back by the aim power
-  const pull = aim ? Math.min(1, aim.power / 100) : 0;
-  ctx.beginPath(); ctx.moveTo(x, sh); ctx.lineTo(hx, hy); ctx.moveTo(x, sh); ctx.lineTo(x - facing * (0.6 + pull * 0.9) * s, hy + 0.3 * s); ctx.stroke();
+  // arms + bow rotate around the shoulder to the aim angle (0 = level)
+  const pull = aim ? Math.min(1, aim.power / 100) : 0, th = (aim ? aim.angle : 0) * Math.PI / 180;
+  ctx.save(); ctx.translate(x, sh); ctx.scale(facing, 1); ctx.rotate(-th);
+  const hx = 1.6 * s, br = 1.3 * s, a0 = -Math.PI / 2.6, a1 = Math.PI / 2.6;
+  const p0 = [hx + Math.cos(a0) * br, Math.sin(a0) * br], p1 = [hx + Math.cos(a1) * br, Math.sin(a1) * br];
+  const nock = hx + Math.cos(a1) * br - pull * 1.2 * s;          // where the string is pulled to
+  ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(hx, 0); ctx.moveTo(0, 0); ctx.lineTo(nock, 0); ctx.stroke();   // bow arm + draw arm
   ctx.lineWidth = Math.max(1.5, s * 0.18);
-  const a0 = facing > 0 ? -Math.PI / 2.6 : Math.PI - Math.PI / 2.6, a1 = facing > 0 ? Math.PI / 2.6 : Math.PI + Math.PI / 2.6;
-  ctx.beginPath(); ctx.arc(hx, hy, 1.3 * s, a0, a1, facing < 0); ctx.stroke();
-  const p0 = [hx + Math.cos(a0) * 1.3 * s, hy + Math.sin(a0) * 1.3 * s], p1 = [hx + Math.cos(a1) * 1.3 * s, hy + Math.sin(a1) * 1.3 * s];
-  const mid = [hx - facing * pull * 1.1 * s, hy];   // string pulled back
-  ctx.beginPath(); ctx.moveTo(p0[0], p0[1]); ctx.lineTo(mid[0], mid[1]); ctx.lineTo(p1[0], p1[1]); ctx.stroke();
+  ctx.beginPath(); ctx.arc(hx, 0, br, a0, a1); ctx.stroke();                                                      // bow
+  ctx.beginPath(); ctx.moveTo(p0[0], p0[1]); ctx.lineTo(nock, 0); ctx.lineTo(p1[0], p1[1]); ctx.stroke();       // string
+  if (ready) {                                                                                                   // nocked arrow
+    const tip = nock + 2.4 * s;
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = Math.max(1.5, s * 0.16);
+    ctx.beginPath(); ctx.moveTo(nock, 0); ctx.lineTo(tip, 0); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(tip, 0); ctx.lineTo(tip - 0.5 * s, -0.35 * s); ctx.moveTo(tip, 0); ctx.lineTo(tip - 0.5 * s, 0.35 * s); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(nock, 0); ctx.lineTo(nock - 0.4 * s, -0.3 * s); ctx.moveTo(nock, 0); ctx.lineTo(nock - 0.4 * s, 0.3 * s); ctx.stroke();
+  }
+  ctx.restore();
 }
 function archArrow(ctx, x, y, ang, color, s){
   const L = Math.max(10, s * 2.2);
