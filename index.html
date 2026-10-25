@@ -177,6 +177,12 @@ canvas{width:100%;height:100%;display:block}
 .arch-power{display:flex;align-items:center;gap:8px;margin-top:8px;font:600 11px "IBM Plex Mono",monospace;color:var(--muted)}
 .pbar{flex:1;height:10px;background:var(--field);border:1px solid var(--line);border-radius:999px;overflow:hidden}
 .pbar>div{height:100%;width:0;background:linear-gradient(90deg,var(--win),var(--gold),var(--lose))}
+.arch-pad{display:grid;grid-template-columns:1fr 1.4fr 1fr;gap:8px}
+.arch-btn{padding:14px 0;border-radius:12px;border:1px solid var(--line);background:var(--field);color:var(--ink);font:700 18px Inter,sans-serif;cursor:pointer;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+.arch-btn.jump{font-size:15px}
+.arch-btn.on{background:var(--ink);color:var(--paper)}
+.arch-reload{width:46px;height:6px;border-radius:999px;background:var(--field);border:1px solid var(--line);overflow:hidden;display:inline-block}
+.arch-reload i{display:block;height:100%;width:100%;background:var(--accent)}
 .fill-grid{display:grid;grid-template-columns:repeat(6,1fr);grid-template-rows:repeat(7,1fr);gap:3px;width:min(300px,82vw);aspect-ratio:6/7}
 .fill-cell{border-radius:4px}
 .fill-cell.me{box-shadow:inset 0 0 0 3px rgba(255,255,255,.92)}
@@ -575,9 +581,13 @@ tr.me td{color:var(--accent)}
       </div>
       <canvas id="archCanvas" class="arch-canvas"></canvas>
       <div class="arch-ctl" id="archCtl" hidden>
-        <div class="pick" id="archHop"><button type="button" data-h="-1">◀ Hop back</button><button type="button" data-h="0" class="on">Stay</button><button type="button" data-h="1">Hop forward ▶</button></div>
-        <div class="arch-power"><span>PULL</span><div class="pbar"><div id="archPow"></div></div><span id="archAng">–</span></div>
-        <div class="hint" style="margin:6px 0 0">Drag back from your archer to pull the bow, release to fire. Headshot 40, body 25.</div>
+        <div class="arch-pad">
+          <button type="button" class="arch-btn" data-k="left">◀</button>
+          <button type="button" class="arch-btn jump" data-k="jump">⤒ Jump</button>
+          <button type="button" class="arch-btn" data-k="right">▶</button>
+        </div>
+        <div class="arch-power"><span>PULL</span><div class="pbar"><div id="archPow"></div></div><span id="archAng">–</span><span class="arch-reload" title="Reload"><i id="archReload"></i></span></div>
+        <div class="hint" style="margin:6px 0 0">Move ◀ ▶ (or A/D), jump (or W/Space). Drag back anywhere on the field to pull the bow, release to fire. Headshot 40, body 25. 90 seconds, most HP wins.</div>
       </div>
       <div class="bj-msg" id="archMsg"></div>
       <button type="button" class="pvp-rematch" id="archRematch" hidden>Rematch</button>
@@ -1421,156 +1431,164 @@ const pvpFill = async c => {
 };
 $('pvpColors').onclick = e => { const b = e.target.closest('button'); if (b && !b.disabled) pvpFill(+b.dataset.c); };
 let pvpBusy = false, pvpWaiting = false;
-/* ----- archers ----- */
-// physics mirrors _archer_sim in SQL exactly (same constants, same Euler order); the server's hit + end time win
-const ARCH = { g: 30, dt: 0.02, bowY: 4.5, halfW: 1.6, bodyH: 6, headY: 4.6, W: 100, H: 36 };
-function archSim(x0, dir, angle, power, ox){
-  let v = 10 + power * 0.45, a = angle * Math.PI / 180, vx = v * Math.cos(a) * dir, vy = v * Math.sin(a), x = x0, y = ARCH.bowY, t = 0, hit = 'none';
-  const pts = [{ x, y, t }];
-  for (;;) {
-    t += ARCH.dt; vy -= ARCH.g * ARCH.dt; x += vx * ARCH.dt; y += vy * ARCH.dt;
-    if (y <= 0) { y = 0; pts.push({ x, y, t }); break; }
-    if (x < -5 || x > 105) { pts.push({ x, y, t }); break; }
-    if (Math.abs(x - ox) <= ARCH.halfW && y <= ARCH.bodyH) { hit = y >= ARCH.headY ? 'head' : 'body'; pts.push({ x, y, t }); break; }
-    if (t > 20) { pts.push({ x, y, t }); break; }
-    pts.push({ x, y, t });
-  }
-  return { pts, hit };
-}
-let archDS = null, archSeen = 0, archQueue = [], archAnimating = false, archHop = 0, archAim = null, archFlight = null, archLift = null, archFlash = null, archStuck = [], archMatchId = null;
-function archAbs(m){
+/* ----- archers (real-time) ----- */
+// Positions, jumps, aim and arrows sync player-to-player over a Supabase Realtime broadcast channel (no DB per frame).
+// Physics runs locally at 60fps. You decide hits on YOURSELF (you know your true position) and report them; the server owns HP.
+const ARCH = { g: 30, W: 100, H: 36, bowY: 4.5, halfW: 1.6, bodyH: 6, headY: 4.6, speed: 16, jumpV: 15.5, reload: 1.0, pullMax: 22 };
+let arch = null, archFlash = null, archStuck = [], archMsgT = null;
+function archMsg(t, cls){ const el = $('archMsg'); el.textContent = t; el.className = 'bj-msg ' + (cls || ''); clearTimeout(archMsgT); if (t) archMsgT = setTimeout(() => { if (arch && !arch.ended) { el.textContent = ''; } }, 1400); }
+function archStart(m){
+  archStop(true);
   const left = m.me_side === 'left';
-  return left ? { ax: +m.my_x, bx: +m.opp_x, ahp: m.my_hp, bhp: m.opp_hp } : { ax: +m.opp_x, bx: +m.my_x, ahp: m.opp_hp, bhp: m.my_hp };
+  arch = { id: m.id, left, dir: left ? 1 : -1, zmin: left ? 2 : 52, zmax: left ? 48 : 98, opp: null,
+    me: { x: +m.my_x || (left ? 15 : 85), y: 0, vy: 0 },
+    op: { x: +m.opp_x || (left ? 85 : 15), y: 0, tx: +m.opp_x || (left ? 85 : 15), ty: 0, aim: null, seen: 0 },
+    arrows: [], keys: {}, aim: null, reloadAt: 0, lastSend: 0, lastSent: '', seq: 0, myHp: m.my_hp, oppHp: m.opp_hp, hitAt: 0, ended: false, last: performance.now() };
+  archStuck = []; archFlash = null;
+  arch.ch = sb.channel('archer-' + m.id, { config: { broadcast: { self: false, ack: false } } })
+    .on('broadcast', { event: 's' }, ({ payload: p }) => { if (!arch || arch.ended) return; const o = arch.op; o.tx = p.x; o.ty = p.y; o.vy = p.vy; o.aim = p.a != null ? { angle: p.a, power: p.p } : null; o.seen = performance.now(); })
+    .on('broadcast', { event: 'f' }, ({ payload: p }) => { if (!arch || arch.ended) return; arch.arrows.push({ id: p.id, x: p.x, y: p.y, vx: p.vx, vy: p.vy, mine: false, alive: true }); })
+    .on('broadcast', { event: 'h' }, ({ payload: p }) => {
+      if (!arch || arch.ended) return;
+      const a = arch.arrows.find(q => q.id === p.id); if (a && a.alive) { a.alive = false; archStuck.push({ x: a.x, y: a.y, vx: a.vx, vy: a.vy }); }
+      arch.oppHp = p.hp; archFlash = { side: 'op', t: performance.now() }; archMsg(p.part === 'head' ? 'HEADSHOT −40' : 'Hit −25', 'win'); archHud();
+    })
+    .subscribe();
+  arch.raf = requestAnimationFrame(archTick);
 }
-function archShotX(m){   // where my archer stands after the selected hop (hop is applied on fire)
-  const left = m.me_side === 'left', dir = left ? 1 : -1, x = left ? archDS.ax : archDS.bx, zmin = left ? 5 : 55, zmax = left ? 45 : 95;
-  return Math.min(zmax, Math.max(zmin, x + archHop * 8 * dir));
+function archStop(discard){
+  if (!arch) return;
+  cancelAnimationFrame(arch.raf);
+  try { sb.removeChannel(arch.ch); } catch (e) {}
+  arch.ended = true; arch.keys = {}; arch.aim = null;
+  if (discard) arch = null;
 }
-function setHopBtns(){ document.querySelectorAll('#archHop button').forEach(b => b.classList.toggle('on', +b.dataset.h === archHop)); }
-document.querySelectorAll('#archHop button').forEach(b => b.onclick = () => { archHop = +b.dataset.h; setHopBtns(); if (pvp) archDraw(pvp); });
-$('archRematch').onclick = pvpRematch;
 function renderArcher(m){
   const live = m.status === 'live';
-  if (archMatchId !== m.id) { archMatchId = m.id; archDS = archAbs(m); archSeen = (m.log || []).length; archStuck = []; archQueue = []; archFlight = null; archLift = null; archAnimating = false; archHop = 0; archAim = null; setHopBtns(); }
-  const lg = m.log || [];
-  if (lg.length > archSeen) { for (let i = archSeen; i < lg.length; i++) archQueue.push(lg[i]); archSeen = lg.length; archRunQueue(m); }
-  if (!archAnimating && !archQueue.length) archDS = archAbs(m);
-  archHud(m);
-  const myTurn = live && m.my_turn && !archAnimating && !archQueue.length;
-  $('archCtl').hidden = !myTurn;
-  $('archTurn').textContent = !live ? '' : m.my_turn ? 'Your shot' : `${m.opp} is aiming…`;
-  const msg = $('archMsg');
+  if (live && (!arch || arch.id !== m.id)) archStart(m);
+  if (!live && arch && arch.id === m.id && !arch.ended) archStop(false);
+  if (arch && arch.id === m.id) { arch.myHp = m.my_hp; arch.oppHp = m.opp_hp; }   // server hp wins
+  $('archOppName').textContent = m.opp;
+  archHud();
+  $('archCtl').hidden = !live;
+  $('archTurn').textContent = live ? 'LIVE' : '';
   if (!live) {
     const label = { win: 'You win!', lose: m.opp + ' wins', tie: 'Draw' }[m.outcome];
     const money = m.friendly ? ' (friendly)' : m.outcome === 'win' ? ` +${fmt(m.stake)}` : m.outcome === 'lose' ? ` −${fmt(m.stake)}` : ' · stakes back';
-    if (!archAnimating) { msg.textContent = label + money; msg.className = 'bj-msg ' + (m.outcome === 'win' ? 'win' : m.outcome === 'lose' ? 'lose' : ''); }
+    clearTimeout(archMsgT); const el = $('archMsg'); el.textContent = label + money; el.className = 'bj-msg ' + (m.outcome === 'win' ? 'win' : m.outcome === 'lose' ? 'lose' : '');
     if (m.balance != null) setBalance(m.balance);
-  } else if (!archAnimating && !archQueue.length) { msg.textContent = m.my_turn ? 'Pull back and release' : ''; msg.className = 'bj-msg'; }
-  archDraw(m);
+  }
+  archDraw();
 }
-function archHud(m){
-  if (!archDS) return;
-  const left = m.me_side === 'left', myhp = left ? archDS.ahp : archDS.bhp, ophp = left ? archDS.bhp : archDS.ahp;
-  $('archOppName').textContent = m.opp;
-  $('archMyHp').style.width = myhp + '%'; $('archMyHpN').textContent = myhp;
-  $('archOppHp').style.width = ophp + '%'; $('archOppHpN').textContent = ophp;
+function archHud(){
+  if (!arch) return;
+  $('archMyHp').style.width = arch.myHp + '%'; $('archMyHpN').textContent = arch.myHp;
+  $('archOppHp').style.width = arch.oppHp + '%'; $('archOppHpN').textContent = arch.oppHp;
 }
-function archRunQueue(m){
-  if (archAnimating || !archQueue.length) return;
-  const e = archQueue.shift(); archAnimating = true;
-  const byA = e.by === 'a', dir = byA ? 1 : -1, ox = byA ? archDS.bx : archDS.ax;
-  const startX = byA ? archDS.ax : archDS.bx, endX = +e.from, hopDur = startX === endX ? 0 : 340, hop0 = performance.now();
-  const meShot = (m.me_side === 'left') === byA;
-  $('archCtl').hidden = true;
-  $('archMsg').textContent = meShot ? '' : `${m.opp} fires…`; $('archMsg').className = 'bj-msg';
-  const hopStep = () => {
-    const k = hopDur ? Math.min(1, (performance.now() - hop0) / hopDur) : 1;
-    const x = startX + (endX - startX) * k;
-    if (byA) archDS.ax = x; else archDS.bx = x;
-    archLift = hopDur ? { side: byA ? 'a' : 'b', y: Math.sin(k * Math.PI) * 3 } : null;
-    archDraw(m);
-    if (k < 1) requestAnimationFrame(hopStep); else { archLift = null; fly(); }
-  };
-  const fly = () => {
-    const sim = archSim(endX, dir, +e.angle, +e.power, ox), tEnd = +e.t;
-    let pts = sim.pts.filter(p => p.t <= tEnd + 1e-9); if (pts.length < 2) pts = sim.pts;
-    const speed = Math.max(0.8, Math.min(2.4, tEnd / 1.5)), t0 = performance.now();   // flight plays in ~1.5s
-    archFlight = { pts, i: 0 };
-    const step = () => {
-      const st = (performance.now() - t0) / 1000 * speed;
-      let i = 0; while (i < pts.length - 1 && pts[i + 1].t <= st) i++;
-      archFlight.i = i; archDraw(m);
-      if (i < pts.length - 1) requestAnimationFrame(step); else land();
-    };
-    const land = () => {
-      archStuck.push({ x: +e.x, y: +e.y, dir }); if (archStuck.length > 10) archStuck.shift();
-      archFlight = null;
-      if (e.hit !== 'none') { if (byA) archDS.bhp = e.hp; else archDS.ahp = e.hp; archFlash = { side: byA ? 'b' : 'a', t: performance.now() }; }
-      const msg = $('archMsg');
-      msg.textContent = e.hit === 'head' ? (meShot ? 'HEADSHOT −40' : `${m.opp} headshot you −40`) : e.hit === 'body' ? (meShot ? 'Hit −25' : `${m.opp} hit you −25`) : (meShot ? 'Missed' : `${m.opp} missed`);
-      msg.className = 'bj-msg ' + (e.hit === 'none' ? '' : meShot ? 'win' : 'lose');
-      archHud(m); archDraw(m);
-      let flashes = 0; const fl = () => { archDraw(m); if (++flashes < 24 && archFlash) requestAnimationFrame(fl); };
-      if (e.hit !== 'none') requestAnimationFrame(fl);
-      setTimeout(() => { archAnimating = false; archFlash = null; if (archQueue.length) archRunQueue(m); else pollPvp(); }, 800);
-    };
-    requestAnimationFrame(step);
-  };
-  requestAnimationFrame(hopStep);
+function archTick(now){
+  if (!arch || arch.ended) return;
+  const dt = Math.min(0.05, (now - arch.last) / 1000); arch.last = now;
+  const me = arch.me, k = arch.keys, o = arch.op;
+  // me: run + jump
+  let vx = 0; if (k.left) vx -= ARCH.speed; if (k.right) vx += ARCH.speed;
+  me.x = Math.min(arch.zmax, Math.max(arch.zmin, me.x + vx * dt));
+  if (k.jump) { k.jump = false; if (me.y <= 0 && me.vy <= 0) me.vy = ARCH.jumpV; }
+  if (me.y > 0 || me.vy > 0) { me.vy -= ARCH.g * dt; me.y += me.vy * dt; if (me.y <= 0) { me.y = 0; me.vy = 0; } }
+  // opponent: ease toward their last broadcast
+  const f = 1 - Math.exp(-dt * 16); o.x += (o.tx - o.x) * f; o.y += (o.ty - o.y) * f;
+  // arrows
+  for (const a of arch.arrows) {
+    if (!a.alive) continue;
+    a.vy -= ARCH.g * dt; a.x += a.vx * dt; a.y += a.vy * dt;
+    if (a.y <= 0) { a.y = 0; a.alive = false; archStuck.push({ x: a.x, y: 0, vx: a.vx, vy: a.vy }); continue; }
+    if (a.x < -5 || a.x > 105) { a.alive = false; continue; }
+    if (!a.mine) {        // incoming: did it hit ME (my true position)?
+      if (Math.abs(a.x - me.x) <= ARCH.halfW && a.y >= me.y && a.y <= me.y + ARCH.bodyH) {
+        a.alive = false; archStuck.push({ x: a.x, y: a.y, vx: a.vx, vy: a.vy });
+        archTakeHit(a.id, a.y >= me.y + ARCH.headY);
+      }
+    } else if (Math.abs(a.x - o.x) <= ARCH.halfW && a.y >= o.y && a.y <= o.y + ARCH.bodyH) {   // mine: stop it on their body; their client confirms the damage
+      a.alive = false; archStuck.push({ x: a.x, y: a.y, vx: a.vx, vy: a.vy });
+    }
+  }
+  arch.arrows = arch.arrows.filter(a => a.alive);
+  if (archStuck.length > 14) archStuck.splice(0, archStuck.length - 14);
+  // broadcast my state: ~20/s while anything changes, 4/s keepalive
+  const st = { x: +me.x.toFixed(2), y: +me.y.toFixed(2), vy: +me.vy.toFixed(1), a: arch.aim ? arch.aim.angle : null, p: arch.aim ? arch.aim.power : null };
+  const key = st.x + '|' + st.y + '|' + st.a + '|' + st.p;
+  if ((key !== arch.lastSent && now - arch.lastSend >= 48) || now - arch.lastSend >= 250) { arch.lastSend = now; arch.lastSent = key; arch.ch.send({ type: 'broadcast', event: 's', payload: st }); }
+  // reload bar
+  const rl = $('archReload'); if (rl) rl.style.width = Math.min(100, Math.max(0, 100 - (arch.reloadAt - now) / (ARCH.reload * 10))) + '%';
+  archDraw();
+  arch.raf = requestAnimationFrame(archTick);
+}
+async function archTakeHit(id, head){
+  const now = performance.now(); if (now - arch.hitAt < 250) return; arch.hitAt = now;
+  const dmg = head ? 40 : 25; arch.myHp = Math.max(0, arch.myHp - dmg);
+  archFlash = { side: 'me', t: now }; archMsg(head ? 'You got headshot −40' : 'You got hit −25', 'lose'); archHud();
+  arch.ch.send({ type: 'broadcast', event: 'h', payload: { id, part: head ? 'head' : 'body', hp: arch.myHp } });
+  const { data, error } = await sb.rpc('archer_damage', { p_id: arch.id, p_dmg: dmg });
+  if (error) return toast(error.message);
+  if (data && data.status !== 'live') pollPvp(); else if (data && arch) { arch.myHp = data.my_hp; arch.oppHp = data.opp_hp; archHud(); }
+}
+function archFire(aim){
+  const now = performance.now(); if (!arch || arch.ended || now < arch.reloadAt) return;
+  arch.reloadAt = now + ARCH.reload * 1000;
+  const v = 10 + aim.power * 0.45, a = aim.angle * Math.PI / 180;
+  const x = arch.me.x + arch.dir * 1.6, y = arch.me.y + ARCH.bowY, vx = v * Math.cos(a) * arch.dir, vy = v * Math.sin(a);
+  const id = (arch.left ? 'a' : 'b') + (++arch.seq);
+  arch.arrows.push({ id, x, y, vx, vy, mine: true, alive: true });
+  arch.ch.send({ type: 'broadcast', event: 'f', payload: { id, x: +x.toFixed(2), y: +y.toFixed(2), vx: +vx.toFixed(3), vy: +vy.toFixed(3) } });
 }
 function archGeom(c){ const W = c.clientWidth, H = c.clientHeight, gy = H - 14; return { W, H, gy, sx: W / ARCH.W, sy: (gy - 10) / ARCH.H }; }
-function archDraw(m){
-  const c = $('archCanvas'); if (!c || !archDS || !m) return;
+function archDraw(){
+  const c = $('archCanvas'); if (!c || !arch) return;
   const dpr = window.devicePixelRatio || 1, { W, H, gy, sx, sy } = archGeom(c);
   if (!W) return;
   if (c.width !== Math.round(W * dpr) || c.height !== Math.round(H * dpr)) { c.width = Math.round(W * dpr); c.height = Math.round(H * dpr); }
   const ctx = c.getContext('2d'); ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, W, H);
-  const X = x => x * sx, Y = y => gy - y * sy;
-  // ground
+  const X = x => x * sx, Y = y => gy - y * sy, now = performance.now();
   ctx.fillStyle = '#262233'; ctx.fillRect(0, gy, W, H - gy);
   ctx.strokeStyle = '#3a3548'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(0, gy + .5); ctx.lineTo(W, gy + .5); ctx.stroke();
-  // stuck arrows
-  archStuck.forEach(s => archArrow(ctx, X(s.x), Y(s.y), s.dir > 0 ? 0.9 : Math.PI - 0.9, 'rgba(210,205,225,.45)', sy));
-  const left = m.me_side === 'left', me = css('--accent'), them = '#cfcbdb';
-  const fl = side => archFlash && archFlash.side === side && (performance.now() - archFlash.t) < 420 && Math.floor((performance.now() - archFlash.t) / 70) % 2 === 0;
-  archStick(ctx, X(archDS.ax), Y(archLift && archLift.side === 'a' ? archLift.y : 0), 1, fl('a') ? css('--lose') : (left ? me : them), sy);
-  archStick(ctx, X(archDS.bx), Y(archLift && archLift.side === 'b' ? archLift.y : 0), -1, fl('b') ? css('--lose') : (left ? them : me), sy);
-  // aim preview (pull line + short dotted arc)
-  const aiming = m.status === 'live' && m.my_turn && !archAnimating && !archQueue.length;
-  if (aiming && archHop !== 0) {   // ghost: where you'll stand after the hop
-    const gx = archShotX(m); ctx.globalAlpha = 0.35;
-    archStick(ctx, X(gx), Y(0), left ? 1 : -1, me, sy); ctx.globalAlpha = 1;
-  }
-  if (archAim) {
-    const dir = left ? 1 : -1, mx = archShotX(m), bx = mx + dir * 1.6, by = ARCH.bowY;
+  // halves
+  ctx.strokeStyle = 'rgba(255,255,255,.06)'; ctx.setLineDash([3, 6]); ctx.beginPath(); ctx.moveTo(X(50), 0); ctx.lineTo(X(50), gy); ctx.stroke(); ctx.setLineDash([]);
+  archStuck.forEach(s => archArrow(ctx, X(s.x), Y(s.y), Math.atan2(-s.vy * sy, s.vx * sx), 'rgba(210,205,225,.45)', sy));
+  const me = css('--accent'), them = '#cfcbdb';
+  const fl = side => archFlash && archFlash.side === side && (now - archFlash.t) < 420 && Math.floor((now - archFlash.t) / 70) % 2 === 0;
+  archStick(ctx, X(arch.me.x), Y(arch.me.y), arch.dir, fl('me') ? css('--lose') : me, sy, arch.aim);
+  archStick(ctx, X(arch.op.x), Y(arch.op.y), -arch.dir, fl('op') ? css('--lose') : them, sy, arch.op.aim);
+  // my aim: pull line + short preview
+  if (arch.aim) {
+    const bx = arch.me.x + arch.dir * 1.6, by = arch.me.y + ARCH.bowY;
     ctx.strokeStyle = 'rgba(255,255,255,.35)'; ctx.setLineDash([4, 4]); ctx.lineWidth = 1.5;
-    ctx.beginPath(); ctx.moveTo(X(bx), Y(by)); ctx.lineTo(X(archAim.px), Y(archAim.py)); ctx.stroke(); ctx.setLineDash([]);
-    if (archAim.fwdOk) {
-      const sim = archSim(mx, dir, archAim.angle, archAim.power, left ? archDS.bx : archDS.ax);
+    ctx.beginPath(); ctx.moveTo(X(bx), Y(by)); ctx.lineTo(X(arch.aim.px), Y(arch.aim.py)); ctx.stroke(); ctx.setLineDash([]);
+    if (arch.aim.fwdOk) {
+      const v = 10 + arch.aim.power * 0.45, a = arch.aim.angle * Math.PI / 180; let x = bx, y = by, vx = v * Math.cos(a) * arch.dir, vy = v * Math.sin(a);
       ctx.fillStyle = 'rgba(255,255,255,.55)';
-      sim.pts.filter((p, i) => p.t <= 0.5 && i % 3 === 0).forEach(p => { ctx.beginPath(); ctx.arc(X(p.x), Y(p.y), 1.6, 0, Math.PI * 2); ctx.fill(); });
+      for (let i = 0; i < 25; i++) { vy -= ARCH.g * 0.02; x += vx * 0.02; y += vy * 0.02; if (y < 0) break; if (i % 3 === 0) { ctx.beginPath(); ctx.arc(X(x), Y(y), 1.6, 0, Math.PI * 2); ctx.fill(); } }
     }
   }
-  // arrow in flight
-  if (archFlight) {
-    const p = archFlight.pts[archFlight.i], q = archFlight.pts[Math.max(0, archFlight.i - 1)];
-    const ang = Math.atan2(-(p.y - q.y) * sy, (p.x - q.x) * sx);
-    archArrow(ctx, X(p.x), Y(p.y), ang, '#fff', sy);
-  }
+  for (const a of arch.arrows) archArrow(ctx, X(a.x), Y(a.y), Math.atan2(-a.vy * sy, a.vx * sx), a.mine ? '#fff' : '#ffd9a8', sy);
+  // names under feet
+  ctx.font = '600 11px Inter, sans-serif'; ctx.textAlign = 'center'; ctx.fillStyle = 'rgba(255,255,255,.45)';
+  ctx.fillText('you', X(arch.me.x), gy + 11); ctx.fillText(($('archOppName').textContent || 'opp').slice(0, 12), X(arch.op.x), gy + 11);
 }
-function archStick(ctx, x, by, facing, color, s){
-  // s = px per world unit; figure is 6 units tall, feet at (x, by)
+function archStick(ctx, x, by, facing, color, s, aim){
   ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = Math.max(2, s * 0.28); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
   const hip = by - 1.6 * s, neck = by - 4.4 * s, sh = by - 4.0 * s, headY = by - 5.2 * s, r = 0.8 * s;
-  ctx.beginPath(); ctx.moveTo(x, hip); ctx.lineTo(x - 0.7 * s, by); ctx.moveTo(x, hip); ctx.lineTo(x + 0.7 * s, by); ctx.stroke();   // legs
-  ctx.beginPath(); ctx.moveTo(x, hip); ctx.lineTo(x, neck); ctx.stroke();                                                         // body
-  ctx.beginPath(); ctx.arc(x, headY, r, 0, Math.PI * 2); ctx.fill();                                                                // head
-  const hx = x + facing * 1.6 * s, hy = by - 4.2 * s;                                                                               // bow hand
-  ctx.beginPath(); ctx.moveTo(x, sh); ctx.lineTo(hx, hy); ctx.moveTo(x, sh); ctx.lineTo(x - facing * 0.9 * s, hy + 0.3 * s); ctx.stroke(); // arms
+  ctx.beginPath(); ctx.moveTo(x, hip); ctx.lineTo(x - 0.7 * s, by); ctx.moveTo(x, hip); ctx.lineTo(x + 0.7 * s, by); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(x, hip); ctx.lineTo(x, neck); ctx.stroke();
+  ctx.beginPath(); ctx.arc(x, headY, r, 0, Math.PI * 2); ctx.fill();
+  const hx = x + facing * 1.6 * s, hy = by - 4.2 * s;
+  // bow arm toward the target; draw arm pulled back by the aim power
+  const pull = aim ? Math.min(1, aim.power / 100) : 0;
+  ctx.beginPath(); ctx.moveTo(x, sh); ctx.lineTo(hx, hy); ctx.moveTo(x, sh); ctx.lineTo(x - facing * (0.6 + pull * 0.9) * s, hy + 0.3 * s); ctx.stroke();
   ctx.lineWidth = Math.max(1.5, s * 0.18);
   const a0 = facing > 0 ? -Math.PI / 2.6 : Math.PI - Math.PI / 2.6, a1 = facing > 0 ? Math.PI / 2.6 : Math.PI + Math.PI / 2.6;
-  ctx.beginPath(); ctx.arc(hx, hy, 1.3 * s, a0, a1, facing < 0); ctx.stroke();                                                    // bow
-  ctx.beginPath(); ctx.moveTo(hx + Math.cos(a0) * 1.3 * s, hy + Math.sin(a0) * 1.3 * s); ctx.lineTo(hx + Math.cos(a1) * 1.3 * s, hy + Math.sin(a1) * 1.3 * s); ctx.stroke(); // string
+  ctx.beginPath(); ctx.arc(hx, hy, 1.3 * s, a0, a1, facing < 0); ctx.stroke();
+  const p0 = [hx + Math.cos(a0) * 1.3 * s, hy + Math.sin(a0) * 1.3 * s], p1 = [hx + Math.cos(a1) * 1.3 * s, hy + Math.sin(a1) * 1.3 * s];
+  const mid = [hx - facing * pull * 1.1 * s, hy];   // string pulled back
+  ctx.beginPath(); ctx.moveTo(p0[0], p0[1]); ctx.lineTo(mid[0], mid[1]); ctx.lineTo(p1[0], p1[1]); ctx.stroke();
 }
 function archArrow(ctx, x, y, ang, color, s){
   const L = Math.max(10, s * 2.2);
@@ -1581,37 +1599,35 @@ function archArrow(ctx, x, y, ang, color, s){
   ctx.beginPath(); ctx.moveTo(-L, 0); ctx.lineTo(-L - 3, -2.5); ctx.moveTo(-L, 0); ctx.lineTo(-L - 3, 2.5); ctx.stroke();
   ctx.restore();
 }
+$('archRematch').onclick = pvpRematch;
 (function(){
   const c = $('archCanvas'); let dragging = false;
-  const myX = () => archShotX(pvp), dir = () => pvp.me_side === 'left' ? 1 : -1;
+  const live = () => arch && !arch.ended && pvp && pvp.game === 'archer' && pvp.status === 'live';
   const toWorld = ev => { const r = c.getBoundingClientRect(), g = archGeom(c); return { x: (ev.clientX - r.left) / g.sx, y: (g.gy - (ev.clientY - r.top)) / g.sy }; };
-  const canAim = () => pvp && pvp.game === 'archer' && pvp.status === 'live' && pvp.my_turn && !archAnimating && !archQueue.length && archDS;
   const upd = ev => {
-    const p = toWorld(ev), bx = myX() + dir() * 1.6, px = p.x - bx, py = p.y - ARCH.bowY;   // pull vector from the bow to the finger
-    const fwd = -px * dir(), up = -py, len = Math.hypot(px, py);                              // launch = opposite of the pull
+    const p = toWorld(ev), bx = arch.me.x + arch.dir * 1.6, by = arch.me.y + ARCH.bowY, px = p.x - bx, py = p.y - by;   // pull vector
+    const fwd = -px * arch.dir, up = -py, len = Math.hypot(px, py);                                                      // launch = opposite of the pull
     const angle = Math.max(0, Math.min(90, Math.atan2(up, Math.max(fwd, 1e-6)) * 180 / Math.PI));
-    const power = Math.max(0, Math.min(100, len / 22 * 100));                                 // ~22 units of pull = full strength
-    archAim = { angle: Math.round(angle * 10) / 10, power: Math.round(power), px: p.x, py: p.y, fwdOk: fwd > 0 };
-    $('archPow').style.width = archAim.power + '%'; $('archAng').textContent = `${archAim.angle.toFixed(0)}° · ${archAim.power}%`;
-    archDraw(pvp);
+    const power = Math.max(0, Math.min(100, len / ARCH.pullMax * 100));
+    arch.aim = { angle: Math.round(angle * 10) / 10, power: Math.round(power), px: p.x, py: p.y, fwdOk: fwd > 0 };
+    $('archPow').style.width = arch.aim.power + '%'; $('archAng').textContent = `${arch.aim.angle.toFixed(0)}° · ${arch.aim.power}%`;
   };
-  c.addEventListener('pointerdown', ev => { if (!canAim()) return; dragging = true; c.setPointerCapture(ev.pointerId); upd(ev); });
-  c.addEventListener('pointermove', ev => { if (dragging) upd(ev); });
   const reset = () => { $('archPow').style.width = '0'; $('archAng').textContent = '–'; };
-  const fire = async () => {
-    if (!dragging) return; dragging = false;
-    const a = archAim; archAim = null; archDraw(pvp);
-    if (!a || a.power < 3 || !a.fwdOk) { reset(); return; }   // tiny or backwards drag = cancel
-    $('archCtl').hidden = true;
-    const { data, error } = await sb.rpc('archer_shoot', { p_id: pvp.id, p_jump: archHop, p_angle: a.angle, p_power: a.power });
-    reset();
-    if (error) { toast(error.message); $('archCtl').hidden = false; return; }
-    archHop = 0; setHopBtns();
-    pvp = data; setPvpDeadline(data); renderArcher(data);   // our shot is now in the log: animate it
-  };
-  c.addEventListener('pointerup', fire);
-  c.addEventListener('pointercancel', () => { dragging = false; archAim = null; reset(); if (pvp) archDraw(pvp); });
-  window.addEventListener('resize', () => { if (pvp && pvp.game === 'archer') archDraw(pvp); });
+  c.addEventListener('pointerdown', ev => { if (!live()) return; dragging = true; c.setPointerCapture(ev.pointerId); upd(ev); });
+  c.addEventListener('pointermove', ev => { if (dragging && live()) upd(ev); });
+  const release = () => { if (!dragging) return; dragging = false; const a = arch && arch.aim; if (arch) arch.aim = null; reset(); if (a && a.power >= 3 && a.fwdOk && live()) archFire(a); };
+  c.addEventListener('pointerup', release); c.addEventListener('pointercancel', release);
+  // hold buttons
+  document.querySelectorAll('.arch-btn').forEach(b => {
+    const k = b.dataset.k, down = ev => { ev.preventDefault(); if (!live()) return; arch.keys[k] = true; b.classList.add('on'); }, up = () => { if (arch && k !== 'jump') arch.keys[k] = false; b.classList.remove('on'); };
+    b.addEventListener('pointerdown', down); b.addEventListener('pointerup', up); b.addEventListener('pointercancel', up); b.addEventListener('pointerleave', up);
+  });
+  // keyboard
+  const KEY = { a: 'left', arrowleft: 'left', d: 'right', arrowright: 'right', w: 'jump', arrowup: 'jump', ' ': 'jump' };
+  window.addEventListener('keydown', ev => { if (!live() || /input|textarea/i.test(ev.target.tagName)) return; const k = KEY[ev.key.toLowerCase()]; if (!k) return; ev.preventDefault(); if (k === 'jump') { if (!ev.repeat) arch.keys.jump = true; } else arch.keys[k] = true; });
+  window.addEventListener('keyup', ev => { if (!arch) return; const k = KEY[ev.key.toLowerCase()]; if (k && k !== 'jump') arch.keys[k] = false; });
+  window.addEventListener('blur', () => { if (arch) arch.keys = {}; });
+  window.addEventListener('resize', () => archDraw());
 })();
 
 async function pollPvp(){
@@ -1625,7 +1641,7 @@ async function pollPvp(){
 // adaptive polling: quick when an opponent's move or challenge could land, relaxed when nothing's pending
 function pvpLoop(){
   let delay = 3000;
-  if (pvp && pvp.status === 'live') delay = (pvpWaiting || (pvp.game === 'archer' && !pvp.my_turn)) ? 450 : 1000;   // waiting on their move = check fast
+  if (pvp && pvp.status === 'live') delay = pvpWaiting ? 450 : 1000;   // waiting on their pick = check fast
   pollPvp();
   setTimeout(pvpLoop, delay);
 }
