@@ -272,7 +272,7 @@ tr.me td{color:var(--accent)}
 .rl-nums button.zero{grid-column:1/-1}
 .rl-nums button.rl-r{background:#d23a2f;border-color:#d23a2f} .rl-nums button.rl-b{background:#26262c;border-color:#3a3a42} .rl-nums button.rl-g{background:#1f9a55;border-color:#1f9a55}
 .titles{display:inline-flex;gap:4px;flex-wrap:wrap;vertical-align:middle;margin-left:6px}
-.title-chip{font:700 10px Inter,sans-serif;text-transform:uppercase;letter-spacing:.04em;padding:2px 7px;border-radius:999px;white-space:nowrap}
+.title-chip{display:inline-flex;align-items:center;justify-content:center;vertical-align:middle;font:700 10px Inter,sans-serif;text-transform:uppercase;letter-spacing:.04em;padding:2px 7px;border-radius:999px;white-space:nowrap}
 .title-chip.t-coin{background:rgba(232,178,58,.18);color:var(--gold);border:1px solid var(--gold)}
 .title-chip.t-rb{background:rgba(155,92,246,.18);color:#b794ff;border:1px solid #9b5cf6}
 .title-chip.t-rank{background:var(--accent);color:#fff}
@@ -281,7 +281,7 @@ tr.me td{color:var(--accent)}
 .title-chip.tester{display:inline-flex;align-items:center;justify-content:center;vertical-align:middle;padding:3px 8px;position:relative;z-index:0;border:none;color:transparent;-webkit-text-fill-color:transparent;background:linear-gradient(90deg,#ff6b81,#ffb14d,#ffe95c,#5cf08a,#5cd0ff,#c99bff,#ff6b81);background-size:200% 100%;-webkit-background-clip:text;background-clip:text;animation:testerRainbow 2.5s linear infinite;animation-delay:var(--td,0ms)}
 .title-chip.tester::before{content:"";position:absolute;inset:0;z-index:-1;border-radius:999px;padding:1.5px;background:linear-gradient(90deg,#ff6b81,#ffb14d,#ffe95c,#5cf08a,#5cd0ff,#c99bff,#ff6b81);background-size:200% 100%;-webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude;animation:testerRainbow 2.5s linear infinite;animation-delay:var(--td,0ms)}
 @keyframes testerRainbow{to{background-position:200% 0}}
-.title-chip.celestial{overflow:hidden;position:relative;z-index:0;border:1px solid rgba(150,175,255,.55);color:#eef2ff;background:linear-gradient(90deg,#140e3a,#2a1d6b,#1e3a8a,#3a2a84,#140e3a);background-size:200% 100%;text-shadow:0 0 6px rgba(170,190,255,.85);animation:celestial 4.5s linear infinite;animation-delay:var(--td,0ms)}
+.title-chip.celestial{display:inline-flex;align-items:center;justify-content:center;vertical-align:middle;line-height:normal;overflow:hidden;position:relative;z-index:0;border:1px solid rgba(150,175,255,.55);color:#eef2ff;background:linear-gradient(90deg,#140e3a,#2a1d6b,#1e3a8a,#3a2a84,#140e3a);background-size:200% 100%;text-shadow:0 0 6px rgba(170,190,255,.85);animation:celestial 4.5s linear infinite;animation-delay:var(--td,0ms)}
 .title-chip.celestial::before,.title-chip.celestial::after{content:"";position:absolute;z-index:-1;width:22px;height:2px;border-radius:2px;pointer-events:none;background:linear-gradient(90deg,transparent,rgba(255,255,255,.8));box-shadow:0 0 5px rgba(190,210,255,.6);opacity:0}
 .title-chip.celestial::before{top:22%;left:-28%;animation:shoot 6s ease-in infinite}
 .title-chip.celestial::after{top:46%;left:-28%;animation:shoot 8.5s ease-in 3.2s infinite}
