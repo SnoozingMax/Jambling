@@ -1499,6 +1499,7 @@ function archTick(now){
   const me = arch.me, k = arch.keys, o = arch.op;
   // me: run + jump
   let vx = 0; if (k.left) vx -= ARCH.speed; if (k.right) vx += ARCH.speed;
+  if (arch.left) vx = -vx;   // view is mirrored for the left player
   me.x = Math.min(arch.zmax, Math.max(arch.zmin, me.x + vx * dt));
   if (k.jump) { k.jump = false; if (me.y <= 0 && me.vy <= 0) me.vy = ARCH.jumpV; }
   if (me.y > 0 || me.vy > 0) { me.vy -= ARCH.g * dt; me.y += me.vy * dt; if (me.y <= 0) { me.y = 0; me.vy = 0; } }
@@ -1559,16 +1560,17 @@ function archDraw(){
   if (!W) return;
   if (c.width !== Math.round(W * dpr) || c.height !== Math.round(H * dpr)) { c.width = Math.round(W * dpr); c.height = Math.round(H * dpr); }
   const ctx = c.getContext('2d'); ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, W, H);
-  const X = x => x * sx, Y = y => gy - y * sy, now = performance.now();
+  const fl = arch.left ? -1 : 1;   // view flip: you are always drawn on the right
+  const X = x => (fl < 0 ? 100 - x : x) * sx, Y = y => gy - y * sy, now = performance.now();
   ctx.fillStyle = '#262233'; ctx.fillRect(0, gy, W, H - gy);
   ctx.strokeStyle = '#3a3548'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(0, gy + .5); ctx.lineTo(W, gy + .5); ctx.stroke();
   // halves
   ctx.strokeStyle = 'rgba(255,255,255,.06)'; ctx.setLineDash([3, 6]); ctx.beginPath(); ctx.moveTo(X(50), 0); ctx.lineTo(X(50), gy); ctx.stroke(); ctx.setLineDash([]);
-  archStuck.forEach(s => archArrow(ctx, X(s.x), Y(s.y), Math.atan2(-s.vy * sy, s.vx * sx), 'rgba(210,205,225,.45)', sy));
+  archStuck.forEach(s => archArrow(ctx, X(s.x), Y(s.y), Math.atan2(-s.vy * sy, s.vx * fl * sx), 'rgba(210,205,225,.45)', sy));
   const me = css('--accent'), them = '#cfcbdb';
-  const fl = side => archFlash && archFlash.side === side && (now - archFlash.t) < 420 && Math.floor((now - archFlash.t) / 70) % 2 === 0;
-  archStick(ctx, X(arch.me.x), Y(arch.me.y), arch.dir, fl('me') ? css('--lose') : me, sy, arch.aim, now >= arch.reloadAt);
-  archStick(ctx, X(arch.op.x), Y(arch.op.y), -arch.dir, fl('op') ? css('--lose') : them, sy, arch.op.aim, true);
+  const flash = side => archFlash && archFlash.side === side && (now - archFlash.t) < 420 && Math.floor((now - archFlash.t) / 70) % 2 === 0;
+  archStick(ctx, X(arch.me.x), Y(arch.me.y), arch.dir * fl, flash('me') ? css('--lose') : me, sy, arch.aim, now >= arch.reloadAt);
+  archStick(ctx, X(arch.op.x), Y(arch.op.y), -arch.dir * fl, flash('op') ? css('--lose') : them, sy, arch.op.aim, true);
   // my aim: pull line + short preview
   if (arch.aim) {
     const bx = arch.me.x + arch.dir * 1.6, by = arch.me.y + ARCH.bowY;
@@ -1580,7 +1582,7 @@ function archDraw(){
       for (let i = 0; i < 25; i++) { vy -= ARCH.g * 0.02; x += vx * 0.02; y += vy * 0.02; if (y < 0) break; if (i % 3 === 0) { ctx.beginPath(); ctx.arc(X(x), Y(y), 1.6, 0, Math.PI * 2); ctx.fill(); } }
     }
   }
-  for (const a of arch.arrows) archArrow(ctx, X(a.x), Y(a.y), Math.atan2(-a.vy * sy, a.vx * sx), a.mine ? '#fff' : '#ffd9a8', sy);
+  for (const a of arch.arrows) archArrow(ctx, X(a.x), Y(a.y), Math.atan2(-a.vy * sy, a.vx * fl * sx), a.mine ? '#fff' : '#ffd9a8', sy);
   // names under feet
   ctx.font = '600 11px Inter, sans-serif'; ctx.textAlign = 'center'; ctx.fillStyle = 'rgba(255,255,255,.45)';
   ctx.fillText('you', X(arch.me.x), gy + 11); ctx.fillText(($('archOppName').textContent || 'opp').slice(0, 12), X(arch.op.x), gy + 11);
@@ -1623,7 +1625,7 @@ $('archRematch').onclick = pvpRematch;
 (function(){
   const c = $('archCanvas'); let dragging = false;
   const live = () => arch && !arch.ended && pvp && pvp.game === 'archer' && pvp.status === 'live';
-  const toWorld = ev => { const r = c.getBoundingClientRect(), g = archGeom(c); return { x: (ev.clientX - r.left) / g.sx, y: (g.gy - (ev.clientY - r.top)) / g.sy }; };
+  const toWorld = ev => { const r = c.getBoundingClientRect(), g = archGeom(c), vx = (ev.clientX - r.left) / g.sx; return { x: arch.left ? 100 - vx : vx, y: (g.gy - (ev.clientY - r.top)) / g.sy }; };
   const upd = ev => {
     const p = toWorld(ev), bx = arch.me.x + arch.dir * 1.6, by = arch.me.y + ARCH.bowY, px = p.x - bx, py = p.y - by;   // pull vector
     const fwd = -px * arch.dir, up = -py, len = Math.hypot(px, py);                                                      // launch = opposite of the pull
