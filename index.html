@@ -163,7 +163,9 @@ canvas{width:100%;height:100%;display:block}
 .fill-tag{display:inline-flex;gap:6px;align-items:center;text-transform:uppercase;letter-spacing:.06em}
 .fill-tag.me{color:var(--win)} .fill-tag.opp{color:var(--lose)}
 .fill-turn{color:var(--muted);text-transform:none;letter-spacing:0;font-weight:600}
-.arch-top{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px}
+.arch-table{display:flex;flex-direction:column;gap:10px}
+.arch-table .pvp-rematch{align-self:center}
+.arch-top{display:flex;align-items:center;justify-content:space-between;gap:10px}
 .arch-side{display:flex;align-items:center;gap:8px;flex:1;min-width:0}
 .arch-side.me{justify-content:flex-end}
 .arch-side b{font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -172,7 +174,7 @@ canvas{width:100%;height:100%;display:block}
 .hpfill.me{background:var(--win)} .hpfill.opp{background:var(--lose)}
 .hpnum{font:600 12px "IBM Plex Mono",monospace;color:var(--muted);min-width:26px;text-align:center}
 .arch-mid{display:flex;flex-direction:column;align-items:center;gap:2px;white-space:nowrap}
-.arch-canvas{width:100%;aspect-ratio:2.4/1;display:block;background:linear-gradient(#16141c,#1d1a26);border:1px solid var(--line);border-radius:12px;touch-action:none;cursor:crosshair;user-select:none;-webkit-user-select:none}
+.arch-canvas{width:100%;max-width:100%;height:auto;display:block;background:linear-gradient(#16141c,#1d1a26);border:1px solid var(--line);border-radius:12px;touch-action:none;cursor:crosshair;user-select:none;-webkit-user-select:none}
 .arch-ctl{margin-top:10px}
 .arch-power{display:flex;align-items:center;gap:8px;margin-top:8px;font:600 11px "IBM Plex Mono",monospace;color:var(--muted)}
 .pbar{flex:1;height:10px;background:var(--field);border:1px solid var(--line);border-radius:999px;overflow:hidden}
@@ -1467,6 +1469,12 @@ function renderArcher(m){
   const live = m.status === 'live';
   if (live && (!arch || arch.id !== m.id)) archStart(m);
   if (!live && arch && arch.id === m.id && !arch.ended) archStop(false);
+  if (!live && (!arch || arch.id !== m.id)) {
+    const left = m.me_side === 'left';
+    archStop(true); archStuck = []; archFlash = null;
+    arch = { id: m.id, left, dir: left ? 1 : -1, me: { x: +m.my_x || (left ? 15 : 85), y: 0, vy: 0 }, op: { x: +m.opp_x || (left ? 85 : 15), y: 0, aim: null },
+      arrows: [], keys: {}, aim: null, reloadAt: Infinity, myHp: m.my_hp, oppHp: m.opp_hp, ended: true };
+  }
   if (arch && arch.id === m.id) { arch.myHp = m.my_hp; arch.oppHp = m.opp_hp; }   // server hp wins
   $('archOppName').textContent = m.opp;
   archHud();
@@ -1540,7 +1548,11 @@ function archFire(aim){
   arch.arrows.push({ id, x, y, vx, vy, mine: true, alive: true });
   arch.ch.send({ type: 'broadcast', event: 'f', payload: { id, x: +x.toFixed(2), y: +y.toFixed(2), vx: +vx.toFixed(3), vy: +vy.toFixed(3) } });
 }
-function archGeom(c){ const W = c.clientWidth, H = c.clientHeight, gy = H - 14; return { W, H, gy, sx: W / ARCH.W, sy: (gy - 10) / ARCH.H }; }
+function archGeom(c){
+  const W = c.clientWidth, H = Math.max(120, Math.round(W / 2.4));
+  if (c.style.height !== H + 'px') c.style.height = H + 'px';
+  const gy = H - 14; return { W, H, gy, sx: W / ARCH.W, sy: (gy - 10) / ARCH.H };
+}
 function archDraw(){
   const c = $('archCanvas'); if (!c || !arch) return;
   const dpr = window.devicePixelRatio || 1, { W, H, gy, sx, sy } = archGeom(c);
