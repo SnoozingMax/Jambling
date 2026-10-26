@@ -165,6 +165,9 @@ canvas{width:100%;height:100%;display:block}
 .fill-turn{color:var(--muted);text-transform:none;letter-spacing:0;font-weight:600}
 .arch-table{display:flex;flex-direction:column;gap:10px}
 .arch-table .pvp-rematch{align-self:center}
+.arch-practice{width:100%;margin-top:10px;padding:11px;border-radius:12px;font:600 14px Inter,sans-serif}
+.arch-bot{display:flex;flex-direction:column;align-items:center;gap:10px}
+.arch-bot-row{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
 .arch-top{display:flex;align-items:center;justify-content:space-between;gap:10px}
 .arch-side{display:flex;align-items:center;gap:8px;flex:1;min-width:0}
 .arch-side.me{justify-content:flex-end}
@@ -538,6 +541,7 @@ tr.me td{color:var(--accent)}
           <input id="pvpStake" type="number" min="0.01" step="0.01" placeholder="Coins above 1,000 only">
         </div>
         <button class="go" id="pvpSend">Send challenge</button>
+        <button type="button" class="ghost arch-practice" id="archPractice" hidden>🎯 Practice Archers vs Bot · free</button>
       </form>
       <div class="dir-pad" id="pvpMoves" hidden>
         <button type="button" data-mv="up" class="dir-up">↑</button>
@@ -589,10 +593,14 @@ tr.me td{color:var(--accent)}
           <button type="button" class="arch-btn" data-k="right">▶</button>
         </div>
         <div class="arch-power"><span>PULL</span><div class="pbar"><div id="archPow"></div></div><span id="archAng">–</span><span class="arch-reload" title="Reload"><i id="archReload"></i></span></div>
-        <div class="hint" style="margin:6px 0 0">Move ◀ ▶ (or A/D), jump (or W/Space). Drag back anywhere on the field to pull the bow, release to fire. Headshot 40, body 25. 90 seconds, most HP wins.</div>
+        <div class="hint" style="margin:6px 0 0">Move ◀ ▶ (or A/D), jump (or W/Space). Drag back anywhere on the field to pull the bow, release to fire. Harder pulls hit harder (body 10-35, headshots 1.6x). 90 seconds, most HP wins.</div>
       </div>
       <div class="bj-msg" id="archMsg"></div>
       <button type="button" class="pvp-rematch" id="archRematch" hidden>Rematch</button>
+      <div class="arch-bot" id="archBotBar" hidden>
+        <div class="pick small" id="archBotDiff"><button type="button" data-d="easy">Easy</button><button type="button" data-d="normal" class="on">Normal</button><button type="button" data-d="hard">Hard</button></div>
+        <div class="arch-bot-row"><button type="button" class="pvp-rematch" id="archBotAgain">↻ Play again</button><button type="button" class="pvp-rematch" id="archBotQuit" style="border-color:var(--line);color:var(--muted)">Exit practice</button></div>
+      </div>
     </div>
     <div class="card pvp-hist" id="pvpHist" hidden>
       <label>Your record</label>
@@ -1284,12 +1292,13 @@ document.querySelectorAll('#pvpMode button').forEach(b => b.onclick = () => {
 const HINTS = {
   duel: 'Basically shadow boxing. Land 3 hits in a row to win. Can\'t pick the same side twice in a row.',
   filler: 'You own bottom-left, they own top-right. Take turns picking a color to grow your blob (not your or their current color). Most of the board when it fills up wins.',
-  archer: 'Real-time stick-man archery. Run, jump to dodge, drag back to pull the bow and release. 100 HP, headshot 40, body 25. 90 seconds, most HP wins.'
+  archer: 'Real-time stick-man archery. Run, jump to dodge, drag back to pull the bow and release. Harder pulls hit harder, headshots 1.6x. 100 HP, 90 seconds, most HP wins.'
 };
 document.querySelectorAll('#pvpGame button').forEach(b => b.onclick = () => {
   pvpGameSel = b.dataset.g;
   document.querySelectorAll('#pvpGame button').forEach(x => x.classList.toggle('on', x === b));
   $('pvpHintText').textContent = HINTS[pvpGameSel];
+  $('archPractice').hidden = pvpGameSel !== 'archer';
 });
 const stakeText = c => `${GAME_NAME[c.game] || ''}${c.game ? ' · ' : ''}${c.friendly ? 'Friendly' : fmt(c.stake) + ' coins each'}`;
 function renderPvp(st){
@@ -1320,6 +1329,12 @@ function renderPvp(st){
   const live = m && m.status === 'live';
   const filler = m && m.game === 'filler';
   const archer = m && m.game === 'archer';
+  if (archBot && live) archBotStop();                       // a real match takes over from practice
+  if (archBot) {
+    $('pvpForm').hidden = !!st.outgoing; $('pvpDuelCard').hidden = true; $('pvpFillCard').hidden = true; $('pvpArchCard').hidden = false;
+    $('pvpMoves').hidden = true; $('pvpColors').hidden = true; $('pvpRematch').hidden = true; $('fillRematch').hidden = true; $('archRematch').hidden = true;
+    return;
+  }
   $('pvpForm').hidden = live || !!st.outgoing;
   $('pvpDuelCard').hidden = !!(filler || archer);
   $('pvpFillCard').hidden = !filler;
@@ -1436,7 +1451,9 @@ let pvpBusy = false, pvpWaiting = false;
 /* ----- archers (real-time) ----- */
 // Positions, jumps, aim and arrows sync player-to-player over a Supabase Realtime broadcast channel (no DB per frame).
 // Physics runs locally at 60fps. You decide hits on YOURSELF (you know your true position) and report them; the server owns HP.
-const ARCH = { g: 30, W: 100, H: 36, bowY: 4.5, halfW: 1.6, bodyH: 6, headY: 4.6, speed: 16, jumpV: 15.5, reload: 1.0, pullMax: 22 };
+const ARCH = { g: 30, pg: 78, W: 100, H: 36, bowY: 4.5, halfW: 1.6, bodyH: 6, headY: 4.6, speed: 16, jumpV: 25, reload: 1.0, pullMax: 22 };
+// damage scales with pull strength: body 10..35, headshot x1.6 (16..56)
+const archDmg = (power, head) => Math.round((10 + 0.25 * Math.max(0, Math.min(100, power || 0))) * (head ? 1.6 : 1));
 let arch = null, archFlash = null, archStuck = [], archMsgT = null;
 function archMsg(t, cls){ const el = $('archMsg'); el.textContent = t; el.className = 'bj-msg ' + (cls || ''); clearTimeout(archMsgT); if (t) archMsgT = setTimeout(() => { if (arch && !arch.ended) { el.textContent = ''; } }, 1400); }
 function archStart(m){
@@ -1449,11 +1466,11 @@ function archStart(m){
   archStuck = []; archFlash = null;
   arch.ch = sb.channel('archer-' + m.id, { config: { broadcast: { self: false, ack: false } } })
     .on('broadcast', { event: 's' }, ({ payload: p }) => { if (!arch || arch.ended) return; const o = arch.op; o.tx = p.x; o.ty = p.y; o.vy = p.vy; o.aim = p.a != null ? { angle: p.a, power: p.p } : null; o.seen = performance.now(); })
-    .on('broadcast', { event: 'f' }, ({ payload: p }) => { if (!arch || arch.ended) return; arch.arrows.push({ id: p.id, x: p.x, y: p.y, vx: p.vx, vy: p.vy, mine: false, alive: true }); })
+    .on('broadcast', { event: 'f' }, ({ payload: p }) => { if (!arch || arch.ended) return; arch.arrows.push({ id: p.id, x: p.x, y: p.y, vx: p.vx, vy: p.vy, p: p.p, mine: false, alive: true }); })
     .on('broadcast', { event: 'h' }, ({ payload: p }) => {
       if (!arch || arch.ended) return;
       const a = arch.arrows.find(q => q.id === p.id); if (a && a.alive) { a.alive = false; archStuck.push({ x: a.x, y: a.y, vx: a.vx, vy: a.vy }); }
-      arch.oppHp = p.hp; archFlash = { side: 'op', t: performance.now() }; archMsg(p.part === 'head' ? 'HEADSHOT −40' : 'Hit −25', 'win'); archHud();
+      arch.oppHp = p.hp; archFlash = { side: 'op', t: performance.now() }; archMsg(p.part === 'head' ? `HEADSHOT −${p.dmg}` : `Hit −${p.dmg}`, 'win'); archHud();
     })
     .subscribe();
   arch.raf = requestAnimationFrame(archTick);
@@ -1502,9 +1519,9 @@ function archTick(now){
   if (arch.left) vx = -vx;   // view is mirrored for the left player
   me.x = Math.min(arch.zmax, Math.max(arch.zmin, me.x + vx * dt));
   if (k.jump) { k.jump = false; if (me.y <= 0 && me.vy <= 0) me.vy = ARCH.jumpV; }
-  if (me.y > 0 || me.vy > 0) { me.vy -= ARCH.g * dt; me.y += me.vy * dt; if (me.y <= 0) { me.y = 0; me.vy = 0; } }
+  if (me.y > 0 || me.vy > 0) { me.vy -= ARCH.pg * dt; me.y += me.vy * dt; if (me.y <= 0) { me.y = 0; me.vy = 0; } }
   // opponent: ease toward their last broadcast
-  const f = 1 - Math.exp(-dt * 16); o.x += (o.tx - o.x) * f; o.y += (o.ty - o.y) * f;
+  if (arch.bot) archBotThink(dt); else { const f = 1 - Math.exp(-dt * 22); o.x += (o.tx - o.x) * f; o.y += (o.ty - o.y) * f; }
   // arrows
   for (const a of arch.arrows) {
     if (!a.alive) continue;
@@ -1514,10 +1531,16 @@ function archTick(now){
     if (!a.mine) {        // incoming: did it hit ME (my true position)?
       if (Math.abs(a.x - me.x) <= ARCH.halfW && a.y >= me.y && a.y <= me.y + ARCH.bodyH) {
         a.alive = false; archStuck.push({ x: a.x, y: a.y, vx: a.vx, vy: a.vy });
-        archTakeHit(a.id, a.y >= me.y + ARCH.headY);
+        archTakeHit(a.id, a.y >= me.y + ARCH.headY, a.p);
       }
     } else if (Math.abs(a.x - o.x) <= ARCH.halfW && a.y >= o.y && a.y <= o.y + ARCH.bodyH) {   // mine: stop it on their body; their client confirms the damage
       a.alive = false; archStuck.push({ x: a.x, y: a.y, vx: a.vx, vy: a.vy });
+      if (arch.bot) {                                                                          // practice: no other client, score it here
+        const head = a.y >= o.y + ARCH.headY, dmg = archDmg(a.p, head);
+        arch.oppHp = Math.max(0, arch.oppHp - dmg); archFlash = { side: 'op', t: performance.now() };
+        archMsg(head ? `HEADSHOT −${dmg}` : `Hit −${dmg}`, 'win'); archHud();
+        if (arch.oppHp <= 0) archBotEnd();
+      }
     }
   }
   arch.arrows = arch.arrows.filter(a => a.alive);
@@ -1525,17 +1548,19 @@ function archTick(now){
   // broadcast my state: ~20/s while anything changes, 4/s keepalive
   const st = { x: +me.x.toFixed(2), y: +me.y.toFixed(2), vy: +me.vy.toFixed(1), a: arch.aim ? arch.aim.angle : null, p: arch.aim ? arch.aim.power : null };
   const key = st.x + '|' + st.y + '|' + st.a + '|' + st.p;
-  if ((key !== arch.lastSent && now - arch.lastSend >= 48) || now - arch.lastSend >= 250) { arch.lastSend = now; arch.lastSent = key; arch.ch.send({ type: 'broadcast', event: 's', payload: st }); }
+  if (!arch.bot && ((key !== arch.lastSent && now - arch.lastSend >= 48) || now - arch.lastSend >= 250)) { arch.lastSend = now; arch.lastSent = key; arch.ch.send({ type: 'broadcast', event: 's', payload: st }); }
+  if (arch.bot && !arch.ended) { arch.t += dt; const left = Math.max(0, Math.ceil(90 - arch.t)); const ce = $('archClock'); ce.textContent = `⏱ ${left}s`; ce.className = 'pvp-clock' + (left <= 10 ? ' warn' : ''); if (arch.t >= 90) archBotEnd(); }
   // reload bar
   const rl = $('archReload'); if (rl) rl.style.width = Math.min(100, Math.max(0, 100 - (arch.reloadAt - now) / (ARCH.reload * 10))) + '%';
   archDraw();
   arch.raf = requestAnimationFrame(archTick);
 }
-async function archTakeHit(id, head){
+async function archTakeHit(id, head, power){
   const now = performance.now(); if (now - arch.hitAt < 250) return; arch.hitAt = now;
-  const dmg = head ? 40 : 25; arch.myHp = Math.max(0, arch.myHp - dmg);
-  archFlash = { side: 'me', t: now }; archMsg(head ? 'You got headshot −40' : 'You got hit −25', 'lose'); archHud();
-  arch.ch.send({ type: 'broadcast', event: 'h', payload: { id, part: head ? 'head' : 'body', hp: arch.myHp } });
+  const dmg = archDmg(power, head); arch.myHp = Math.max(0, arch.myHp - dmg);
+  archFlash = { side: 'me', t: now }; archMsg(head ? `You got headshot −${dmg}` : `You got hit −${dmg}`, 'lose'); archHud();
+  if (arch.bot) { if (arch.myHp <= 0) archBotEnd(); return; }
+  arch.ch.send({ type: 'broadcast', event: 'h', payload: { id, part: head ? 'head' : 'body', dmg, hp: arch.myHp } });
   const { data, error } = await sb.rpc('archer_damage', { p_id: arch.id, p_dmg: dmg });
   if (error) return toast(error.message);
   if (data && data.status !== 'live') pollPvp(); else if (data && arch) { arch.myHp = data.my_hp; arch.oppHp = data.opp_hp; archHud(); }
@@ -1546,8 +1571,8 @@ function archFire(aim){
   const v = 10 + aim.power * 0.45, a = aim.angle * Math.PI / 180;
   const x = arch.me.x + arch.dir * 1.6, y = arch.me.y + ARCH.bowY, vx = v * Math.cos(a) * arch.dir, vy = v * Math.sin(a);
   const id = (arch.left ? 'a' : 'b') + (++arch.seq);
-  arch.arrows.push({ id, x, y, vx, vy, mine: true, alive: true });
-  arch.ch.send({ type: 'broadcast', event: 'f', payload: { id, x: +x.toFixed(2), y: +y.toFixed(2), vx: +vx.toFixed(3), vy: +vy.toFixed(3) } });
+  arch.arrows.push({ id, x, y, vx, vy, p: aim.power, mine: true, alive: true });
+  if (!arch.bot) arch.ch.send({ type: 'broadcast', event: 'f', payload: { id, x: +x.toFixed(2), y: +y.toFixed(2), vx: +vx.toFixed(3), vy: +vy.toFixed(3), p: aim.power } });
 }
 function archGeom(c){
   const W = c.clientWidth, H = Math.max(120, Math.round(W / 2.4));
@@ -1624,7 +1649,7 @@ function archArrow(ctx, x, y, ang, color, s){
 $('archRematch').onclick = pvpRematch;
 (function(){
   const c = $('archCanvas'); let dragging = false;
-  const live = () => arch && !arch.ended && pvp && pvp.game === 'archer' && pvp.status === 'live';
+  const live = () => arch && !arch.ended && (arch.bot || (pvp && pvp.game === 'archer' && pvp.status === 'live'));
   const toWorld = ev => { const r = c.getBoundingClientRect(), g = archGeom(c), vx = (ev.clientX - r.left) / g.sx; return { x: arch.left ? 100 - vx : vx, y: (g.gy - (ev.clientY - r.top)) / g.sy }; };
   const upd = ev => {
     const p = toWorld(ev), bx = arch.me.x + arch.dir * 1.6, by = arch.me.y + ARCH.bowY, px = p.x - bx, py = p.y - by;   // pull vector
@@ -1652,6 +1677,90 @@ $('archRematch').onclick = pvpRematch;
   window.addEventListener('resize', () => archDraw());
 })();
 
+/* ----- archers practice vs bot (free, nothing touches the server) ----- */
+let archBot = null, archBotDiffSel = 'normal';
+const ARCH_BOT = {
+  easy:   { aimErr: 9,   dodge: 0.25, react: 0.55, fireMin: 2.2,  fireMax: 3.4 },
+  normal: { aimErr: 4.5, dodge: 0.55, react: 0.35, fireMin: 1.6,  fireMax: 2.6 },
+  hard:   { aimErr: 1.8, dodge: 0.85, react: 0.2,  fireMin: 1.15, fireMax: 1.8 }
+};
+function archBotStart(){
+  archStop(true); archStuck = []; archFlash = null;
+  archBot = { diff: archBotDiffSel, tx: 15, nextMove: 0, nextFire: 1.4, seen: {} };
+  // you on the right (world), bot on the left: no view flip needed
+  arch = { id: 'bot', bot: true, left: false, dir: -1, zmin: 52, zmax: 98,
+    me: { x: 85, y: 0, vy: 0 }, op: { x: 15, y: 0, vy: 0, tx: 15, ty: 0, aim: null },
+    arrows: [], keys: {}, aim: null, reloadAt: 0, lastSend: 0, lastSent: '', seq: 0, myHp: 100, oppHp: 100, hitAt: 0, ended: false, t: 0,
+    ch: { send(){} }, last: performance.now() };
+  $('archOppName').textContent = 'Bot'; $('archTurn').textContent = 'PRACTICE';
+  $('pvpDuelCard').hidden = true; $('pvpFillCard').hidden = true; $('pvpArchCard').hidden = false;
+  $('archCtl').hidden = false; $('archBotBar').hidden = false; $('archBotAgain').hidden = true; $('archRematch').hidden = true;
+  const el = $('archMsg'); el.textContent = ''; el.className = 'bj-msg';
+  archHud();
+  arch.raf = requestAnimationFrame(archTick);
+}
+function archBotEnd(){
+  if (!arch || !arch.bot || arch.ended) return;
+  arch.ended = true; arch.keys = {}; arch.aim = null;
+  document.querySelectorAll('.arch-btn').forEach(b => b.classList.remove('on'));
+  const r = arch.myHp > arch.oppHp ? ['You win!', 'win'] : arch.myHp < arch.oppHp ? ['Bot wins', 'lose'] : ['Draw', ''];
+  clearTimeout(archMsgT); const el = $('archMsg'); el.textContent = r[0] + ' (practice)'; el.className = 'bj-msg ' + r[1];
+  $('archTurn').textContent = 'PRACTICE · FINAL'; $('archCtl').hidden = true; $('archBotAgain').hidden = false;
+  archDraw();
+}
+function archBotStop(){
+  if (arch && arch.bot) { cancelAnimationFrame(arch.raf); arch = null; }
+  archBot = null; $('archBotBar').hidden = true; $('archClock').textContent = '';
+  pollPvp();
+}
+function archBotSolve(angle, tx){
+  const o = arch.op, sx = o.x + 1.6, sy = o.y + ARCH.bowY; let best = null, bestErr = 1e9;
+  for (let p = 15; p <= 100; p++) {
+    const v = 10 + p * 0.45, a = angle * Math.PI / 180; let x = sx, y = sy, vx = v * Math.cos(a), vy = v * Math.sin(a), t = 0;
+    for (;;) { t += 0.02; vy -= ARCH.g * 0.02; x += vx * 0.02; y += vy * 0.02; if (y <= 3 || t > 6) break; }
+    const err = Math.abs(x - tx); if (err < bestErr) { bestErr = err; best = p; }
+  }
+  return best || 70;
+}
+function archBotThink(dt){
+  const o = arch.op, d = ARCH_BOT[archBot.diff], k = arch.keys;
+  if (arch.ended) return;
+  archBot.nextMove -= dt; if (archBot.nextMove <= 0) { archBot.tx = 4 + Math.random() * 40; archBot.nextMove = 0.8 + Math.random() * 1.6; }
+  const dx = archBot.tx - o.x; if (Math.abs(dx) > 0.5) o.x += Math.sign(dx) * Math.min(Math.abs(dx), ARCH.speed * 0.75 * dt);
+  o.x = Math.min(48, Math.max(2, o.x));
+  if (o.y > 0 || o.vy > 0) { o.vy -= ARCH.pg * dt; o.y += o.vy * dt; if (o.y <= 0) { o.y = 0; o.vy = 0; } }
+  for (const a of arch.arrows) {                      // dodge my arrows (decide once per arrow)
+    if (!a.alive || !a.mine || archBot.seen[a.id]) continue;
+    const tHit = (o.x - a.x) / a.vx; if (tHit <= 0 || tHit > d.react + 0.3) continue;
+    archBot.seen[a.id] = true;
+    const yAt = a.y + a.vy * tHit - 0.5 * ARCH.g * tHit * tHit;
+    if (yAt > -1 && yAt < ARCH.bodyH + 1 && Math.random() < d.dodge) {
+      if (o.y <= 0 && Math.random() < 0.6) o.vy = ARCH.jumpV; else archBot.tx = o.x + (Math.random() < 0.5 ? -9 : 9);
+    }
+  }
+  archBot.nextFire -= dt;
+  if (archBot.nextFire < 0.45 && !o.aim) o.aim = { angle: 45, power: 70 };
+  if (archBot.nextFire <= 0) {
+    const ang = 30 + Math.random() * 30;
+    const lead = (k.left ? -1 : k.right ? 1 : 0) * ARCH.speed * 0.6 * (archBot.diff === 'hard' ? 1 : 0.5);
+    const tx = Math.min(98, Math.max(52, arch.me.x + lead)) + (Math.random() - 0.5) * 2 * d.aimErr;
+    const pw = archBotSolve(ang, tx), v = 10 + pw * 0.45, a = ang * Math.PI / 180;
+    arch.arrows.push({ id: 'bot' + (++arch.seq), x: o.x + 1.6, y: o.y + ARCH.bowY, vx: v * Math.cos(a), vy: v * Math.sin(a), p: pw, mine: false, alive: true });
+    o.aim = null; archBot.nextFire = d.fireMin + Math.random() * (d.fireMax - d.fireMin);
+  }
+  o.tx = o.x; o.ty = o.y;
+}
+$('archPractice').onclick = () => {
+  if (pvp && pvp.status === 'live') return toast('Finish your current match first');
+  archBotStart();
+};
+$('archBotAgain').onclick = archBotStart;
+$('archBotQuit').onclick = archBotStop;
+document.querySelectorAll('#archBotDiff button').forEach(b => b.onclick = () => {
+  archBotDiffSel = b.dataset.d; document.querySelectorAll('#archBotDiff button').forEach(x => x.classList.toggle('on', x === b));
+  if (archBot) archBotStart();
+});
+
 async function pollPvp(){
   if (!user || pvpBusy) return;
   pvpBusy = true;
@@ -1676,7 +1785,7 @@ function setPvpDeadline(m){
 }
 setInterval(() => {
   const dEl = $('pvpClock'), fEl = $('fillClock'), aEl = $('archClock');
-  if (dEl) dEl.textContent = ''; if (fEl) fEl.textContent = ''; if (aEl) aEl.textContent = '';
+  if (dEl) dEl.textContent = ''; if (fEl) fEl.textContent = ''; if (aEl && !archBot) aEl.textContent = '';
   if (pvpDeadline == null || !pvp || pvp.status !== 'live') return;
   const left = Math.max(0, Math.ceil((pvpDeadline - Date.now()) / 1000));
   const el = pvp.game === 'filler' ? fEl : pvp.game === 'archer' ? aEl : dEl;

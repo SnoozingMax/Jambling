@@ -83,7 +83,7 @@ language plpgsql security definer set search_path = public as $$
 declare me uuid := auth.uid(); m pvp_matches; is_a boolean; last_hit timestamptz; hp int;
 begin
   if me is null then raise exception 'Not signed in'; end if;
-  if p_dmg not in (25, 40) then raise exception 'Bad damage'; end if;
+  if p_dmg is null or p_dmg < 1 or p_dmg > 56 then raise exception 'Bad damage'; end if;   -- body 10-35, headshot up to 56
   perform _pvp_tidy();
   select * into m from pvp_matches where id = p_id and (a = me or b = me) for update;
   if not found or m.status <> 'live' or m.game <> 'archer' then
