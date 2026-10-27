@@ -185,6 +185,9 @@ canvas{width:100%;height:100%;display:block}
 .shop-row .tx{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
 .shop-row .tx b{font-size:14px} .shop-row .tx small{color:var(--muted);font-size:12px}
 .shop-row .go{width:auto;padding:6px 12px;font-size:13px;white-space:nowrap}
+.shop-row .eq{padding:6px 12px;border-radius:10px;border:1px solid var(--line);background:var(--field);color:var(--muted);font:600 13px Inter,sans-serif;cursor:pointer;white-space:nowrap}
+.shop-row .eq.on{border-color:var(--win);color:var(--win)}
+.arch-quiver button.upg.off{opacity:.55}
 .shop-row .own{font:600 12px "IBM Plex Mono",monospace;color:var(--win);white-space:nowrap}
 .arch-practice{width:100%;margin-top:10px;padding:11px;border-radius:12px;font:600 14px Inter,sans-serif}
 .arch-bot{display:flex;flex-direction:column;align-items:center;gap:10px}
@@ -1495,11 +1498,13 @@ const UPG = { hp200: { name: '200 HP', icon: '✚', color: '#ff7b6b', note: 'sta
 const ITEM = k => ARROWS[k] || UPG[k];
 // per-arrow flight: sniper leaves the bow faster and drops much less
 const archSpeedMul = k => k === 'sniper' ? 1.45 : 1, archGrav = k => k === 'sniper' ? 0.35 : 1;
+let archEquipped = null;   // null = server hasn't told us yet (treat owned as equipped)
+const archHpOn = () => archOwned.includes('hp200') && (archEquipped == null || archEquipped.includes('hp200'));
 let archKind = 'normal', archOwned = [], archPrices = { poison: 1e9, homing: 5e9, sniper: 2e9, vampire: 8e9, hp200: 5e9 }, archBuyKind = null;
 async function archLoadArrows(){
   const { data, error } = await sb.rpc('archer_arrows');
-  if (!error && data) { archOwned = data.owned || []; archPrices = data.prices || archPrices;
-    if (arch && arch.bot && arch.t < 1 && archOwned.includes('hp200') && arch.myMax < 200) { arch.myMax = 200; arch.myHp = 200; archHud(); } }
+  if (!error && data) { archOwned = data.owned || []; archPrices = data.prices || archPrices; if (data.equipped) archEquipped = data.equipped;
+    if (arch && arch.bot && arch.t < 1) { const mx = archHpOn() ? 200 : 100; if (arch.myMax !== mx) { arch.myMax = mx; arch.myHp = mx; archHud(); } } }
   archQuiverRender(); archShopRender();
 }
 const SHOP_DESC = {
@@ -1512,10 +1517,20 @@ function archShopRender(){
   el.innerHTML = ['poison', 'homing', 'sniper', 'vampire', 'hp200'].map(k => {
     const it = ITEM(k), owned = archOwned.includes(k);
     return `<div class="shop-row"><span class="ic" style="color:${it.color}">${it.icon}</span><span class="tx"><b>${it.name}${UPG[k] ? '' : ' arrow'}</b><small>${SHOP_DESC[k]}</small></span>` +
-      (owned ? '<span class="own">✓ Owned</span>' : `<button type="button" class="go" data-buy="${k}">${short(archPrices[k] || 0)}</button>`) + '</div>';
+      (owned ? (k === 'hp200' ? `<button type="button" class="eq${archHpOn() ? ' on' : ''}" data-eq="${k}">${archHpOn() ? 'Equipped' : 'Unequipped'}</button>` : '<span class="own">✓ Owned</span>')
+             : `<button type="button" class="go" data-buy="${k}">${short(archPrices[k] || 0)}</button>`) + '</div>';
   }).join('');
 }
+async function archToggleHp(){
+  const on = !archHpOn();
+  const { data, error } = await sb.rpc('archer_equip', { p_kind: 'hp200', p_on: on });
+  if (error) return toast(error.message);
+  archEquipped = data.equipped || []; archShopRender(); archQuiverRender();
+  if (arch && arch.bot && arch.t < 1) { const mx = archHpOn() ? 200 : 100; arch.myMax = mx; arch.myHp = mx; archHud(); }
+  toast(on ? '200 HP equipped' + (arch && !arch.ended && !arch.bot ? ' (from your next match)' : '') : '200 HP unequipped' + (arch && !arch.ended && !arch.bot ? ' (from your next match)' : ''));
+}
 $('archShopList').onclick = e => {
+  if (e.target.closest('[data-eq]')) return archToggleHp();
   const b = e.target.closest('[data-buy]'); if (!b) return;
   archShopKind = b.dataset.buy; const it = ITEM(archShopKind);
   $('archShopBuyText').textContent = `Buy ${it.name}${UPG[archShopKind] ? '' : ' arrows'} for ${short(archPrices[archShopKind])} coins? You keep it forever.`;
@@ -1539,8 +1554,8 @@ function archQuiverRender(){
     const owned = k === 'normal' || archOwned.includes(k), sub = k === 'normal' ? 'free' : owned ? a.note : (arch && arch.bot ? 'try free' : '🔒 ' + short(archPrices[k] || 0));
     return `<button type="button" data-a="${k}" class="k-${k}${archKind === k ? ' on' : ''}${owned ? '' : ' locked'}">${a.icon} ${a.name}<small>${sub}</small></button>`;
   }).join('') + Object.entries(UPG).map(([k, u]) => {
-    const owned = archOwned.includes(k);
-    return `<button type="button" data-a="${k}" class="k-${k} upg${owned ? ' owned' : ' locked'}">${u.icon} ${u.name}<small>${owned ? '✓ ' + u.note : '🔒 ' + short(archPrices[k] || 0)}</small></button>`;
+    const owned = archOwned.includes(k), on = owned && archHpOn();
+    return `<button type="button" data-a="${k}" class="k-${k} upg${owned ? ' owned' : ' locked'}${owned && !on ? ' off' : ''}">${u.icon} ${u.name}<small>${owned ? (on ? 'equipped · tap to unequip' : 'unequipped · tap to equip') : '🔒 ' + short(archPrices[k] || 0)}</small></button>`;
   }).join('');
 }
 // steer a homing arrow a little toward (tx, ty): max ~9°/s, last 20 units only
@@ -1839,7 +1854,7 @@ $('archRematch').onclick = pvpRematch;
 $('archQuiver').onclick = e => {
   const b = e.target.closest('button[data-a]'); if (!b) return;
   const k = b.dataset.a;
-  if (UPG[k]) { if (archOwned.includes(k)) return; }
+  if (UPG[k]) { if (archOwned.includes(k)) return archToggleHp(); }
   else if (archCanUse(k)) { archKind = k; $('archBuy').hidden = true; archQuiverRender(); return; }
   archBuyKind = k; $('archBuyText').textContent = UPG[k] ? `Buy ${UPG[k].name} for ${short(archPrices[k])} coins? You start every Archers match with 200 HP (from your next match).` : `Buy ${ARROWS[k].name} arrows for ${short(archPrices[k])} coins? You keep them forever.`; $('archBuy').hidden = false;
 };
@@ -1896,7 +1911,7 @@ function archBotStart(){
   // you on the right (world), bot on the left: no view flip needed
   arch = { id: 'bot', bot: true, left: false, dir: -1, zmin: 52, zmax: 98,
     me: { x: 85, y: 0, vy: 0 }, op: { x: 15, y: 0, vy: 0, tx: 15, ty: 0, aim: null },
-    arrows: [], keys: {}, aim: null, reloadAt: 0, lastSend: 0, lastSent: '', seq: 0, myHp: archOwned.includes('hp200') ? 200 : 100, myMax: archOwned.includes('hp200') ? 200 : 100, oppHp: 100, oppMax: 100, hitAt: 0, ended: false, t: 0,
+    arrows: [], keys: {}, aim: null, reloadAt: 0, lastSend: 0, lastSent: '', seq: 0, myHp: archHpOn() ? 200 : 100, myMax: archHpOn() ? 200 : 100, oppHp: 100, oppMax: 100, hitAt: 0, ended: false, t: 0,
     ch: { send(){} }, last: performance.now() };
   $('archOppName').textContent = 'Bot'; $('archTurn').textContent = 'PRACTICE';
   $('pvpDuelCard').hidden = true; $('pvpFillCard').hidden = true; $('pvpArchCard').hidden = false;
