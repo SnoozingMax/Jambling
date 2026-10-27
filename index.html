@@ -1602,7 +1602,10 @@ async function archConnect(A){
   const ch = sb.channel('archer-' + A.id, { config: { broadcast: { self: false, ack: false } } });   // same topic for both players
   A.ch = ch; A.connectedAt = performance.now();
   ch.on('broadcast', { event: 's' }, ({ payload: p }) => { if (arch !== A || A.ended) return; const o = A.op; o.tx = p.x; o.ty = p.y; o.crouch = !!p.c; o.vy = p.vy; o.rvx = p.vx || 0; o.aim = p.a != null ? { angle: p.a, power: p.p } : null; o.seen = performance.now(); })
-    .on('broadcast', { event: 'f' }, ({ payload: p }) => { if (arch !== A || A.ended) return; if (A.arrows.some(q => q.id === p.id)) return; const ok = (pvp && pvp.opp_arrows || []).includes(p.k); A.arrows.push({ id: p.id, x: p.x, y: p.y, vx: p.vx, vy: p.vy, p: p.p, k: ok ? p.k : 'normal', mine: false, alive: true }); })
+    .on('broadcast', { event: 'f' }, ({ payload: p }) => { if (arch !== A || A.ended) return; if (A.arrows.some(q => q.id === p.id)) return; const ok = (pvp && pvp.opp_arrows || []).includes(p.k); const ar = { id: p.id, x: p.x, y: p.y, vx: p.vx, vy: p.vy, p: p.p, k: ok ? p.k : 'normal', mine: false, alive: true };
+      let catchUp = Math.min(0.25, A.ping != null ? A.ping / 2000 : 0.04); const g = ARCH.g * archGrav(ar.k);
+      while (catchUp > 0) { const st = Math.min(1 / 60, catchUp); ar.vy -= g * st; ar.x += ar.vx * st; ar.y += ar.vy * st; catchUp -= st; }
+      if (ar.y > 0) A.arrows.push(ar); })
     .on('broadcast', { event: 'h' }, ({ payload: p }) => {
       if (arch !== A || A.ended) return;
       if (p.part === 'poison') { A.oppHp = p.hp; A.opPoisonUntil = performance.now() + 1200; archMsg(`Poison −${p.dmg}`, 'win'); archHud(); return; }
@@ -1677,11 +1680,17 @@ function archTick(now){
   let vx = 0; if (k.left) vx -= ARCH.speed; if (k.right) vx += ARCH.speed;
   if (me.crouch) vx *= 0.45;   // crouch-walk
   if (arch.left) vx = -vx;   // view is mirrored for the left player
-  me.x = Math.min(arch.zmax, Math.max(arch.zmin, me.x + vx * dt));
+  const px0 = me.x; me.x = Math.min(arch.zmax, Math.max(arch.zmin, me.x + vx * dt)); me.vx = (me.x - px0) / Math.max(dt, 1e-3);
   if (k.jump) { k.jump = false; if (me.y <= 0 && me.vy <= 0 && !me.crouch) me.vy = ARCH.jumpV; }
   if (me.y > 0 || me.vy > 0) { me.vy -= ARCH.pg * dt; me.y += me.vy * dt; if (me.y <= 0) { me.y = 0; me.vy = 0; } }
   // opponent: ease toward their last broadcast
-  if (arch.bot) { const vxNow = (me.x - (arch.prevX ?? me.x)) / Math.max(dt, 1e-3); archBot.vx = archBot.vx * 0.8 + vxNow * 0.2; arch.prevX = me.x; archBotThink(dt); } else { const ahead = o.rvx ? o.rvx * Math.min(0.12, (now - (o.seen || now)) / 1000) : 0, f = 1 - Math.exp(-dt * 18); o.x += (o.tx + ahead - o.x) * f; o.y += (o.ty - o.y) * f; }
+  if (arch.bot) { const vxNow = (me.x - (arch.prevX ?? me.x)) / Math.max(dt, 1e-3); archBot.vx = archBot.vx * 0.8 + vxNow * 0.2; arch.prevX = me.x; archBotThink(dt); } else {
+    const lag = Math.min(0.3, (arch.ping != null ? arch.ping / 2000 : 0.05) + (now - (o.seen || now)) / 1000);   // age of their last update
+    const zmin = arch.left ? 52 : 2, zmax = arch.left ? 98 : 48;
+    const px = Math.min(zmax, Math.max(zmin, o.tx + (o.rvx || 0) * lag));
+    const py = o.ty > 0 || o.vy > 0 ? Math.max(0, o.ty + (o.vy || 0) * lag - 0.5 * ARCH.pg * lag * lag) : 0;
+    const f = 1 - Math.exp(-dt * 26); o.x += (px - o.x) * f; o.y += (py - o.y) * f;
+  }
   // arrows
   for (const a of arch.arrows) {
     if (!a.alive) continue;
@@ -1724,9 +1733,11 @@ function archTick(now){
     if (!arch.joined && !arch.connecting && now - (arch.connectedAt || 0) > 4000) archConnect(arch);   // stuck joining: try again
     if (arch.joined && now - (arch.pingAt || 0) > 2000) { arch.pingAt = now; arch.ch.send({ type: 'broadcast', event: 'pi', payload: { t: now } }).catch(() => {}); }
     if (arch.joined && arch.outbox && arch.outbox.length) { const q = arch.outbox; arch.outbox = []; q.forEach(m => arch.ch.send({ type: 'broadcast', event: m.event, payload: m.payload }).catch(() => {})); }
-    // ~12 updates/s while moving, 3/s idle; only while joined (never falls back to REST spam)
-    if (arch.joined && ((key !== arch.lastSent && now - arch.lastSend >= 80) || now - arch.lastSend >= 330)) {
-      arch.lastSend = now; arch.lastSent = key; st.vx = +((me.x - (arch.sentX ?? me.x)) / Math.max(0.05, (now - (arch.sentAt || now)) / 1000)).toFixed(1); arch.sentX = me.x; arch.sentAt = now;
+    // instantly on any input change (start/stop running, jump, crouch, start/stop aiming), 20/s while moving, 3/s idle
+    const sig = (k.left ? 'L' : '') + (k.right ? 'R' : '') + (me.crouch ? 'C' : '') + (me.vy > 0 ? 'J' : '') + (arch.aim ? 'A' : '');
+    const changed = sig !== arch.lastSig;
+    if (arch.joined && (changed || (key !== arch.lastSent && now - arch.lastSend >= 50) || now - arch.lastSend >= 330)) {
+      arch.lastSend = now; arch.lastSent = key; arch.lastSig = sig; st.vx = +(me.vx || 0).toFixed(2);
       arch.ch.send({ type: 'broadcast', event: 's', payload: st }).catch(() => {});
     }
   }
