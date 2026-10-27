@@ -191,7 +191,7 @@ canvas{width:100%;height:100%;display:block}
 .shop-row .own{font:600 12px "IBM Plex Mono",monospace;color:var(--win);white-space:nowrap}
 .arch-practice{width:100%;margin-top:10px;padding:11px;border-radius:12px;font:600 14px Inter,sans-serif}
 .arch-bot{display:flex;flex-direction:column;align-items:center;gap:10px}
-#archBotDiff{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;width:100%;max-width:360px}
+#archBotDiff{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;width:100%;max-width:440px}
 .arch-bot-row{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
 .arch-top{display:flex;align-items:center;justify-content:space-between;gap:10px}
 .arch-side{display:flex;align-items:center;gap:8px;flex:1;min-width:0}
@@ -631,7 +631,7 @@ tr.me td{color:var(--accent)}
       <div class="bj-msg" id="archMsg"></div>
       <button type="button" class="pvp-rematch" id="archRematch" hidden>Rematch</button>
       <div class="arch-bot" id="archBotBar" hidden>
-        <div class="pick small" id="archBotDiff"><button type="button" data-d="easy">Easy</button><button type="button" data-d="normal" class="on">Normal</button><button type="button" data-d="hard">Hard</button></div>
+        <div class="pick small" id="archBotDiff"><button type="button" data-d="easy">Easy</button><button type="button" data-d="normal" class="on">Normal</button><button type="button" data-d="hard">Hard</button><button type="button" data-d="insane">Insane</button></div>
         <div class="arch-bot-row"><button type="button" class="pvp-rematch" id="archBotAgain">↻ Play again</button><button type="button" class="pvp-rematch" id="archBotQuit" style="border-color:var(--line);color:var(--muted)">Exit practice</button></div>
       </div>
     </div>
@@ -1760,7 +1760,7 @@ async function archTakeHit(id, head, power, kind){
   if (kind === 'poison') arch.poisonMe = { left: 3, next: now + 1000 };
   const heal = kind === 'vampire' ? Math.floor(dmg / 2) : 0;
   archFlash = { side: 'me', t: now }; archMsg(head ? `You got headshot −${dmg}` : `You got hit −${dmg}`, 'lose'); archHud();
-  if (arch.bot) { if (arch.myHp <= 0) archBotEnd(); return; }
+  if (arch.bot) { if (heal) arch.oppHp = Math.min(arch.oppMax, arch.oppHp + heal), archHud(); if (arch.myHp <= 0) archBotEnd(); return; }
   archSend('h', { id, part: head ? 'head' : 'body', dmg, hp: arch.myHp, heal });
   const { data, error } = await sb.rpc('archer_damage', { p_id: arch.id, p_dmg: dmg, p_kind: kind === 'vampire' ? 'vamp' : 'hit' });
   if (error) return toast(error.message);
@@ -1796,7 +1796,7 @@ function archDraw(){
   const drawStuck = pinned => archStuck.forEach(s => {
     if (!!s.on !== pinned) return;
     const t = s.on === 'me' ? arch.me : s.on === 'op' ? arch.op : null, x = t ? t.x + s.dx : s.x, y = t ? t.y + s.dy * (t.crouch ? 0.64 : 1) : s.y;
-    const col = s.k && s.k !== 'normal' ? ARROWS[s.k].color + (t ? 'cc' : '77') : (t ? 'rgba(235,230,245,.85)' : 'rgba(210,205,225,.45)');
+    const col = s.k && s.k !== 'normal' ? ARROWS[s.k].color + '77' : 'rgba(210,205,225,.45)';   // stuck arrows (ground or body) are faded
     archArrow(ctx, X(x), Y(y), Math.atan2(-s.vy * sy, s.vx * fl * sx), col, sy);
   });
   drawStuck(false);   // ground arrows behind the archers
@@ -1920,10 +1920,12 @@ $('archBuyYes').onclick = async () => {
 /* ----- archers practice vs bot (free, nothing touches the server) ----- */
 let archBot = null, archBotDiffSel = 'normal';
 const ARCH_BOT = {
-  //        aim error (world units at you), lead (how well it predicts your run), shot angles, fire gap (s), dodge chance, reaction (s), run speed, random jumps/s, headshot tries
-  easy:   { aimErr: 7.5, lead: 0,   angMin: 38, angMax: 62, fireMin: 2.2, fireMax: 3.2, dodge: 0.25, react: 0.5,  move: 0.6, hop: 0,    head: 0 },
-  normal: { aimErr: 2.2, lead: 0.7, angMin: 22, angMax: 48, fireMin: 1.2, fireMax: 1.9, dodge: 0.65, react: 0.3,  move: 0.85, hop: 0.15, head: 0.15 },
-  hard:   { aimErr: 0.7, lead: 1.0, angMin: 10, angMax: 32, fireMin: 0.85, fireMax: 1.25, dodge: 0.92, react: 0.18, move: 1,   hop: 0.45, head: 0.45 }
+  // aim error (world units), lead (predicts your running), shot angles, gap between shots (never faster than your 1s reload on hard+),
+  // dodge chance, reaction time (s), run speed, random hops/s, headshot tries, arrows it may use, smart dodges (crouch/jump/step by reading the arrow)
+  easy:   { aimErr: 7.5, lead: 0,    angMin: 38, angMax: 62, fireMin: 2.2, fireMax: 3.2, dodge: 0.25, react: 0.5,  move: 0.6,  hop: 0,    head: 0,    arrows: ['normal'], smart: false },
+  normal: { aimErr: 1.8, lead: 0.75, angMin: 20, angMax: 45, fireMin: 1.3, fireMax: 1.9, dodge: 0.6,  react: 0.3,  move: 0.85, hop: 0.15, head: 0.2,  arrows: ['normal', 'poison'], smart: true },
+  hard:   { aimErr: 0.6, lead: 1.0,  angMin: 10, angMax: 30, fireMin: 1.0, fireMax: 1.3, dodge: 0.92, react: 0.18, move: 1,    hop: 0.4,  head: 0.45, arrows: ['normal', 'poison', 'sniper', 'homing'], smart: true },
+  insane: { aimErr: 0.25, lead: 1.0, angMin: 6,  angMax: 22, fireMin: 1.0, fireMax: 1.1, dodge: 0.88, react: 0.12, move: 1,    hop: 0.5,  head: 0.6,  arrows: ['normal', 'poison', 'sniper', 'homing', 'vampire'], smart: true }
 };
 function archBotStart(){
   archStop(true); archStuck = []; archFlash = null;
@@ -1954,45 +1956,81 @@ function archBotStop(){
   archBot = null; $('archBotBar').hidden = true; $('archClock').textContent = '';
   pollPvp();
 }
-function archBotSolve(angle, tx, ty){
-  const o = arch.op, sx = o.x + 1.6, sy = o.y + ARCH.bowY; let best = { p: 70, t: 1.5, err: 1e9 };
+// power that sends an arrow (of this kind) through (tx, ty) at this angle, and how long it takes to get there
+function archBotSolve(angle, tx, ty, kind){
+  const o = arch.op, sx = o.x + 1.6, sy = o.y + archBody(o).bow, vm = archSpeedMul(kind), g = ARCH.g * archGrav(kind);
+  let best = { p: 70, t: 1.5, err: 1e9 };
   for (let p = 10; p <= 100; p += 0.5) {
-    const v = 10 + p * 0.45, a = angle * Math.PI / 180; let x = sx, y = sy, vx = v * Math.cos(a), vy = v * Math.sin(a), t = 0, err;
-    for (;;) { t += 0.02; vy -= ARCH.g * 0.02; x += vx * 0.02; y += vy * 0.02;
+    const v = (10 + p * 0.45) * vm, a = angle * Math.PI / 180; let x = sx, y = sy, vx = v * Math.cos(a), vy = v * Math.sin(a), t = 0, err;
+    for (;;) { t += 0.02; vy -= g * 0.02; x += vx * 0.02; y += vy * 0.02;
       if (x >= tx) { err = Math.abs(y - ty); break; }
       if (y <= 0 || t > 6) { err = 50 + (tx - x); break; } }
     if (err < best.err) best = { p, t, err };
   }
   return best;
 }
+// pick an arrow for the moment: lifesteal when hurt, poison on a healthy target, sniper on a still one, homing on a runner
+function archBotArrow(d){
+  const can = k => d.arrows.includes(k), me = arch.me, still = Math.abs(archBot.vx) < 3, hurt = arch.oppHp <= arch.oppMax * 0.6;
+  if (!d.smart) return 'normal';
+  if (can('vampire') && hurt && Math.random() < 0.75) return 'vampire';
+  if (can('poison') && !arch.poisonMe && arch.myHp > 40 && Math.random() < 0.4) return 'poison';
+  if (can('sniper') && still && Math.random() < 0.65) return 'sniper';
+  if (can('homing') && !still && Math.random() < 0.55) return 'homing';
+  return 'normal';
+}
+function archBotPlan(d, keepKind){
+  const me = arch.me, kind = keepKind || archBotArrow(d), mb = archBody(me);
+  const head = kind === 'sniper' || Math.random() < d.head;
+  const ty = head ? me.y + mb.head + 0.6 : me.y + mb.h * 0.45;
+  const ang = kind === 'sniper' ? 1 + Math.random() * 7 : d.angMin + Math.random() * (d.angMax - d.angMin);
+  // predict where you'll be when it lands (aim, measure flight time, re-aim)
+  let tx = me.x, sol = archBotSolve(ang, tx, ty, kind);
+  for (let i = 0; i < 2; i++) { tx = Math.min(98, Math.max(52, me.x + archBot.vx * sol.t * d.lead)); sol = archBotSolve(ang, tx, ty, kind); }
+  sol = archBotSolve(ang, tx + (Math.random() - 0.5) * 2 * d.aimErr, ty, kind);
+  return { kind, ang, p: sol.p };
+}
 function archBotThink(dt){
-  const o = arch.op, d = ARCH_BOT[archBot.diff], k = arch.keys;
+  const o = arch.op, d = ARCH_BOT[archBot.diff], now = performance.now();
   if (arch.ended) return;
+  o.crouch = now < (archBot.crouchUntil || 0) && o.y <= 0;
   archBot.nextMove -= dt; if (archBot.nextMove <= 0) { archBot.tx = 4 + Math.random() * 40; archBot.nextMove = 0.8 + Math.random() * 1.6; }
-  const dx = archBot.tx - o.x; if (Math.abs(dx) > 0.5) o.x += Math.sign(dx) * Math.min(Math.abs(dx), ARCH.speed * d.move * dt);
-  if (d.hop && o.y <= 0 && Math.random() < d.hop * dt) o.vy = ARCH.jumpV;             // random hops make it harder to hit
+  const dx = archBot.tx - o.x; if (Math.abs(dx) > 0.5) o.x += Math.sign(dx) * Math.min(Math.abs(dx), ARCH.speed * d.move * (o.crouch ? 0.45 : 1) * dt);
+  if (d.hop && o.y <= 0 && !o.crouch && Math.random() < d.hop * dt) o.vy = ARCH.jumpV;   // random hops make it harder to hit
   o.x = Math.min(48, Math.max(2, o.x));
   if (o.y > 0 || o.vy > 0) { o.vy -= ARCH.pg * dt; o.y += o.vy * dt; if (o.y <= 0) { o.y = 0; o.vy = 0; } }
-  for (const a of arch.arrows) {                      // dodge my arrows (decide once per arrow)
-    if (!a.alive || !a.mine || archBot.seen[a.id]) continue;
-    const tHit = (o.x - a.x) / a.vx; if (tHit <= 0 || tHit > d.react + 0.3) continue;
-    archBot.seen[a.id] = true;
-    const yAt = a.y + a.vy * tHit - 0.5 * ARCH.g * tHit * tHit;
-    if (yAt > -1 && yAt < ARCH.bodyH + 1 && Math.random() < d.dodge) {
-      if (o.y <= 0 && Math.random() < 0.6) o.vy = ARCH.jumpV; else archBot.tx = o.x + (Math.random() < 0.5 ? -9 : 9);
-    }
+  // dodge: every frame, work out where each of my arrows will cross it. Once it has noticed an arrow (after its reaction time),
+  // it ducks a high one, times a jump so it peaks as a low one arrives, or steps out of the way.
+  archBot.noticed = archBot.noticed || {}; archBot.roll = archBot.roll || {};
+  let threat = false;
+  for (const a of arch.arrows) {
+    if (!a.alive || !a.mine) continue;
+    let x = a.x, y = a.y, vx = a.vx, vy = a.vy, t = 0; const g = ARCH.g * archGrav(a.k);
+    while (t < 3 && x > o.x && y > 0) { t += 1 / 60; vy -= g / 60; x += vx / 60; y += vy / 60; }
+    if (x > o.x + 0.01 || y <= 0) continue;                       // won't reach it where it stands right now
+    const yAt = y - o.y; if (yAt < -0.5 || yAt > ARCH.bodyH + 0.5) continue;
+    if (!archBot.noticed[a.id]) archBot.noticed[a.id] = now;
+    if (now - archBot.noticed[a.id] < d.react * 1000) continue;  // hasn't reacted yet
+    if (archBot.roll[a.id] == null) archBot.roll[a.id] = Math.random() < d.dodge;
+    if (!archBot.roll[a.id]) continue;                            // this one it misreads
+    threat = true;
+    if (d.smart && yAt > 4.2 && o.y <= 0) { archBot.crouchUntil = now + (t + 0.3) * 1000; continue; }   // high: duck under it
+    if (o.crouch && t <= 0.55) { archBot.crouchUntil = 0; o.crouch = false; }                              // stand up to jump or run
+    if (yAt < 3.5 && o.y <= 0) { if (t <= 0.34) o.vy = ARCH.jumpV; continue; }                            // low/mid: jump peaking on arrival
+    if (t <= 0.5) { archBot.tx = o.x + (o.x > 25 ? -8 : 8); archBot.nextMove = 0.6; }                     // anything else: get out of the way
   }
+  // visible crouching when nothing is coming: crouch-walks now and then, and crouches while lining up a sniper shot
+  if (!threat && !arch.arrows.some(q => q.alive && q.mine) && d.smart && o.y <= 0 && now > (archBot.crouchUntil || 0) && Math.random() < (archBot.diff === 'normal' ? 0.08 : 0.2) * dt)
+    archBot.crouchUntil = now + 500 + Math.random() * 900;
+  if (archBot.plan && archBot.plan.kind === 'sniper' && o.y <= 0) archBot.crouchUntil = Math.max(archBot.crouchUntil || 0, now + 120);
+  // shoot: telegraph the draw for 0.4s, then fire what it planned (re-aimed at the last moment)
   archBot.nextFire -= dt;
-  if (archBot.nextFire < 0.4 && !o.aim) o.aim = { angle: (d.angMin + d.angMax) / 2, power: 75 };
+  if (archBot.nextFire < 0.4 && !archBot.plan) { archBot.plan = archBotPlan(d); o.aim = { angle: archBot.plan.ang, power: archBot.plan.p }; }
   if (archBot.nextFire <= 0) {
-    const ang = d.angMin + Math.random() * (d.angMax - d.angMin), ty = arch.me.crouch ? (Math.random() < d.head ? 3.3 : 2) : (Math.random() < d.head ? 5.3 : 3);
-    // predict where you'll be when the arrow arrives (two passes: aim, measure flight time, re-aim)
-    let tx = arch.me.x, sol = archBotSolve(ang, tx, ty);
-    for (let i = 0; i < 2; i++) { tx = Math.min(98, Math.max(52, arch.me.x + archBot.vx * sol.t * d.lead)); sol = archBotSolve(ang, tx, ty); }
-    sol = archBotSolve(ang, tx + (Math.random() - 0.5) * 2 * d.aimErr, ty);
-    const pw = sol.p, v = 10 + pw * 0.45, a = ang * Math.PI / 180;
-    arch.arrows.push({ id: 'bot' + (++arch.seq), x: o.x + 1.6, y: o.y + ARCH.bowY, vx: v * Math.cos(a), vy: v * Math.sin(a), p: pw, mine: false, alive: true });
-    o.aim = null; archBot.nextFire = d.fireMin + Math.random() * (d.fireMax - d.fireMin);
+    const sol = archBotPlan(d, archBot.plan && archBot.plan.kind), k = sol.kind;   // same arrow it drew, aimed at where you are now
+    const v = (10 + sol.p * 0.45) * archSpeedMul(k), a = sol.ang * Math.PI / 180;
+    arch.arrows.push({ id: 'bot' + (++arch.seq), x: o.x + 1.6, y: o.y + archBody(o).bow, vx: v * Math.cos(a), vy: v * Math.sin(a), p: sol.p, k, mine: false, alive: true });
+    o.aim = null; archBot.plan = null; archBot.nextFire = d.fireMin + Math.random() * (d.fireMax - d.fireMin);
   }
   o.tx = o.x; o.ty = o.y;
 }
