@@ -54,6 +54,7 @@ begin
   select * into m from pvp_matches where id = p_id and b = me for update;
   if not found or m.status <> 'pending' then raise exception 'That challenge is gone'; end if;
   if exists (select 1 from pvp_matches where (a = me or b = me) and status = 'live') then raise exception 'Finish your current match first'; end if;
+  if exists (select 1 from pvp_matches where (a = m.a or b = m.a) and status = 'live') then raise exception 'They''re in another match right now. Try again in a minute.'; end if;
   if not m.friendly then
     select balance into bal from profiles where id = me for update;
     if bal - m.stake < 1000 then raise exception 'You need % coins above 1,000 to accept', m.stake; end if;
@@ -197,7 +198,7 @@ begin
   perform _pvp_tidy();
   perform _settle_poison();
   select * into cur from pvp_matches where (a = me or b = me) and status in ('live', 'done')
-   order by created_at desc limit 1;
+   order by (status = 'live') desc, created_at desc limit 1;   -- a live match always shows, even if a newer one already finished
   if cur.id is not null and cur.status = 'live' and cur.game = 'archer' then
     if cur.a = me then update pvp_matches set a_acted = now() where id = cur.id;
     else update pvp_matches set b_acted = now() where id = cur.id; end if;

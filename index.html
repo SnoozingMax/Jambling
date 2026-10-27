@@ -1506,25 +1506,50 @@ function archStart(m){
     op: { x: +m.opp_x || (left ? 85 : 15), y: 0, tx: +m.opp_x || (left ? 85 : 15), ty: 0, aim: null, seen: 0 },
     arrows: [], keys: {}, aim: null, reloadAt: 0, lastSend: 0, lastSent: '', seq: 0, myHp: m.my_hp, oppHp: m.opp_hp, hitAt: 0, ended: false, last: performance.now() };
   archStuck = []; archFlash = null;
-  arch.ch = sb.channel('archer-' + m.id, { config: { broadcast: { self: false, ack: false } } })
-    .on('broadcast', { event: 's' }, ({ payload: p }) => { if (!arch || arch.ended) return; const o = arch.op; o.tx = p.x; o.ty = p.y; o.vy = p.vy; o.aim = p.a != null ? { angle: p.a, power: p.p } : null; o.seen = performance.now(); })
-    .on('broadcast', { event: 'f' }, ({ payload: p }) => { if (!arch || arch.ended) return; const ok = (pvp && pvp.opp_arrows || []).includes(p.k); arch.arrows.push({ id: p.id, x: p.x, y: p.y, vx: p.vx, vy: p.vy, p: p.p, k: ok ? p.k : 'normal', mine: false, alive: true }); })
-    .on('broadcast', { event: 'h' }, ({ payload: p }) => {
-      if (!arch || arch.ended) return;
-      if (p.part === 'poison') { arch.oppHp = p.hp; arch.opPoisonUntil = performance.now() + 1200; archMsg(`Poison −${p.dmg}`, 'win'); archHud(); return; }
-      const a = arch.arrows.find(q => q.id === p.id); if (a && a.alive) { a.alive = false; archStuck.push({ x: a.x, y: a.y, vx: a.vx, vy: a.vy, k: a.k }); }
-      if (a && a.k === 'poison') arch.opPoisonUntil = performance.now() + 3200;
-      arch.oppHp = p.hp; archFlash = { side: 'op', t: performance.now() }; archMsg(p.part === 'head' ? `HEADSHOT −${p.dmg}` : `Hit −${p.dmg}`, 'win'); archHud();
-    })
-    .subscribe();
+  archConnect(arch);
   arch.raf = requestAnimationFrame(archTick);
   archLoadArrows();
 }
+// One realtime channel per match. Reconnects itself if it drops, and never spams REST while it isn't joined.
+async function archConnect(A){
+  if (!A || A.ended || A.bot || A.connecting) return;
+  A.connecting = true; A.connectedAt = performance.now();
+  const old = A.ch; A.ch = null; A.joined = false;
+  if (old) { try { await sb.removeChannel(old); } catch (e) {} }   // must be fully gone, or channel() hands the dying one back
+  A.connecting = false;
+  if (A.ended || arch !== A) return;
+  const ch = sb.channel('archer-' + A.id, { config: { broadcast: { self: false, ack: false } } });   // same topic for both players
+  A.ch = ch; A.connectedAt = performance.now();
+  ch.on('broadcast', { event: 's' }, ({ payload: p }) => { if (arch !== A || A.ended) return; const o = A.op; o.tx = p.x; o.ty = p.y; o.vy = p.vy; o.rvx = p.vx || 0; o.aim = p.a != null ? { angle: p.a, power: p.p } : null; o.seen = performance.now(); })
+    .on('broadcast', { event: 'f' }, ({ payload: p }) => { if (arch !== A || A.ended) return; if (A.arrows.some(q => q.id === p.id)) return; const ok = (pvp && pvp.opp_arrows || []).includes(p.k); A.arrows.push({ id: p.id, x: p.x, y: p.y, vx: p.vx, vy: p.vy, p: p.p, k: ok ? p.k : 'normal', mine: false, alive: true }); })
+    .on('broadcast', { event: 'h' }, ({ payload: p }) => {
+      if (arch !== A || A.ended) return;
+      if (p.part === 'poison') { A.oppHp = p.hp; A.opPoisonUntil = performance.now() + 1200; archMsg(`Poison −${p.dmg}`, 'win'); archHud(); return; }
+      const a = A.arrows.find(q => q.id === p.id); if (a && a.alive) { a.alive = false; archStuck.push({ x: a.x, y: a.y, vx: a.vx, vy: a.vy, k: a.k }); }
+      if (a && a.k === 'poison') A.opPoisonUntil = performance.now() + 3200;
+      A.oppHp = p.hp; archFlash = { side: 'op', t: performance.now() }; archMsg(p.part === 'head' ? `HEADSHOT −${p.dmg}` : `Hit −${p.dmg}`, 'win'); archHud();
+    })
+    .subscribe(status => {
+      if (A.ch !== ch) return;                                  // an old channel we already replaced
+      if (status === 'SUBSCRIBED') { A.joined = true; A.lastSend = 0; return; }
+      A.joined = false;
+      if (!A.ended && arch === A && (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED')) {
+        clearTimeout(A.retryT); A.retryT = setTimeout(() => { if (arch === A && !A.ended && !A.joined) archConnect(A); }, 700);
+      }
+    });
+}
+// important events (fire / hit): send now if joined, otherwise queue and flush once the channel is back
+function archSend(event, payload){
+  const A = arch; if (!A || A.bot || !A.ch) return;
+  if (A.joined) { A.ch.send({ type: 'broadcast', event, payload }).catch(() => {}); }
+  else { (A.outbox = A.outbox || []).push({ event, payload }); }
+}
 function archStop(discard){
   if (!arch) return;
-  cancelAnimationFrame(arch.raf);
-  try { sb.removeChannel(arch.ch); } catch (e) {}
+  cancelAnimationFrame(arch.raf); clearTimeout(arch.retryT);
   arch.ended = true; arch.keys = {}; arch.aim = null;
+  const ch = arch.ch; arch.ch = null; arch.joined = false;
+  if (ch) { try { sb.removeChannel(ch); } catch (e) {} }
   if (discard) arch = null;
 }
 function renderArcher(m){
@@ -1567,7 +1592,7 @@ function archTick(now){
   if (k.jump) { k.jump = false; if (me.y <= 0 && me.vy <= 0) me.vy = ARCH.jumpV; }
   if (me.y > 0 || me.vy > 0) { me.vy -= ARCH.pg * dt; me.y += me.vy * dt; if (me.y <= 0) { me.y = 0; me.vy = 0; } }
   // opponent: ease toward their last broadcast
-  if (arch.bot) { const vxNow = (me.x - (arch.prevX ?? me.x)) / Math.max(dt, 1e-3); archBot.vx = archBot.vx * 0.8 + vxNow * 0.2; arch.prevX = me.x; archBotThink(dt); } else { const f = 1 - Math.exp(-dt * 22); o.x += (o.tx - o.x) * f; o.y += (o.ty - o.y) * f; }
+  if (arch.bot) { const vxNow = (me.x - (arch.prevX ?? me.x)) / Math.max(dt, 1e-3); archBot.vx = archBot.vx * 0.8 + vxNow * 0.2; arch.prevX = me.x; archBotThink(dt); } else { const ahead = o.rvx ? o.rvx * Math.min(0.12, (now - (o.seen || now)) / 1000) : 0, f = 1 - Math.exp(-dt * 18); o.x += (o.tx + ahead - o.x) * f; o.y += (o.ty - o.y) * f; }
   // arrows
   for (const a of arch.arrows) {
     if (!a.alive) continue;
@@ -1605,7 +1630,15 @@ function archTick(now){
   // broadcast my state: ~20/s while anything changes, 4/s keepalive
   const st = { x: +me.x.toFixed(2), y: +me.y.toFixed(2), vy: +me.vy.toFixed(1), a: arch.aim ? arch.aim.angle : null, p: arch.aim ? arch.aim.power : null };
   const key = st.x + '|' + st.y + '|' + st.a + '|' + st.p;
-  if (!arch.bot && ((key !== arch.lastSent && now - arch.lastSend >= 48) || now - arch.lastSend >= 250)) { arch.lastSend = now; arch.lastSent = key; arch.ch.send({ type: 'broadcast', event: 's', payload: st }); }
+  if (!arch.bot) {
+    if (!arch.joined && !arch.connecting && now - (arch.connectedAt || 0) > 4000) archConnect(arch);   // stuck joining: try again
+    if (arch.joined && arch.outbox && arch.outbox.length) { const q = arch.outbox; arch.outbox = []; q.forEach(m => arch.ch.send({ type: 'broadcast', event: m.event, payload: m.payload }).catch(() => {})); }
+    // ~12 updates/s while moving, 3/s idle; only while joined (never falls back to REST spam)
+    if (arch.joined && ((key !== arch.lastSent && now - arch.lastSend >= 80) || now - arch.lastSend >= 330)) {
+      arch.lastSend = now; arch.lastSent = key; st.vx = +((me.x - (arch.sentX ?? me.x)) / Math.max(0.05, (now - (arch.sentAt || now)) / 1000)).toFixed(1); arch.sentX = me.x; arch.sentAt = now;
+      arch.ch.send({ type: 'broadcast', event: 's', payload: st }).catch(() => {});
+    }
+  }
   if (arch.bot && !arch.ended) { arch.t += dt; const left = Math.max(0, Math.ceil(90 - arch.t)); const ce = $('archClock'); ce.textContent = `⏱ ${left}s`; ce.className = 'pvp-clock' + (left <= 10 ? ' warn' : ''); if (arch.t >= 90) archBotEnd(); }
   // reload bar
   const rl = $('archReload'); if (rl) rl.style.width = Math.min(100, Math.max(0, 100 - (arch.reloadAt - now) / (ARCH.reload * 10))) + '%';
@@ -1615,7 +1648,7 @@ function archTick(now){
 async function archPoisonTick(){
   arch.myHp = Math.max(0, arch.myHp - 4); archMsg('Poisoned −4', 'lose'); archHud();
   if (arch.bot) { if (arch.myHp <= 0) archBotEnd(); return; }
-  arch.ch.send({ type: 'broadcast', event: 'h', payload: { id: null, part: 'poison', dmg: 4, hp: arch.myHp } });
+  archSend('h', { id: null, part: 'poison', dmg: 4, hp: arch.myHp });
   const { data, error } = await sb.rpc('archer_damage', { p_id: arch.id, p_dmg: 4, p_kind: 'poison' });
   if (!error && data && data.status !== 'live') pollPvp();
 }
@@ -1625,7 +1658,7 @@ async function archTakeHit(id, head, power, kind){
   if (kind === 'poison') arch.poisonMe = { left: 3, next: now + 1000 };
   archFlash = { side: 'me', t: now }; archMsg(head ? `You got headshot −${dmg}` : `You got hit −${dmg}`, 'lose'); archHud();
   if (arch.bot) { if (arch.myHp <= 0) archBotEnd(); return; }
-  arch.ch.send({ type: 'broadcast', event: 'h', payload: { id, part: head ? 'head' : 'body', dmg, hp: arch.myHp } });
+  archSend('h', { id, part: head ? 'head' : 'body', dmg, hp: arch.myHp });
   const { data, error } = await sb.rpc('archer_damage', { p_id: arch.id, p_dmg: dmg, p_kind: 'hit' });
   if (error) return toast(error.message);
   if (data && data.status !== 'live') pollPvp(); else if (data && arch) { arch.myHp = data.my_hp; arch.oppHp = data.opp_hp; archHud(); }
@@ -1638,7 +1671,7 @@ function archFire(aim){
   const id = (arch.left ? 'a' : 'b') + (++arch.seq);
   const k = archCanUse(archKind) ? archKind : 'normal';
   arch.arrows.push({ id, x, y, vx, vy, p: aim.power, k, mine: true, alive: true });
-  if (!arch.bot) arch.ch.send({ type: 'broadcast', event: 'f', payload: { id, x: +x.toFixed(2), y: +y.toFixed(2), vx: +vx.toFixed(3), vy: +vy.toFixed(3), p: aim.power, k } });
+  archSend('f', { id, x: +x.toFixed(2), y: +y.toFixed(2), vx: +vx.toFixed(3), vy: +vy.toFixed(3), p: aim.power, k });
 }
 function archGeom(c){
   const W = c.clientWidth, H = Math.max(120, Math.round(W / 2.4));
