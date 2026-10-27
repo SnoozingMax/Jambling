@@ -1789,10 +1789,10 @@ function archDraw(){
   archStick(ctx, X(arch.me.x), Y(arch.me.y), arch.dir * fl, flash('me') ? css('--lose') : meC, sy, arch.aim, now >= arch.reloadAt && !arch.ended && ARROWS[archCanUse(archKind) ? archKind : 'normal'].color);
   archStick(ctx, X(arch.op.x), Y(arch.op.y), -arch.dir * fl, flash('op') ? css('--lose') : opC, sy, arch.op.aim, !arch.ended);
   drawStuck(true);    // arrows stuck in the archers, on top so you can see them
-  if (!arch.bot && !arch.ended) {   // ping to your opponent (round trip through the live connection)
+  {   // ping to your opponent (round trip through the live connection); practice has no connection
     const fresh = arch.ping != null && now - (arch.pongAt || 0) < 6000, ms = fresh ? Math.round(arch.ping) : null;
-    const col = !arch.joined || ms == null ? '#8d8a94' : ms < 90 ? '#2fbf6b' : ms < 180 ? '#e8b23a' : '#ff4d45';
-    const label = !arch.joined ? 'connecting…' : ms == null ? '— ms' : ms + ' ms';
+    const col = arch.bot ? '#2fbf6b' : arch.ended ? '#8d8a94' : !arch.joined || ms == null ? '#8d8a94' : ms < 90 ? '#2fbf6b' : ms < 180 ? '#e8b23a' : '#ff4d45';
+    const label = arch.bot ? 'bot · 0 ms' : arch.ended ? (ms != null ? ms + ' ms' : '— ms') : !arch.joined ? 'connecting…' : ms == null ? '— ms' : ms + ' ms';
     ctx.font = '600 11px "IBM Plex Mono", monospace'; ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
     const tw = ctx.measureText(label).width;
     ctx.fillStyle = 'rgba(15,15,18,.55)'; ctx.beginPath(); ctx.roundRect ? ctx.roundRect(W - tw - 30, 8, tw + 22, 20, 10) : ctx.rect(W - tw - 30, 8, tw + 22, 20); ctx.fill();
