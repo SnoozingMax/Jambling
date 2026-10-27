@@ -1572,6 +1572,21 @@ const archBody = o => o && o.crouch ? { h: 4, head: 2.9, bow: 2.9 } : { h: ARCH.
 const archDmg = (power, head, kind) => { const base = 10 + 0.25 * Math.max(0, Math.min(100, power || 0));
   return Math.min(90, Math.round(kind === 'sniper' ? base * (head ? 2.2 : 0.6) : base * (head ? 1.6 : 1))); };
 let arch = null, archFlash = null, archStuck = [], archMsgT = null;
+// ---- parry: your arrow can knock an incoming one out of the air ----
+// The player whose half of the field the collision is in decides it (so both screens agree), then tells the other.
+const PARRY_R = 1.5;
+let archSparks = [], archDebris = [];
+function archMyHalf(x){ return arch.bot ? true : (arch.left ? x < 50 : x > 50); }
+function archParry(inc, mine, announce){
+  if (!inc.alive || !mine.alive) return;
+  inc.alive = mine.alive = false;
+  const x = (inc.x + mine.x) / 2, y = (inc.y + mine.y) / 2;
+  archSparks.push({ x, y, t: performance.now() });
+  for (const a of [inc, mine]) archDebris.push({ x: a.x, y: a.y, vx: a.vx * 0.15 + (Math.random() - 0.5) * 6, vy: 6 + Math.random() * 4, k: a.k });
+  const iParried = (mine.born || 0) >= (inc.born || 0);   // the later shot is the parry
+  archMsg(iParried ? 'PARRY!' : (arch.bot ? 'Bot parried' : 'Parried'), iParried ? 'win' : 'lose');
+  if (announce && !arch.bot) archSend('pr', { inc: inc.id, mine: mine.id, x: +x.toFixed(2), y: +y.toFixed(2) });
+}
 // arrows that hit someone stay in them (offset from their feet, so they move with them). Pure decoration: nothing collides with them.
 function archPin(a, who){
   const t = who === 'me' ? arch.me : arch.op;
@@ -1586,7 +1601,7 @@ function archStart(m){
     me: { x: +m.my_x || (left ? 15 : 85), y: 0, vy: 0 },
     op: { x: +m.opp_x || (left ? 85 : 15), y: 0, tx: +m.opp_x || (left ? 85 : 15), ty: 0, aim: null, seen: 0 },
     arrows: [], keys: {}, aim: null, reloadAt: 0, lastSend: 0, lastSent: '', seq: 0, myHp: m.my_hp, oppHp: m.opp_hp, myMax: m.my_max || 100, oppMax: m.opp_max || 100, hitAt: 0, ended: false, last: performance.now() };
-  archStuck = []; archFlash = null;
+  archStuck = []; archFlash = null; archSparks = []; archDebris = [];
   archConnect(arch);
   arch.raf = requestAnimationFrame(archTick);
   archLoadArrows();
@@ -1602,7 +1617,7 @@ async function archConnect(A){
   const ch = sb.channel('archer-' + A.id, { config: { broadcast: { self: false, ack: false } } });   // same topic for both players
   A.ch = ch; A.connectedAt = performance.now();
   ch.on('broadcast', { event: 's' }, ({ payload: p }) => { if (arch !== A || A.ended) return; const o = A.op; o.tx = p.x; o.ty = p.y; o.crouch = !!p.c; o.vy = p.vy; o.rvx = p.vx || 0; o.aim = p.a != null ? { angle: p.a, power: p.p } : null; o.seen = performance.now(); })
-    .on('broadcast', { event: 'f' }, ({ payload: p }) => { if (arch !== A || A.ended) return; if (A.arrows.some(q => q.id === p.id)) return; const ok = (pvp && pvp.opp_arrows || []).includes(p.k); const ar = { id: p.id, x: p.x, y: p.y, vx: p.vx, vy: p.vy, p: p.p, k: ok ? p.k : 'normal', mine: false, alive: true };
+    .on('broadcast', { event: 'f' }, ({ payload: p }) => { if (arch !== A || A.ended) return; if (A.arrows.some(q => q.id === p.id)) return; const ok = (pvp && pvp.opp_arrows || []).includes(p.k); const ar = { id: p.id, x: p.x, y: p.y, vx: p.vx, vy: p.vy, p: p.p, k: ok ? p.k : 'normal', mine: false, alive: true, born: performance.now() - (A.ping != null ? A.ping / 2 : 40) };
       let catchUp = Math.min(0.25, A.ping != null ? A.ping / 2000 : 0.04); const g = ARCH.g * archGrav(ar.k);
       while (catchUp > 0) { const st = Math.min(1 / 60, catchUp); ar.vy -= g * st; ar.x += ar.vx * st; ar.y += ar.vy * st; catchUp -= st; }
       if (ar.y > 0) A.arrows.push(ar); })
@@ -1613,6 +1628,11 @@ async function archConnect(A){
       if (a && a.k === 'poison') A.opPoisonUntil = performance.now() + 3200;
       if (p.heal > 0) A.myHp = Math.min(A.myMax || 100, A.myHp + p.heal);   // my lifesteal arrow landed
       A.oppHp = p.hp; archFlash = { side: 'op', t: performance.now() }; archMsg((p.part === 'head' ? `HEADSHOT −${p.dmg}` : `Hit −${p.dmg}`) + (p.heal > 0 ? ` · +${p.heal} HP` : ''), 'win'); archHud();
+    })
+    .on('broadcast', { event: 'pr' }, ({ payload: p }) => {   // they parried: p.inc = my arrow (incoming for them), p.mine = their arrow
+      if (arch !== A || A.ended) return;
+      const mine = A.arrows.find(q => q.id === p.inc), theirs = A.arrows.find(q => q.id === p.mine);
+      if (mine && theirs) archParry(theirs, mine, false); else { if (mine) mine.alive = false; if (theirs) theirs.alive = false; archSparks.push({ x: p.x, y: p.y, t: performance.now() }); archMsg('Parried', 'lose'); }
     })
     .on('broadcast', { event: 'pi' }, ({ payload: p }) => { if (arch === A && A.ch === ch && A.joined) ch.send({ type: 'broadcast', event: 'po', payload: { t: p.t } }).catch(() => {}); })
     .on('broadcast', { event: 'po' }, ({ payload: p }) => {
@@ -1648,7 +1668,7 @@ function renderArcher(m){
   if (!live && arch && arch.id === m.id && !arch.ended) archStop(false);
   if (!live && (!arch || arch.id !== m.id)) {
     const left = m.me_side === 'left';
-    archStop(true); archStuck = []; archFlash = null;
+    archStop(true); archStuck = []; archFlash = null; archSparks = []; archDebris = [];
     arch = { id: m.id, left, dir: left ? 1 : -1, me: { x: +m.my_x || (left ? 15 : 85), y: 0, vy: 0 }, op: { x: +m.opp_x || (left ? 85 : 15), y: 0, aim: null },
       arrows: [], keys: {}, aim: null, reloadAt: Infinity, myHp: m.my_hp, oppHp: m.opp_hp, ended: true };
   }
@@ -1715,6 +1735,15 @@ function archTick(now){
       }
     }
   }
+  for (const inc of arch.arrows) {                     // parry checks (only collisions on my half, or anywhere in practice)
+    if (!inc.alive || inc.mine) continue;
+    for (const mine of arch.arrows) {
+      if (!mine.alive || !mine.mine) continue;
+      if (Math.hypot(inc.x - mine.x, inc.y - mine.y) <= PARRY_R && archMyHalf((inc.x + mine.x) / 2)) { archParry(inc, mine, true); break; }
+    }
+  }
+  for (const d of archDebris) { if (d.done) continue; d.vy -= ARCH.g * dt; d.x += d.vx * dt; d.y += d.vy * dt; if (d.y <= 0) { d.done = true; archStuck.push({ x: d.x, y: 0, vx: d.vx || 0.01, vy: -8, k: d.k }); } }
+  archDebris = archDebris.filter(d => !d.done);
   arch.arrows = arch.arrows.filter(a => a.alive);
   if (!arch.ended && arch.poisonMe && now >= arch.poisonMe.next) {          // I'm poisoned: 4 HP per second, reported as ticks
     arch.poisonMe.left--; arch.poisonMe.next += 1000; archPoisonTick();
@@ -1773,7 +1802,7 @@ function archFire(aim){
   const v = (10 + aim.power * 0.45) * archSpeedMul(k), a = aim.angle * Math.PI / 180;
   const x = arch.me.x + arch.dir * 1.6, y = arch.me.y + archBody(arch.me).bow, vx = v * Math.cos(a) * arch.dir, vy = v * Math.sin(a);
   const id = (arch.left ? 'a' : 'b') + (++arch.seq);
-  arch.arrows.push({ id, x, y, vx, vy, p: aim.power, k, mine: true, alive: true });
+  arch.arrows.push({ id, x, y, vx, vy, p: aim.power, k, mine: true, alive: true, born: performance.now() });
   archSend('f', { id, x: +x.toFixed(2), y: +y.toFixed(2), vx: +vx.toFixed(3), vy: +vy.toFixed(3), p: aim.power, k });
 }
 function archGeom(c){
@@ -1829,6 +1858,13 @@ function archDraw(){
     }
   }
   for (const a of arch.arrows) { const A2 = ARROWS[a.k] || ARROWS.normal; archArrow(ctx, X(a.x), Y(a.y), Math.atan2(-a.vy * sy, a.vx * fl * sx), a.mine ? A2.color : A2.foe, sy); }
+  for (const d of archDebris) archArrow(ctx, X(d.x), Y(d.y), (now / 90) % (Math.PI * 2), 'rgba(210,205,225,.6)', sy);   // knocked-out arrows tumbling
+  archSparks = archSparks.filter(sp => now - sp.t < 450);
+  for (const sp of archSparks) {
+    const k = (now - sp.t) / 450, r0 = 4 + k * 22;
+    ctx.strokeStyle = `rgba(255,214,120,${1 - k})`; ctx.lineWidth = 2;
+    for (let i = 0; i < 8; i++) { const a = i * Math.PI / 4 + 0.3; ctx.beginPath(); ctx.moveTo(X(sp.x) + Math.cos(a) * r0 * 0.4, Y(sp.y) + Math.sin(a) * r0 * 0.4); ctx.lineTo(X(sp.x) + Math.cos(a) * r0, Y(sp.y) + Math.sin(a) * r0); ctx.stroke(); }
+  }
   // names under feet
   ctx.font = '600 11px Inter, sans-serif'; ctx.textAlign = 'center'; ctx.fillStyle = 'rgba(255,255,255,.45)';
   ctx.fillText('you', X(arch.me.x), gy + 11); ctx.fillText(($('archOppName').textContent || 'opp').slice(0, 12), X(arch.op.x), gy + 11);
@@ -1924,11 +1960,11 @@ const ARCH_BOT = {
   // dodge chance, reaction time (s), run speed, random hops/s, headshot tries, arrows it may use, smart dodges (crouch/jump/step by reading the arrow)
   easy:   { aimErr: 7.5, lead: 0,    angMin: 38, angMax: 62, fireMin: 2.2, fireMax: 3.2, dodge: 0.25, react: 0.5,  move: 0.6,  hop: 0,    head: 0,    arrows: ['normal'], smart: false },
   normal: { aimErr: 1.8, lead: 0.75, angMin: 20, angMax: 45, fireMin: 1.3, fireMax: 1.9, dodge: 0.6,  react: 0.3,  move: 0.85, hop: 0.15, head: 0.2,  arrows: ['normal', 'poison'], smart: true },
-  hard:   { aimErr: 0.6, lead: 1.0,  angMin: 10, angMax: 30, fireMin: 1.0, fireMax: 1.3, dodge: 0.92, react: 0.18, move: 1,    hop: 0.4,  head: 0.45, arrows: ['normal', 'poison', 'sniper', 'homing'], smart: true },
-  insane: { aimErr: 0.25, lead: 1.0, angMin: 6,  angMax: 22, fireMin: 1.0, fireMax: 1.1, dodge: 0.88, react: 0.12, move: 1,    hop: 0.5,  head: 0.6,  arrows: ['normal', 'poison', 'sniper', 'homing', 'vampire'], smart: true }
+  hard:   { aimErr: 0.6, lead: 1.0,  angMin: 10, angMax: 30, fireMin: 1.0, fireMax: 1.3, dodge: 0.92, react: 0.18, move: 1,    hop: 0.4,  head: 0.45, arrows: ['normal', 'poison', 'sniper', 'homing'], smart: true, parry: 0.3 },
+  insane: { aimErr: 0.25, lead: 1.0, angMin: 6,  angMax: 22, fireMin: 1.0, fireMax: 1.1, dodge: 0.88, react: 0.12, move: 1,    hop: 0.5,  head: 0.6,  arrows: ['normal', 'poison', 'sniper', 'homing', 'vampire'], smart: true, parry: 0.55 }
 };
 function archBotStart(){
-  archStop(true); archStuck = []; archFlash = null;
+  archStop(true); archStuck = []; archFlash = null; archSparks = []; archDebris = [];
   archBot = { diff: archBotDiffSel, tx: 15, nextMove: 0, nextFire: 1.4, seen: {}, vx: 0 };
   // you on the right (world), bot on the left: no view flip needed
   arch = { id: 'bot', bot: true, left: false, dir: -1, zmin: 52, zmax: 98,
@@ -1968,6 +2004,20 @@ function archBotSolve(angle, tx, ty, kind){
     if (err < best.err) best = { p, t, err };
   }
   return best;
+}
+// find a shot that meets arrow `a` in the air (same place, same moment); null if there isn't one
+function archBotIntercept(a){
+  const o = arch.op, bx = o.x + 1.6, by = o.y + archBody(o).bow, ga = ARCH.g * archGrav(a.k), path = [];
+  let x = a.x, y = a.y, vx = a.vx, vy = a.vy;
+  for (let i = 0; i < 66; i++) { vy -= ga / 60; x += vx / 60; y += vy / 60; path.push([x, y]); if (y <= 0) break; }
+  for (let ang = -4; ang <= 60; ang += 3) for (let pw = 20; pw <= 100; pw += 2) {
+    const v = 10 + pw * 0.45, r = ang * Math.PI / 180; let qx = bx, qy = by, qvx = v * Math.cos(r), qvy = v * Math.sin(r);
+    for (let i = 0; i < path.length; i++) {
+      qvy -= ARCH.g / 60; qx += qvx / 60; qy += qvy / 60; if (qy <= 0) break;
+      if (i > 8 && Math.hypot(qx - path[i][0], qy - path[i][1]) < PARRY_R * 0.7) return { ang, p: pw };
+    }
+  }
+  return null;
 }
 // pick an arrow for the moment: lifesteal when hurt, poison on a healthy target, sniper on a still one, homing on a runner
 function archBotArrow(d){
@@ -2011,6 +2061,16 @@ function archBotThink(dt){
     const yAt = y - o.y; if (yAt < -0.5 || yAt > ARCH.bodyH + 0.5) continue;
     if (!archBot.noticed[a.id]) archBot.noticed[a.id] = now;
     if (now - archBot.noticed[a.id] < d.react * 1000) continue;  // hasn't reacted yet
+    if (d.parry && archBot.parried == null) archBot.parried = {};
+    if (d.parry && !archBot.parried[a.id] && now - (archBot.lastShot || 0) >= 1000 && t > 0.35) {   // reload ready: try to shoot it down
+      archBot.parried[a.id] = true;
+      const ip = Math.random() < d.parry ? archBotIntercept(a) : null;
+      if (ip) {
+        const v = 10 + ip.p * 0.45, r = ip.ang * Math.PI / 180;
+        arch.arrows.push({ id: 'bot' + (++arch.seq), x: o.x + 1.6, y: o.y + archBody(o).bow, vx: v * Math.cos(r), vy: v * Math.sin(r), p: ip.p, k: 'normal', mine: false, alive: true, born: now });
+        o.aim = null; archBot.plan = null; archBot.lastShot = now; archBot.nextFire = Math.max(archBot.nextFire, 1.0);
+      }
+    }
     if (archBot.roll[a.id] == null) archBot.roll[a.id] = Math.random() < d.dodge;
     if (!archBot.roll[a.id]) continue;                            // this one it misreads
     threat = true;
@@ -2029,8 +2089,8 @@ function archBotThink(dt){
   if (archBot.nextFire <= 0) {
     const sol = archBotPlan(d, archBot.plan && archBot.plan.kind), k = sol.kind;   // same arrow it drew, aimed at where you are now
     const v = (10 + sol.p * 0.45) * archSpeedMul(k), a = sol.ang * Math.PI / 180;
-    arch.arrows.push({ id: 'bot' + (++arch.seq), x: o.x + 1.6, y: o.y + archBody(o).bow, vx: v * Math.cos(a), vy: v * Math.sin(a), p: sol.p, k, mine: false, alive: true });
-    o.aim = null; archBot.plan = null; archBot.nextFire = d.fireMin + Math.random() * (d.fireMax - d.fireMin);
+    arch.arrows.push({ id: 'bot' + (++arch.seq), x: o.x + 1.6, y: o.y + archBody(o).bow, vx: v * Math.cos(a), vy: v * Math.sin(a), p: sol.p, k, mine: false, alive: true, born: now });
+    o.aim = null; archBot.plan = null; archBot.lastShot = now; archBot.nextFire = d.fireMin + Math.random() * (d.fireMax - d.fireMin);
   }
   o.tx = o.x; o.ty = o.y;
 }
