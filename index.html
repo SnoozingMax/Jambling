@@ -1497,6 +1497,12 @@ function archHome(a, tx, ty, dt){
 }
 const archDmg = (power, head) => Math.round((10 + 0.25 * Math.max(0, Math.min(100, power || 0))) * (head ? 1.6 : 1));
 let arch = null, archFlash = null, archStuck = [], archMsgT = null;
+// arrows that hit someone stay in them (offset from their feet, so they move with them). Pure decoration: nothing collides with them.
+function archPin(a, who){
+  const t = who === 'me' ? arch.me : arch.op;
+  archStuck.push({ on: who, dx: a.x - t.x, dy: a.y - t.y, vx: a.vx, vy: a.vy, k: a.k });
+  const mine = archStuck.filter(s => s.on === who); if (mine.length > 10) archStuck.splice(archStuck.indexOf(mine[0]), 1);
+}
 function archMsg(t, cls){ const el = $('archMsg'); el.textContent = t; el.className = 'bj-msg ' + (cls || ''); clearTimeout(archMsgT); if (t) archMsgT = setTimeout(() => { if (arch && !arch.ended) { el.textContent = ''; } }, 1400); }
 function archStart(m){
   archStop(true);
@@ -1525,7 +1531,7 @@ async function archConnect(A){
     .on('broadcast', { event: 'h' }, ({ payload: p }) => {
       if (arch !== A || A.ended) return;
       if (p.part === 'poison') { A.oppHp = p.hp; A.opPoisonUntil = performance.now() + 1200; archMsg(`Poison −${p.dmg}`, 'win'); archHud(); return; }
-      const a = A.arrows.find(q => q.id === p.id); if (a && a.alive) { a.alive = false; archStuck.push({ x: a.x, y: a.y, vx: a.vx, vy: a.vy, k: a.k }); }
+      const a = A.arrows.find(q => q.id === p.id); if (a && a.alive) { a.alive = false; archPin(a, 'op'); }
       if (a && a.k === 'poison') A.opPoisonUntil = performance.now() + 3200;
       A.oppHp = p.hp; archFlash = { side: 'op', t: performance.now() }; archMsg(p.part === 'head' ? `HEADSHOT −${p.dmg}` : `Hit −${p.dmg}`, 'win'); archHud();
     })
@@ -1598,15 +1604,15 @@ function archTick(now){
     if (!a.alive) continue;
     if (a.k === 'homing') { const t = a.mine ? o : me; archHome(a, t.x, t.y + 3, dt); }
     a.vy -= ARCH.g * dt; a.x += a.vx * dt; a.y += a.vy * dt;
-    if (a.y <= 0) { a.y = 0; a.alive = false; archStuck.push({ x: a.x, y: 0, vx: a.vx, vy: a.vy }); continue; }
+    if (a.y <= 0) { a.y = 0; a.alive = false; archStuck.push({ x: a.x, y: 0, vx: a.vx, vy: a.vy, k: a.k }); continue; }
     if (a.x < -5 || a.x > 105) { a.alive = false; continue; }
     if (!a.mine) {        // incoming: did it hit ME (my true position)?
       if (Math.abs(a.x - me.x) <= ARCH.halfW && a.y >= me.y && a.y <= me.y + ARCH.bodyH) {
-        a.alive = false; archStuck.push({ x: a.x, y: a.y, vx: a.vx, vy: a.vy });
+        a.alive = false; archPin(a, 'me');
         archTakeHit(a.id, a.y >= me.y + ARCH.headY, a.p, a.k);
       }
     } else if (Math.abs(a.x - o.x) <= ARCH.halfW && a.y >= o.y && a.y <= o.y + ARCH.bodyH) {   // mine: stop it on their body; their client confirms the damage
-      a.alive = false; archStuck.push({ x: a.x, y: a.y, vx: a.vx, vy: a.vy });
+      a.alive = false; archPin(a, 'op');
       if (arch.bot) {                                                                          // practice: no other client, score it here
         const head = a.y >= o.y + ARCH.headY, dmg = archDmg(a.p, head);
         if (a.k === 'poison') { arch.poisonOp = { left: 3, next: now + 1000 }; arch.opPoisonUntil = now + 3200; }
@@ -1626,7 +1632,7 @@ function archTick(now){
     if (arch.poisonOp.left <= 0) arch.poisonOp = null;
     if (arch.oppHp <= 0) archBotEnd();
   }
-  if (archStuck.length > 14) archStuck.splice(0, archStuck.length - 14);
+  const ground = archStuck.filter(s => !s.on); if (ground.length > 14) archStuck = archStuck.filter(s => s.on || ground.indexOf(s) >= ground.length - 14);
   // broadcast my state: ~20/s while anything changes, 4/s keepalive
   const st = { x: +me.x.toFixed(2), y: +me.y.toFixed(2), vy: +me.vy.toFixed(1), a: arch.aim ? arch.aim.angle : null, p: arch.aim ? arch.aim.power : null };
   const key = st.x + '|' + st.y + '|' + st.a + '|' + st.p;
@@ -1690,12 +1696,19 @@ function archDraw(){
   ctx.strokeStyle = '#3a3548'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(0, gy + .5); ctx.lineTo(W, gy + .5); ctx.stroke();
   // halves
   ctx.strokeStyle = 'rgba(255,255,255,.06)'; ctx.setLineDash([3, 6]); ctx.beginPath(); ctx.moveTo(X(50), 0); ctx.lineTo(X(50), gy); ctx.stroke(); ctx.setLineDash([]);
-  archStuck.forEach(s => archArrow(ctx, X(s.x), Y(s.y), Math.atan2(-s.vy * sy, s.vx * fl * sx), s.k && s.k !== 'normal' ? ARROWS[s.k].color + '77' : 'rgba(210,205,225,.45)', sy));
+  const drawStuck = pinned => archStuck.forEach(s => {
+    if (!!s.on !== pinned) return;
+    const t = s.on === 'me' ? arch.me : s.on === 'op' ? arch.op : null, x = t ? t.x + s.dx : s.x, y = t ? t.y + s.dy : s.y;
+    const col = s.k && s.k !== 'normal' ? ARROWS[s.k].color + (t ? 'cc' : '77') : (t ? 'rgba(235,230,245,.85)' : 'rgba(210,205,225,.45)');
+    archArrow(ctx, X(x), Y(y), Math.atan2(-s.vy * sy, s.vx * fl * sx), col, sy);
+  });
+  drawStuck(false);   // ground arrows behind the archers
   const me = css('--accent'), them = '#cfcbdb';
   const flash = side => archFlash && archFlash.side === side && (now - archFlash.t) < 420 && Math.floor((now - archFlash.t) / 70) % 2 === 0;
   const poisonC = '#7dff8a', meC = arch.poisonMe ? poisonC : me, opC = (arch.opPoisonUntil || 0) > now ? poisonC : them;
   archStick(ctx, X(arch.me.x), Y(arch.me.y), arch.dir * fl, flash('me') ? css('--lose') : meC, sy, arch.aim, now >= arch.reloadAt && !arch.ended && ARROWS[archCanUse(archKind) ? archKind : 'normal'].color);
   archStick(ctx, X(arch.op.x), Y(arch.op.y), -arch.dir * fl, flash('op') ? css('--lose') : opC, sy, arch.op.aim, !arch.ended);
+  drawStuck(true);    // arrows stuck in the archers, on top so you can see them
   // my aim: pull line + short preview
   if (arch.aim) {
     const bx = arch.me.x + arch.dir * 1.6, by = arch.me.y + ARCH.bowY;
