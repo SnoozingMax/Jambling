@@ -177,6 +177,15 @@ canvas{width:100%;height:100%;display:block}
 .arch-buy{display:flex;align-items:center;gap:8px;margin-top:8px;flex-wrap:wrap;font-size:13px}
 .arch-buy span{flex:1;min-width:160px}
 .arch-buy .go,.arch-buy .ghost{width:auto;padding:7px 14px;font-size:13px}
+.arch-shop{margin-top:16px;display:flex;flex-direction:column;gap:6px}
+.arch-shop label{margin-bottom:2px}
+.shop-row{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line)}
+.shop-row:last-child{border-bottom:0}
+.shop-row .ic{width:26px;text-align:center;font-size:17px}
+.shop-row .tx{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+.shop-row .tx b{font-size:14px} .shop-row .tx small{color:var(--muted);font-size:12px}
+.shop-row .go{width:auto;padding:6px 12px;font-size:13px;white-space:nowrap}
+.shop-row .own{font:600 12px "IBM Plex Mono",monospace;color:var(--win);white-space:nowrap}
 .arch-practice{width:100%;margin-top:10px;padding:11px;border-radius:12px;font:600 14px Inter,sans-serif}
 .arch-bot{display:flex;flex-direction:column;align-items:center;gap:10px}
 #archBotDiff{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;width:100%;max-width:360px}
@@ -555,6 +564,11 @@ tr.me td{color:var(--accent)}
         </div>
         <button class="go" id="pvpSend">Send challenge</button>
         <button type="button" class="ghost arch-practice" id="archPractice" hidden>🎯 Practice Archers vs Bot · free</button>
+        <div class="arch-shop" id="archShop" hidden>
+          <label>Archers armory</label>
+          <div id="archShopList"></div>
+          <div class="arch-buy" id="archShopBuy" hidden><span id="archShopBuyText"></span><button type="button" class="go" id="archShopYes">Buy</button><button type="button" class="ghost" id="archShopNo">Cancel</button></div>
+        </div>
       </form>
       <div class="dir-pad" id="pvpMoves" hidden>
         <button type="button" data-mv="up" class="dir-up">↑</button>
@@ -1314,6 +1328,8 @@ document.querySelectorAll('#pvpGame button').forEach(b => b.onclick = () => {
   document.querySelectorAll('#pvpGame button').forEach(x => x.classList.toggle('on', x === b));
   $('pvpHintText').textContent = HINTS[pvpGameSel];
   $('archPractice').hidden = pvpGameSel !== 'archer';
+  $('archShop').hidden = pvpGameSel !== 'archer';
+  if (pvpGameSel === 'archer') archLoadArrows();
 });
 const stakeText = c => `${GAME_NAME[c.game] || ''}${c.game ? ' · ' : ''}${c.friendly ? 'Friendly' : fmt(c.stake) + ' coins each'}`;
 function renderPvp(st){
@@ -1484,8 +1500,37 @@ async function archLoadArrows(){
   const { data, error } = await sb.rpc('archer_arrows');
   if (!error && data) { archOwned = data.owned || []; archPrices = data.prices || archPrices;
     if (arch && arch.bot && arch.t < 1 && archOwned.includes('hp200') && arch.myMax < 200) { arch.myMax = 200; arch.myHp = 200; archHud(); } }
-  archQuiverRender();
+  archQuiverRender(); archShopRender();
 }
+const SHOP_DESC = {
+  poison: 'Normal hit, then 4 HP/sec for 3 seconds', homing: 'Steers toward the target near the end of its flight',
+  sniper: 'Fast, almost flat. Body 0.6x, headshot 2.2x', vampire: 'Heals you for half the damage it does', hp200: 'Start every Archers match with 200 HP'
+};
+let archShopKind = null;
+function archShopRender(){
+  const el = $('archShopList'); if (!el) return;
+  el.innerHTML = ['poison', 'homing', 'sniper', 'vampire', 'hp200'].map(k => {
+    const it = ITEM(k), owned = archOwned.includes(k);
+    return `<div class="shop-row"><span class="ic" style="color:${it.color}">${it.icon}</span><span class="tx"><b>${it.name}${UPG[k] ? '' : ' arrow'}</b><small>${SHOP_DESC[k]}</small></span>` +
+      (owned ? '<span class="own">✓ Owned</span>' : `<button type="button" class="go" data-buy="${k}">${short(archPrices[k] || 0)}</button>`) + '</div>';
+  }).join('');
+}
+$('archShopList').onclick = e => {
+  const b = e.target.closest('[data-buy]'); if (!b) return;
+  archShopKind = b.dataset.buy; const it = ITEM(archShopKind);
+  $('archShopBuyText').textContent = `Buy ${it.name}${UPG[archShopKind] ? '' : ' arrows'} for ${short(archPrices[archShopKind])} coins? You keep it forever.`;
+  $('archShopBuy').hidden = false;
+};
+$('archShopNo').onclick = () => { $('archShopBuy').hidden = true; archShopKind = null; };
+$('archShopYes').onclick = async () => {
+  const k = archShopKind; if (!k) return; $('archShopYes').disabled = true;
+  const { data, error } = await sb.rpc('archer_buy', { p_kind: k });
+  $('archShopYes').disabled = false;
+  if (error) return toast(error.message);
+  archOwned = data.owned || archOwned; if (data.balance != null) setBalance(data.balance);
+  $('archShopBuy').hidden = true; archShopKind = null; archShopRender(); archQuiverRender();
+  toast(`${ITEM(k).name}${UPG[k] ? '' : ' arrows'} unlocked`);
+};
 const archCanUse = k => k === 'normal' || archOwned.includes(k) || !!(arch && arch.bot);   // practice: try any arrow free
 function archQuiverRender(){
   const q = $('archQuiver'); if (!q) return;
@@ -1788,7 +1833,7 @@ $('archBuyYes').onclick = async () => {
   $('archBuyYes').disabled = false;
   if (error) return toast(error.message);
   archOwned = data.owned || archOwned; if (data.balance != null) setBalance(data.balance);
-  if (!UPG[k]) archKind = k; $('archBuy').hidden = true; archBuyKind = null; archQuiverRender(); toast(UPG[k] ? `${UPG[k].name} unlocked. It kicks in from your next match.` : `${ARROWS[k].name} arrows unlocked`);
+  if (!UPG[k]) archKind = k; $('archBuy').hidden = true; archBuyKind = null; archQuiverRender(); archShopRender(); toast(UPG[k] ? `${UPG[k].name} unlocked. It kicks in from your next match.` : `${ARROWS[k].name} arrows unlocked`);
 };
 (function(){
   const c = $('archCanvas'); let dragging = false;
