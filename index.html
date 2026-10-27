@@ -171,8 +171,9 @@ canvas{width:100%;height:100%;display:block}
 .arch-quiver button.on{border-color:var(--ink);background:var(--ink);color:var(--paper)} .arch-quiver button.on small{color:var(--paper);opacity:.7}
 .arch-quiver button.locked{opacity:.6}
 .arch-quiver button.on{opacity:1}
-.arch-quiver .k-poison{color:#7dff8a} .arch-quiver .k-homing{color:#6fd3ff}
-.arch-quiver button.on.k-poison,.arch-quiver button.on.k-homing{color:var(--paper)}
+.arch-quiver .k-poison{color:#7dff8a} .arch-quiver .k-homing{color:#6fd3ff} .arch-quiver .k-sniper{color:#ffd166} .arch-quiver .k-vampire{color:#ff5d8f} .arch-quiver .k-hp200{color:#ff7b6b}
+.arch-quiver button.upg.owned{border-color:#ff7b6b55}
+.arch-quiver button.on.k-poison,.arch-quiver button.on.k-homing,.arch-quiver button.on.k-sniper,.arch-quiver button.on.k-vampire{color:var(--paper)}
 .arch-buy{display:flex;align-items:center;gap:8px;margin-top:8px;flex-wrap:wrap;font-size:13px}
 .arch-buy span{flex:1;min-width:160px}
 .arch-buy .go,.arch-buy .ghost{width:auto;padding:7px 14px;font-size:13px}
@@ -607,7 +608,7 @@ tr.me td{color:var(--accent)}
         <div class="arch-quiver" id="archQuiver"></div>
         <div class="arch-buy" id="archBuy" hidden><span id="archBuyText"></span><button type="button" class="go" id="archBuyYes">Buy</button><button type="button" class="ghost" id="archBuyNo">Cancel</button></div>
         <div class="arch-power"><span>PULL</span><div class="pbar"><div id="archPow"></div></div><span id="archAng">–</span><span class="arch-reload" title="Reload"><i id="archReload"></i></span></div>
-        <div class="hint" style="margin:6px 0 0">Move ◀ ▶ (or A/D), jump (or W/Space). Drag back anywhere on the field to pull the bow, release to fire. Harder pulls hit harder (body 10-35, headshots 1.6x). Poison arrows add 4 HP/sec for 3s, homing arrows steer a little. 90 seconds, most HP wins.</div>
+        <div class="hint" style="margin:6px 0 0">Move ◀ ▶ (or A/D), jump (or W/Space). Drag back anywhere on the field to pull the bow, release to fire. Harder pulls hit harder (body 10-35, headshots 1.6x). Special arrows: Poison (+4/s for 3s), Homing (aim assist), Sniper (flat, fast, 2.2x headshots), Lifesteal (heals half). The 200 HP upgrade starts you at 200. 90 seconds, most HP wins.</div>
       </div>
       <div class="bj-msg" id="archMsg"></div>
       <button type="button" class="pvp-rematch" id="archRematch" hidden>Rematch</button>
@@ -1470,12 +1471,19 @@ const ARCH = { g: 30, pg: 78, W: 100, H: 36, bowY: 4.5, halfW: 1.6, bodyH: 6, he
 const ARROWS = {
   normal: { name: 'Normal', icon: '➶', color: '#ffffff', foe: '#ffd9a8' },
   poison: { name: 'Poison', icon: '☠', color: '#7dff8a', foe: '#7dff8a', note: '+4/s for 3s' },
-  homing: { name: 'Homing', icon: '◎', color: '#6fd3ff', foe: '#6fd3ff', note: 'slight aim assist' }
+  homing: { name: 'Homing', icon: '◎', color: '#6fd3ff', foe: '#6fd3ff', note: 'aim assist' },
+  sniper: { name: 'Sniper', icon: '⌖', color: '#ffd166', foe: '#ffd166', note: 'flat & fast, 2.2x head' },
+  vampire: { name: 'Lifesteal', icon: '♥', color: '#ff5d8f', foe: '#ff5d8f', note: 'heals you half' }
 };
-let archKind = 'normal', archOwned = [], archPrices = { poison: 1e9, homing: 5e9 }, archBuyKind = null;
+const UPG = { hp200: { name: '200 HP', icon: '✚', color: '#ff7b6b', note: 'start every match at 200' } };
+const ITEM = k => ARROWS[k] || UPG[k];
+// per-arrow flight: sniper leaves the bow faster and drops much less
+const archSpeedMul = k => k === 'sniper' ? 1.45 : 1, archGrav = k => k === 'sniper' ? 0.35 : 1;
+let archKind = 'normal', archOwned = [], archPrices = { poison: 1e9, homing: 5e9, sniper: 2e9, vampire: 8e9, hp200: 5e9 }, archBuyKind = null;
 async function archLoadArrows(){
   const { data, error } = await sb.rpc('archer_arrows');
-  if (!error && data) { archOwned = data.owned || []; archPrices = data.prices || archPrices; }
+  if (!error && data) { archOwned = data.owned || []; archPrices = data.prices || archPrices;
+    if (arch && arch.bot && arch.t < 1 && archOwned.includes('hp200') && arch.myMax < 200) { arch.myMax = 200; arch.myHp = 200; archHud(); } }
   archQuiverRender();
 }
 const archCanUse = k => k === 'normal' || archOwned.includes(k) || !!(arch && arch.bot);   // practice: try any arrow free
@@ -1483,19 +1491,23 @@ function archQuiverRender(){
   const q = $('archQuiver'); if (!q) return;
   if (!archCanUse(archKind)) archKind = 'normal';
   q.innerHTML = Object.entries(ARROWS).map(([k, a]) => {
-    const owned = k === 'normal' || archOwned.includes(k), sub = k === 'normal' ? 'free' : owned ? a.note : (arch && arch.bot ? 'try free' : '🔒 ' + short(archPrices[k]));
+    const owned = k === 'normal' || archOwned.includes(k), sub = k === 'normal' ? 'free' : owned ? a.note : (arch && arch.bot ? 'try free' : '🔒 ' + short(archPrices[k] || 0));
     return `<button type="button" data-a="${k}" class="k-${k}${archKind === k ? ' on' : ''}${owned ? '' : ' locked'}">${a.icon} ${a.name}<small>${sub}</small></button>`;
+  }).join('') + Object.entries(UPG).map(([k, u]) => {
+    const owned = archOwned.includes(k);
+    return `<button type="button" data-a="${k}" class="k-${k} upg${owned ? ' owned' : ' locked'}">${u.icon} ${u.name}<small>${owned ? '✓ ' + u.note : '🔒 ' + short(archPrices[k] || 0)}</small></button>`;
   }).join('');
 }
 // steer a homing arrow a little toward (tx, ty): max ~9°/s, last 20 units only
 function archHome(a, tx, ty, dt){
-  if (Math.sign(tx - a.x) !== Math.sign(a.vx) || Math.abs(tx - a.x) > 20) return;   // only kicks in near the end of the flight
+  if (Math.sign(tx - a.x) !== Math.sign(a.vx) || Math.abs(tx - a.x) > 30) return;   // only kicks in for the last stretch
   const sp = Math.hypot(a.vx, a.vy), cur = Math.atan2(a.vy, a.vx), want = Math.atan2(ty - a.y, tx - a.x);
   let d = want - cur; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI;
-  const turn = Math.max(-0.15 * dt, Math.min(0.15 * dt, d)), na = cur + turn;     // ~1.3-1.6x the hit window of a normal arrow
+  const turn = Math.max(-0.35 * dt, Math.min(0.35 * dt, d)), na = cur + turn;     // ~2x the hit window of a normal arrow
   a.vx = Math.cos(na) * sp; a.vy = Math.sin(na) * sp;
 }
-const archDmg = (power, head) => Math.round((10 + 0.25 * Math.max(0, Math.min(100, power || 0))) * (head ? 1.6 : 1));
+const archDmg = (power, head, kind) => { const base = 10 + 0.25 * Math.max(0, Math.min(100, power || 0));
+  return Math.min(90, Math.round(kind === 'sniper' ? base * (head ? 2.2 : 0.6) : base * (head ? 1.6 : 1))); };
 let arch = null, archFlash = null, archStuck = [], archMsgT = null;
 // arrows that hit someone stay in them (offset from their feet, so they move with them). Pure decoration: nothing collides with them.
 function archPin(a, who){
@@ -1510,7 +1522,7 @@ function archStart(m){
   arch = { id: m.id, left, dir: left ? 1 : -1, zmin: left ? 2 : 52, zmax: left ? 48 : 98, opp: null,
     me: { x: +m.my_x || (left ? 15 : 85), y: 0, vy: 0 },
     op: { x: +m.opp_x || (left ? 85 : 15), y: 0, tx: +m.opp_x || (left ? 85 : 15), ty: 0, aim: null, seen: 0 },
-    arrows: [], keys: {}, aim: null, reloadAt: 0, lastSend: 0, lastSent: '', seq: 0, myHp: m.my_hp, oppHp: m.opp_hp, hitAt: 0, ended: false, last: performance.now() };
+    arrows: [], keys: {}, aim: null, reloadAt: 0, lastSend: 0, lastSent: '', seq: 0, myHp: m.my_hp, oppHp: m.opp_hp, myMax: m.my_max || 100, oppMax: m.opp_max || 100, hitAt: 0, ended: false, last: performance.now() };
   archStuck = []; archFlash = null;
   archConnect(arch);
   arch.raf = requestAnimationFrame(archTick);
@@ -1533,7 +1545,8 @@ async function archConnect(A){
       if (p.part === 'poison') { A.oppHp = p.hp; A.opPoisonUntil = performance.now() + 1200; archMsg(`Poison −${p.dmg}`, 'win'); archHud(); return; }
       const a = A.arrows.find(q => q.id === p.id); if (a && a.alive) { a.alive = false; archPin(a, 'op'); }
       if (a && a.k === 'poison') A.opPoisonUntil = performance.now() + 3200;
-      A.oppHp = p.hp; archFlash = { side: 'op', t: performance.now() }; archMsg(p.part === 'head' ? `HEADSHOT −${p.dmg}` : `Hit −${p.dmg}`, 'win'); archHud();
+      if (p.heal > 0) A.myHp = Math.min(A.myMax || 100, A.myHp + p.heal);   // my lifesteal arrow landed
+      A.oppHp = p.hp; archFlash = { side: 'op', t: performance.now() }; archMsg((p.part === 'head' ? `HEADSHOT −${p.dmg}` : `Hit −${p.dmg}`) + (p.heal > 0 ? ` · +${p.heal} HP` : ''), 'win'); archHud();
     })
     .subscribe(status => {
       if (A.ch !== ch) return;                                  // an old channel we already replaced
@@ -1568,7 +1581,7 @@ function renderArcher(m){
     arch = { id: m.id, left, dir: left ? 1 : -1, me: { x: +m.my_x || (left ? 15 : 85), y: 0, vy: 0 }, op: { x: +m.opp_x || (left ? 85 : 15), y: 0, aim: null },
       arrows: [], keys: {}, aim: null, reloadAt: Infinity, myHp: m.my_hp, oppHp: m.opp_hp, ended: true };
   }
-  if (arch && arch.id === m.id) { arch.myHp = m.my_hp; arch.oppHp = m.opp_hp; }   // server hp wins
+  if (arch && arch.id === m.id) { arch.myHp = m.my_hp; arch.oppHp = m.opp_hp; arch.myMax = m.my_max || arch.myMax || 100; arch.oppMax = m.opp_max || arch.oppMax || 100; }   // server hp wins
   if (m.my_arrows && m.my_arrows.join() !== archOwned.join()) { archOwned = m.my_arrows; archQuiverRender(); }
   $('archOppName').textContent = m.opp;
   archHud();
@@ -1584,8 +1597,8 @@ function renderArcher(m){
 }
 function archHud(){
   if (!arch) return;
-  $('archMyHp').style.width = arch.myHp + '%'; $('archMyHpN').textContent = arch.myHp;
-  $('archOppHp').style.width = arch.oppHp + '%'; $('archOppHpN').textContent = arch.oppHp;
+  $('archMyHp').style.width = Math.max(0, arch.myHp / (arch.myMax || 100) * 100) + '%'; $('archMyHpN').textContent = arch.myHp;
+  $('archOppHp').style.width = Math.max(0, arch.oppHp / (arch.oppMax || 100) * 100) + '%'; $('archOppHpN').textContent = arch.oppHp;
 }
 function archTick(now){
   if (!arch || arch.ended) return;
@@ -1603,7 +1616,7 @@ function archTick(now){
   for (const a of arch.arrows) {
     if (!a.alive) continue;
     if (a.k === 'homing') { const t = a.mine ? o : me; archHome(a, t.x, t.y + 3, dt); }
-    a.vy -= ARCH.g * dt; a.x += a.vx * dt; a.y += a.vy * dt;
+    a.vy -= ARCH.g * archGrav(a.k) * dt; a.x += a.vx * dt; a.y += a.vy * dt;
     if (a.y <= 0) { a.y = 0; a.alive = false; archStuck.push({ x: a.x, y: 0, vx: a.vx, vy: a.vy, k: a.k }); continue; }
     if (a.x < -5 || a.x > 105) { a.alive = false; continue; }
     if (!a.mine) {        // incoming: did it hit ME (my true position)?
@@ -1614,10 +1627,10 @@ function archTick(now){
     } else if (Math.abs(a.x - o.x) <= ARCH.halfW && a.y >= o.y && a.y <= o.y + ARCH.bodyH) {   // mine: stop it on their body; their client confirms the damage
       a.alive = false; archPin(a, 'op');
       if (arch.bot) {                                                                          // practice: no other client, score it here
-        const head = a.y >= o.y + ARCH.headY, dmg = archDmg(a.p, head);
+        const head = a.y >= o.y + ARCH.headY, dmg = archDmg(a.p, head, a.k), heal = a.k === 'vampire' ? Math.floor(dmg / 2) : 0;
         if (a.k === 'poison') { arch.poisonOp = { left: 3, next: now + 1000 }; arch.opPoisonUntil = now + 3200; }
-        arch.oppHp = Math.max(0, arch.oppHp - dmg); archFlash = { side: 'op', t: performance.now() };
-        archMsg(head ? `HEADSHOT −${dmg}` : `Hit −${dmg}`, 'win'); archHud();
+        arch.oppHp = Math.max(0, arch.oppHp - dmg); arch.myHp = Math.min(arch.myMax, arch.myHp + heal); archFlash = { side: 'op', t: performance.now() };
+        archMsg((head ? `HEADSHOT −${dmg}` : `Hit −${dmg}`) + (heal ? ` · +${heal} HP` : ''), 'win'); archHud();
         if (arch.oppHp <= 0) archBotEnd();
       }
     }
@@ -1660,22 +1673,23 @@ async function archPoisonTick(){
 }
 async function archTakeHit(id, head, power, kind){
   const now = performance.now(); if (now - arch.hitAt < 250) return; arch.hitAt = now;
-  const dmg = archDmg(power, head); arch.myHp = Math.max(0, arch.myHp - dmg);
+  const dmg = archDmg(power, head, kind); arch.myHp = Math.max(0, arch.myHp - dmg);
   if (kind === 'poison') arch.poisonMe = { left: 3, next: now + 1000 };
+  const heal = kind === 'vampire' ? Math.floor(dmg / 2) : 0;
   archFlash = { side: 'me', t: now }; archMsg(head ? `You got headshot −${dmg}` : `You got hit −${dmg}`, 'lose'); archHud();
   if (arch.bot) { if (arch.myHp <= 0) archBotEnd(); return; }
-  archSend('h', { id, part: head ? 'head' : 'body', dmg, hp: arch.myHp });
-  const { data, error } = await sb.rpc('archer_damage', { p_id: arch.id, p_dmg: dmg, p_kind: 'hit' });
+  archSend('h', { id, part: head ? 'head' : 'body', dmg, hp: arch.myHp, heal });
+  const { data, error } = await sb.rpc('archer_damage', { p_id: arch.id, p_dmg: dmg, p_kind: kind === 'vampire' ? 'vamp' : 'hit' });
   if (error) return toast(error.message);
   if (data && data.status !== 'live') pollPvp(); else if (data && arch) { arch.myHp = data.my_hp; arch.oppHp = data.opp_hp; archHud(); }
 }
 function archFire(aim){
   const now = performance.now(); if (!arch || arch.ended || now < arch.reloadAt) return;
   arch.reloadAt = now + ARCH.reload * 1000;
-  const v = 10 + aim.power * 0.45, a = aim.angle * Math.PI / 180;
+  const k = archCanUse(archKind) ? archKind : 'normal';
+  const v = (10 + aim.power * 0.45) * archSpeedMul(k), a = aim.angle * Math.PI / 180;
   const x = arch.me.x + arch.dir * 1.6, y = arch.me.y + ARCH.bowY, vx = v * Math.cos(a) * arch.dir, vy = v * Math.sin(a);
   const id = (arch.left ? 'a' : 'b') + (++arch.seq);
-  const k = archCanUse(archKind) ? archKind : 'normal';
   arch.arrows.push({ id, x, y, vx, vy, p: aim.power, k, mine: true, alive: true });
   archSend('f', { id, x: +x.toFixed(2), y: +y.toFixed(2), vx: +vx.toFixed(3), vy: +vy.toFixed(3), p: aim.power, k });
 }
@@ -1715,9 +1729,9 @@ function archDraw(){
     ctx.strokeStyle = 'rgba(255,255,255,.35)'; ctx.setLineDash([4, 4]); ctx.lineWidth = 1.5;
     ctx.beginPath(); ctx.moveTo(X(bx), Y(by)); ctx.lineTo(X(arch.aim.px), Y(arch.aim.py)); ctx.stroke(); ctx.setLineDash([]);
     if (arch.aim.fwdOk) {
-      const v = 10 + arch.aim.power * 0.45, a = arch.aim.angle * Math.PI / 180; let x = bx, y = by, vx = v * Math.cos(a) * arch.dir, vy = v * Math.sin(a);
+      const kk = archCanUse(archKind) ? archKind : 'normal', v = (10 + arch.aim.power * 0.45) * archSpeedMul(kk), a = arch.aim.angle * Math.PI / 180; let x = bx, y = by, vx = v * Math.cos(a) * arch.dir, vy = v * Math.sin(a);
       ctx.fillStyle = 'rgba(255,255,255,.55)';
-      for (let i = 0; i < 25; i++) { vy -= ARCH.g * 0.02; x += vx * 0.02; y += vy * 0.02; if (y < 0) break; if (i % 3 === 0) { ctx.beginPath(); ctx.arc(X(x), Y(y), 1.6, 0, Math.PI * 2); ctx.fill(); } }
+      for (let i = 0; i < 25; i++) { vy -= ARCH.g * archGrav(kk) * 0.02; x += vx * 0.02; y += vy * 0.02; if (y < 0) break; if (i % 3 === 0) { ctx.beginPath(); ctx.arc(X(x), Y(y), 1.6, 0, Math.PI * 2); ctx.fill(); } }
     }
   }
   for (const a of arch.arrows) { const A2 = ARROWS[a.k] || ARROWS.normal; archArrow(ctx, X(a.x), Y(a.y), Math.atan2(-a.vy * sy, a.vx * fl * sx), a.mine ? A2.color : A2.foe, sy); }
@@ -1763,8 +1777,9 @@ $('archRematch').onclick = pvpRematch;
 $('archQuiver').onclick = e => {
   const b = e.target.closest('button[data-a]'); if (!b) return;
   const k = b.dataset.a;
-  if (archCanUse(k)) { archKind = k; $('archBuy').hidden = true; archQuiverRender(); return; }
-  archBuyKind = k; $('archBuyText').textContent = `Buy ${ARROWS[k].name} arrows for ${short(archPrices[k])} coins? You keep them forever.`; $('archBuy').hidden = false;
+  if (UPG[k]) { if (archOwned.includes(k)) return; }
+  else if (archCanUse(k)) { archKind = k; $('archBuy').hidden = true; archQuiverRender(); return; }
+  archBuyKind = k; $('archBuyText').textContent = UPG[k] ? `Buy ${UPG[k].name} for ${short(archPrices[k])} coins? You start every Archers match with 200 HP (from your next match).` : `Buy ${ARROWS[k].name} arrows for ${short(archPrices[k])} coins? You keep them forever.`; $('archBuy').hidden = false;
 };
 $('archBuyNo').onclick = () => { $('archBuy').hidden = true; archBuyKind = null; };
 $('archBuyYes').onclick = async () => {
@@ -1773,7 +1788,7 @@ $('archBuyYes').onclick = async () => {
   $('archBuyYes').disabled = false;
   if (error) return toast(error.message);
   archOwned = data.owned || archOwned; if (data.balance != null) setBalance(data.balance);
-  archKind = k; $('archBuy').hidden = true; archBuyKind = null; archQuiverRender(); toast(`${ARROWS[k].name} arrows unlocked`);
+  if (!UPG[k]) archKind = k; $('archBuy').hidden = true; archBuyKind = null; archQuiverRender(); toast(UPG[k] ? `${UPG[k].name} unlocked. It kicks in from your next match.` : `${ARROWS[k].name} arrows unlocked`);
 };
 (function(){
   const c = $('archCanvas'); let dragging = false;
@@ -1819,7 +1834,7 @@ function archBotStart(){
   // you on the right (world), bot on the left: no view flip needed
   arch = { id: 'bot', bot: true, left: false, dir: -1, zmin: 52, zmax: 98,
     me: { x: 85, y: 0, vy: 0 }, op: { x: 15, y: 0, vy: 0, tx: 15, ty: 0, aim: null },
-    arrows: [], keys: {}, aim: null, reloadAt: 0, lastSend: 0, lastSent: '', seq: 0, myHp: 100, oppHp: 100, hitAt: 0, ended: false, t: 0,
+    arrows: [], keys: {}, aim: null, reloadAt: 0, lastSend: 0, lastSent: '', seq: 0, myHp: archOwned.includes('hp200') ? 200 : 100, myMax: archOwned.includes('hp200') ? 200 : 100, oppHp: 100, oppMax: 100, hitAt: 0, ended: false, t: 0,
     ch: { send(){} }, last: performance.now() };
   $('archOppName').textContent = 'Bot'; $('archTurn').textContent = 'PRACTICE';
   $('pvpDuelCard').hidden = true; $('pvpFillCard').hidden = true; $('pvpArchCard').hidden = false;
