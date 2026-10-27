@@ -1593,6 +1593,11 @@ async function archConnect(A){
       if (p.heal > 0) A.myHp = Math.min(A.myMax || 100, A.myHp + p.heal);   // my lifesteal arrow landed
       A.oppHp = p.hp; archFlash = { side: 'op', t: performance.now() }; archMsg((p.part === 'head' ? `HEADSHOT −${p.dmg}` : `Hit −${p.dmg}`) + (p.heal > 0 ? ` · +${p.heal} HP` : ''), 'win'); archHud();
     })
+    .on('broadcast', { event: 'pi' }, ({ payload: p }) => { if (arch === A && A.ch === ch && A.joined) ch.send({ type: 'broadcast', event: 'po', payload: { t: p.t } }).catch(() => {}); })
+    .on('broadcast', { event: 'po' }, ({ payload: p }) => {
+      if (arch !== A) return; const rtt = performance.now() - p.t; if (!(rtt >= 0 && rtt < 10000)) return;
+      A.ping = A.ping == null ? rtt : A.ping * 0.6 + rtt * 0.4; A.pongAt = performance.now();
+    })
     .subscribe(status => {
       if (A.ch !== ch) return;                                  // an old channel we already replaced
       if (status === 'SUBSCRIBED') { A.joined = true; A.lastSend = 0; return; }
@@ -1696,6 +1701,7 @@ function archTick(now){
   const key = st.x + '|' + st.y + '|' + st.a + '|' + st.p;
   if (!arch.bot) {
     if (!arch.joined && !arch.connecting && now - (arch.connectedAt || 0) > 4000) archConnect(arch);   // stuck joining: try again
+    if (arch.joined && now - (arch.pingAt || 0) > 2000) { arch.pingAt = now; arch.ch.send({ type: 'broadcast', event: 'pi', payload: { t: now } }).catch(() => {}); }
     if (arch.joined && arch.outbox && arch.outbox.length) { const q = arch.outbox; arch.outbox = []; q.forEach(m => arch.ch.send({ type: 'broadcast', event: m.event, payload: m.payload }).catch(() => {})); }
     // ~12 updates/s while moving, 3/s idle; only while joined (never falls back to REST spam)
     if (arch.joined && ((key !== arch.lastSent && now - arch.lastSend >= 80) || now - arch.lastSend >= 330)) {
@@ -1768,6 +1774,17 @@ function archDraw(){
   archStick(ctx, X(arch.me.x), Y(arch.me.y), arch.dir * fl, flash('me') ? css('--lose') : meC, sy, arch.aim, now >= arch.reloadAt && !arch.ended && ARROWS[archCanUse(archKind) ? archKind : 'normal'].color);
   archStick(ctx, X(arch.op.x), Y(arch.op.y), -arch.dir * fl, flash('op') ? css('--lose') : opC, sy, arch.op.aim, !arch.ended);
   drawStuck(true);    // arrows stuck in the archers, on top so you can see them
+  if (!arch.bot && !arch.ended) {   // ping to your opponent (round trip through the live connection)
+    const fresh = arch.ping != null && now - (arch.pongAt || 0) < 6000, ms = fresh ? Math.round(arch.ping) : null;
+    const col = !arch.joined || ms == null ? '#8d8a94' : ms < 90 ? '#2fbf6b' : ms < 180 ? '#e8b23a' : '#ff4d45';
+    const label = !arch.joined ? 'connecting…' : ms == null ? '— ms' : ms + ' ms';
+    ctx.font = '600 11px "IBM Plex Mono", monospace'; ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+    const tw = ctx.measureText(label).width;
+    ctx.fillStyle = 'rgba(15,15,18,.55)'; ctx.beginPath(); ctx.roundRect ? ctx.roundRect(W - tw - 30, 8, tw + 22, 20, 10) : ctx.rect(W - tw - 30, 8, tw + 22, 20); ctx.fill();
+    ctx.fillStyle = col; ctx.beginPath(); ctx.arc(W - tw - 19, 18, 3.5, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = 'rgba(242,239,232,.85)'; ctx.fillText(label, W - 12, 18.5);
+    ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+  }
   // my aim: pull line + short preview
   if (arch.aim) {
     const bx = arch.me.x + arch.dir * 1.6, by = arch.me.y + ARCH.bowY;
