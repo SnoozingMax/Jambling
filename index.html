@@ -204,6 +204,19 @@ canvas{width:100%;height:100%;display:block}
 .arch-mid{display:flex;flex-direction:column;align-items:center;gap:2px;white-space:nowrap}
 .arch-canvas{width:100%;max-width:100%;height:auto;display:block;background:linear-gradient(#16141c,#1d1a26);border:1px solid var(--line);border-radius:12px;touch-action:none;cursor:crosshair;user-select:none;-webkit-user-select:none}
 .arch-ctl{margin-top:10px}
+.arch-tools{display:flex;justify-content:flex-end;gap:6px;margin:0 0 8px}
+.arch-tools .ghost{font-size:12px;padding:4px 9px;color:var(--muted)}
+.arch-tools .ghost:hover{color:var(--ink)}
+.arch-keys{display:none;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin:0 0 8px}
+.arch-keys.open{display:grid}
+.arch-keys button{background:none;border:1px solid var(--line);border-radius:8px;padding:6px 4px;font-size:12px;color:var(--ink);cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:2px}
+.arch-keys button small{color:var(--muted);font-size:10px;letter-spacing:.04em;text-transform:uppercase}
+.arch-keys button kbd{font:600 12px "IBM Plex Mono",monospace;background:#2a2635;border-radius:5px;padding:1px 7px;min-width:28px}
+.arch-keys button.listen{border-color:var(--accent)} .arch-keys button.listen kbd{color:var(--accent)}
+.arch-table:fullscreen{background:#0f0f12;border:0;border-radius:0;padding:12px 16px;display:flex;flex-direction:column;overflow:auto}
+.arch-table.arch-fake-fs{position:fixed;inset:0;z-index:999;margin:0;border:0;border-radius:0;padding:12px 16px;background:#0f0f12;overflow:auto;display:flex;flex-direction:column}
+.arch-table.arch-fs .arch-canvas{margin:0 auto}
+.arch-table.arch-fs .hint{display:none}
 .arch-power{display:flex;align-items:center;gap:8px;margin-top:8px;font:600 11px "IBM Plex Mono",monospace;color:var(--muted)}
 .pbar{flex:1;height:10px;background:var(--field);border:1px solid var(--line);border-radius:999px;overflow:hidden}
 .pbar>div{height:100%;width:0;background:linear-gradient(90deg,var(--win),var(--gold),var(--lose))}
@@ -615,6 +628,8 @@ tr.me td{color:var(--accent)}
         <div class="arch-mid"><span class="fill-turn" id="archTurn"></span><span class="pvp-clock" id="archClock"></span></div>
         <div class="arch-side me"><span class="hpnum" id="archMyHpN">100</span><div class="hpbar"><div class="hpfill me" id="archMyHp"></div></div><b>You</b></div>
       </div>
+      <div class="arch-tools"><button type="button" class="ghost" id="archKeysBtn">⌨ Keys</button><button type="button" class="ghost" id="archFsBtn">⛶ Fullscreen</button></div>
+      <div class="arch-keys" id="archKeys"></div>
       <canvas id="archCanvas" class="arch-canvas"></canvas>
       <div class="arch-ctl" id="archCtl" hidden>
         <div class="arch-pad">
@@ -626,7 +641,7 @@ tr.me td{color:var(--accent)}
         <div class="arch-quiver" id="archQuiver"></div>
         <div class="arch-buy" id="archBuy" hidden><span id="archBuyText"></span><button type="button" class="go" id="archBuyYes">Buy</button><button type="button" class="ghost" id="archBuyNo">Cancel</button></div>
         <div class="arch-power"><span>PULL</span><div class="pbar"><div id="archPow"></div></div><span id="archAng">–</span><span class="arch-reload" title="Reload"><i id="archReload"></i></span></div>
-        <div class="hint" style="margin:6px 0 0">Move ◀ ▶ (or A/D), jump (or W/Space), hold Shift to crouch (smaller target, slower, no jumping). Drag back anywhere on the field to pull the bow, release to fire. Harder pulls hit harder (body 10-35, headshots 1.6x). Special arrows: Poison (+4/s for 3s), Homing (aim assist), Sniper (flat, fast, 2.2x headshots), Lifesteal (heals half). The 200 HP upgrade starts you at 200. 90 seconds, most HP wins.</div>
+        <div class="hint" style="margin:6px 0 0"><span id="archKeyHint">Move ◀ ▶ (or A/D), jump (or W/Space), hold Shift to crouch</span> (crouch = smaller target, slower, no jumping). Arrow keys and Space always work; change the others with ⌨ Keys. Drag back anywhere on the field to pull the bow, release to fire. Harder pulls hit harder (body 10-35, headshots 1.6x). Special arrows: Poison (+4/s for 3s), Homing (aim assist), Sniper (flat, fast, 2.2x headshots), Lifesteal (heals half). The 200 HP upgrade starts you at 200. 90 seconds, most HP wins.</div>
       </div>
       <div class="bj-msg" id="archMsg"></div>
       <button type="button" class="pvp-rematch" id="archRematch" hidden>Rematch</button>
@@ -1806,6 +1821,13 @@ function archFire(aim){
   archSend('f', { id, x: +x.toFixed(2), y: +y.toFixed(2), vx: +vx.toFixed(3), vy: +vy.toFixed(3), p: aim.power, k });
 }
 function archGeom(c){
+  const card = $('pvpArchCard'), fs = card.classList.contains('arch-fs');
+  if (fs) {   // fill the screen but keep the field's shape: as wide as fits under the bars and controls
+    let used = 0; for (const el of card.children) if (el !== c && !el.hidden) used += el.offsetHeight;
+    const availH = Math.max(160, window.innerHeight - used - 36), maxW = card.clientWidth - 32;
+    const w = Math.max(240, Math.min(maxW, Math.round(availH * 2.4)));
+    if (c.style.width !== w + 'px') c.style.width = w + 'px';
+  } else if (c.style.width) c.style.width = '';
   const W = c.clientWidth, H = Math.max(120, Math.round(W / 2.4));
   if (c.style.height !== H + 'px') c.style.height = H + 'px';
   const gy = H - 14; return { W, H, gy, sx: W / ARCH.W, sy: (gy - 10) / ARCH.H };
@@ -1832,8 +1854,14 @@ function archDraw(){
   const me = css('--accent'), them = '#cfcbdb';
   const flash = side => archFlash && archFlash.side === side && (now - archFlash.t) < 420 && Math.floor((now - archFlash.t) / 70) % 2 === 0;
   const poisonC = '#7dff8a', meC = arch.poisonMe ? poisonC : me, opC = (arch.opPoisonUntil || 0) > now ? poisonC : them;
-  archStick(ctx, X(arch.me.x), Y(arch.me.y), arch.dir * fl, flash('me') ? css('--lose') : meC, sy, arch.aim, now >= arch.reloadAt && !arch.ended && ARROWS[archCanUse(archKind) ? archKind : 'normal'].color, arch.me.crouch);
-  archStick(ctx, X(arch.op.x), Y(arch.op.y), -arch.dir * fl, flash('op') ? css('--lose') : opC, sy, arch.op.aim, !arch.ended, arch.op.crouch);
+  const walk = e => {   // leg swing driven by how far the archer actually moved along the ground
+    const dx = e.lx == null ? 0 : e.x - e.lx; e.lx = e.x;
+    if (e.y <= 0.01 && Math.abs(dx) > 0.002) { e.walk = (e.walk || 0) + Math.abs(dx) * (e.crouch ? 1.1 : 0.75); e.walkAmt = Math.min(1, (e.walkAmt || 0) + 0.25); }
+    else e.walkAmt = Math.max(0, (e.walkAmt || 0) - 0.12);
+    return { ph: e.walk || 0, amt: e.walkAmt || 0, air: e.y > 0.01 };
+  };
+  archStick(ctx, X(arch.me.x), Y(arch.me.y), arch.dir * fl, flash('me') ? css('--lose') : meC, sy, arch.aim, now >= arch.reloadAt && !arch.ended && ARROWS[archCanUse(archKind) ? archKind : 'normal'].color, arch.me.crouch, walk(arch.me));
+  archStick(ctx, X(arch.op.x), Y(arch.op.y), -arch.dir * fl, flash('op') ? css('--lose') : opC, sy, arch.op.aim, !arch.ended, arch.op.crouch, walk(arch.op));
   drawStuck(true);    // arrows stuck in the archers, on top so you can see them
   {   // ping to your opponent (round trip through the live connection); practice has no connection
     const fresh = arch.ping != null && now - (arch.pongAt || 0) < 6000, ms = fresh ? Math.round(arch.ping) : null;
@@ -1869,12 +1897,23 @@ function archDraw(){
   ctx.font = '600 11px Inter, sans-serif'; ctx.textAlign = 'center'; ctx.fillStyle = 'rgba(255,255,255,.45)';
   ctx.fillText('you', X(arch.me.x), gy + 11); ctx.fillText(($('archOppName').textContent || 'opp').slice(0, 12), X(arch.op.x), gy + 11);
 }
-function archStick(ctx, x, by, facing, color, s, aim, ready, crouch){
+function archStick(ctx, x, by, facing, color, s, aim, ready, crouch, walk){
   ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = Math.max(2, s * 0.28); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  const w = walk || { ph: 0, amt: 0, air: false }, sw = Math.sin(w.ph) * w.amt, bob = w.air ? 0 : Math.abs(Math.cos(w.ph)) * w.amt * 0.12 * s;
+  by -= bob;   // slight bounce while running
   const c = crouch ? 0.64 : 1, hip = by - 1.6 * s * (crouch ? 0.55 : 1), neck = by - 4.4 * s * c, sh = by - 4.0 * s * c, headY = by - 5.2 * s * c, r = 0.8 * s;
-  if (crouch) {   // bent knees
-    ctx.beginPath(); ctx.moveTo(x, hip); ctx.lineTo(x + facing * 0.9 * s, by - 0.55 * s); ctx.lineTo(x + facing * 0.5 * s, by);
-    ctx.moveTo(x, hip); ctx.lineTo(x - facing * 0.6 * s, by - 0.5 * s); ctx.lineTo(x - facing * 0.9 * s, by); ctx.stroke();
+  const leg = (dir, lift) => {   // one leg: hip -> knee -> foot. `dir` is the stride (-1 back .. 1 forward), lift raises the foot on the swing
+    const L = by + bob - hip, kx = x + facing * dir * 0.5 * s + facing * 0.35 * s * lift, ky = hip + L * 0.55 - lift * 0.3 * s;
+    const fx = x + facing * dir * 1.05 * s, fy = by + bob - lift * 0.55 * s;
+    ctx.moveTo(x, hip); ctx.lineTo(kx, ky); ctx.lineTo(fx, fy);
+  };
+  if (w.air) {   // in the air: legs tucked a little
+    ctx.beginPath(); leg(0.5, 0.5); leg(-0.4, 0.3); ctx.stroke();
+  } else if (crouch) {   // bent knees (shuffle a bit while crouch-walking)
+    ctx.beginPath(); ctx.moveTo(x, hip); ctx.lineTo(x + facing * 0.9 * s, by - 0.55 * s); ctx.lineTo(x + facing * (0.5 + sw * 0.25) * s, by);
+    ctx.moveTo(x, hip); ctx.lineTo(x - facing * 0.6 * s, by - 0.5 * s); ctx.lineTo(x - facing * (0.9 - sw * 0.25) * s, by); ctx.stroke();
+  } else if (w.amt > 0.02) {   // running: legs scissor, the swinging leg lifts
+    ctx.beginPath(); leg(sw, Math.max(0, Math.cos(w.ph)) * w.amt); leg(-sw, Math.max(0, -Math.cos(w.ph)) * w.amt); ctx.stroke();
   } else { ctx.beginPath(); ctx.moveTo(x, hip); ctx.lineTo(x - 0.7 * s, by); ctx.moveTo(x, hip); ctx.lineTo(x + 0.7 * s, by); ctx.stroke(); }
   ctx.beginPath(); ctx.moveTo(x, hip); ctx.lineTo(x, neck); ctx.stroke();
   ctx.beginPath(); ctx.arc(x, headY, r, 0, Math.PI * 2); ctx.fill();
@@ -1946,9 +1985,51 @@ $('archBuyYes').onclick = async () => {
     b.addEventListener('pointerdown', down); b.addEventListener('pointerup', up); b.addEventListener('pointercancel', up); b.addEventListener('pointerleave', up);
   });
   // keyboard
-  const KEY = { a: 'left', arrowleft: 'left', d: 'right', arrowright: 'right', w: 'jump', arrowup: 'jump', ' ': 'jump', shift: 'crouch', s: 'crouch', arrowdown: 'crouch' };
-  window.addEventListener('keydown', ev => { if (!live() || /input|textarea/i.test(ev.target.tagName)) return; const k = KEY[ev.key.toLowerCase()]; if (!k) return; ev.preventDefault(); if (k === 'jump') { if (!ev.repeat) arch.keys.jump = true; } else arch.keys[k] = true; });
-  window.addEventListener('keyup', ev => { if (!arch) return; const k = KEY[ev.key.toLowerCase()]; if (k && k !== 'jump') arch.keys[k] = false; });
+  // keyboard: arrows + space are fixed, the rest you can rebind (saved on this device)
+  const FIXED = { arrowleft: 'left', arrowright: 'right', arrowup: 'jump', ' ': 'jump', arrowdown: 'crouch' };
+  const ACTS = [['left', 'Left', 'a'], ['right', 'Right', 'd'], ['jump', 'Jump', 'w'], ['crouch', 'Crouch', 'shift']];
+  let binds = {}; try { binds = JSON.parse(localStorage.getItem('arch_keys') || '{}'); } catch {}
+  for (const [a, , d] of ACTS) if (typeof binds[a] !== 'string') binds[a] = d;
+  const keyName = k => ({ ' ': 'Space', shift: 'Shift', control: 'Ctrl', alt: 'Alt', meta: 'Cmd', enter: 'Enter', tab: 'Tab', escape: 'Esc', backspace: 'Bksp', capslock: 'Caps' })[k] || (k.startsWith('arrow') ? k.slice(5).replace(/^./, c => c.toUpperCase()) : k.length === 1 ? k.toUpperCase() : k);
+  const actOf = key => { for (const [a] of ACTS) if (binds[a] === key) return a; return FIXED[key] || null; };
+  let listening = null;
+  const keysRender = () => {
+    $('archKeys').innerHTML = ACTS.map(([a, label]) => `<button type="button" data-act="${a}" class="${listening === a ? 'listen' : ''}"><small>${label}</small><kbd>${listening === a ? 'press…' : keyName(binds[a])}</kbd></button>`).join('');
+    $('archKeyHint').textContent = `Move ${keyName(binds.left)}/${keyName(binds.right)}, jump ${keyName(binds.jump)}, hold ${keyName(binds.crouch)} to crouch`;
+  };
+  keysRender();
+  $('archKeysBtn').onclick = () => { $('archKeys').classList.toggle('open'); listening = null; keysRender(); };
+  $('archKeys').onclick = e => { const b = e.target.closest('button[data-act]'); if (!b) return; listening = listening === b.dataset.act ? null : b.dataset.act; keysRender(); };
+  window.addEventListener('keydown', ev => {
+    if (listening) {   // capture the next key for the action being rebound
+      ev.preventDefault(); const k = ev.key.toLowerCase();
+      if (k === 'escape') { listening = null; return keysRender(); }
+      if (FIXED[k]) return;   // arrows + space stay as they are
+      const old = binds[listening];
+      for (const [a] of ACTS) if (a !== listening && binds[a] === k) binds[a] = old;   // the other action takes this one's old key (a swap)
+      binds[listening] = k; listening = null;
+      try { localStorage.setItem('arch_keys', JSON.stringify(binds)); } catch {}
+      return keysRender();
+    }
+    if (!live() || /input|textarea/i.test(ev.target.tagName)) return; const k = actOf(ev.key.toLowerCase()); if (!k) return; ev.preventDefault(); if (k === 'jump') { if (!ev.repeat) arch.keys.jump = true; } else arch.keys[k] = true;
+  });
+  window.addEventListener('keyup', ev => { if (!arch) return; const k = actOf(ev.key.toLowerCase()); if (k && k !== 'jump') arch.keys[k] = false; });
+  // fullscreen: real fullscreen where the browser allows it, otherwise the card covers the page
+  const card = $('pvpArchCard');
+  const fsOn = () => document.fullscreenElement === card || document.webkitFullscreenElement === card || card.classList.contains('arch-fake-fs');
+  const fsSync = () => { card.classList.toggle('arch-fs', fsOn()); $('archFsBtn').textContent = fsOn() ? '✕ Exit fullscreen' : '⛶ Fullscreen'; archDraw(); };
+  document.addEventListener('fullscreenchange', fsSync); document.addEventListener('webkitfullscreenchange', fsSync);
+  $('archFsBtn').onclick = async () => {
+    if (fsOn()) {
+      card.classList.remove('arch-fake-fs');
+      try { if (document.fullscreenElement) await document.exitFullscreen(); else if (document.webkitFullscreenElement) document.webkitExitFullscreen(); } catch {}
+      return fsSync();
+    }
+    try { if (card.requestFullscreen) await card.requestFullscreen(); else if (card.webkitRequestFullscreen) card.webkitRequestFullscreen(); else throw 0; }
+    catch { card.classList.add('arch-fake-fs'); }
+    setTimeout(fsSync, 50);
+  };
+  window.addEventListener('keydown', ev => { if (ev.key === 'Escape' && card.classList.contains('arch-fake-fs')) { card.classList.remove('arch-fake-fs'); fsSync(); } });
   window.addEventListener('blur', () => { if (arch) arch.keys = {}; });
   window.addEventListener('resize', () => archDraw());
 })();
