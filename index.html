@@ -214,7 +214,7 @@ canvas{width:100%;height:100%;display:block}
 .arch-keys button kbd{font:600 12px "IBM Plex Mono",monospace;background:#2a2635;border-radius:5px;padding:1px 7px;min-width:28px}
 .arch-keys button.listen{border-color:var(--accent)} .arch-keys button.listen kbd{color:var(--accent)}
 .arch-table.arch-fs{position:fixed;inset:0;z-index:999;margin:0;border:0;border-radius:0;padding:0;background:#0f0f12;overflow:hidden;display:flex;align-items:flex-start;justify-content:center}
-.arch-fs .arch-canvas{border:0;border-radius:0;margin:0}
+.arch-fs .arch-canvas{border:0;border-radius:0;margin:0;position:absolute;left:50%;transform:translateX(-50%)}
 .arch-fs .arch-top{position:absolute;top:8px;left:14px;right:14px;z-index:2;pointer-events:none}
 .arch-fs .arch-tools{position:absolute;top:46px;right:14px;z-index:3;margin:0}
 .arch-fs .arch-tools .ghost{background:rgba(20,18,28,.75)}
@@ -230,6 +230,16 @@ canvas{width:100%;height:100%;display:block}
 .arch-fs .arch-bot{position:absolute;bottom:16px;left:0;right:0;z-index:3;gap:8px}
 .arch-fs .arch-ctl:not([hidden])~.arch-bot{bottom:auto;top:62px;transform:scale(.8);transform-origin:top center}
 .arch-fs #archShop{display:none}
+.arch-emotes{display:flex;gap:6px;margin-top:6px;justify-content:center;flex-wrap:wrap}
+.arch-emotes button{min-width:40px;padding:5px 8px;border-radius:999px;border:1px solid var(--line);background:var(--field);font-size:16px;line-height:1;cursor:pointer;color:var(--ink)}
+.arch-emotes button.txt{font:700 12px Inter,sans-serif;padding:8px 10px}
+.arch-emotes button:active{transform:scale(.92)}
+.arch-fs .arch-emotes button{background:rgba(20,18,28,.72)}
+.arch-fs-lobby{display:none}
+.arch-fs .arch-fs-lobby{display:block;position:absolute;top:96px;left:50%;transform:translateX(-50%);width:min(440px,calc(100% - 28px));z-index:4;max-height:calc(100% - 200px);overflow:auto}
+.arch-fs .arch-fs-lobby .pvp-inv{background:rgba(15,15,18,.94)}
+.arch-fs-lobby .arch-fs-idle{text-align:center;color:var(--muted);font-size:14px;padding:14px;border:1px dashed var(--line);border-radius:12px;background:rgba(15,15,18,.85)}
+.arch-fs-lobby .arch-fs-idle .row{display:flex;gap:8px;justify-content:center;margin-top:10px;flex-wrap:wrap}
 .arch-power{display:flex;align-items:center;gap:8px;margin-top:8px;font:600 11px "IBM Plex Mono",monospace;color:var(--muted)}
 .pbar{flex:1;height:10px;background:var(--field);border:1px solid var(--line);border-radius:999px;overflow:hidden}
 .pbar>div{height:100%;width:0;background:linear-gradient(90deg,var(--win),var(--gold),var(--lose))}
@@ -652,12 +662,14 @@ tr.me td{color:var(--accent)}
           <button type="button" class="arch-btn" data-k="right">▶</button>
         </div>
         <div class="arch-quiver" id="archQuiver"></div>
+        <div class="arch-emotes" id="archEmotes"></div>
         <div class="arch-buy" id="archBuy" hidden><span id="archBuyText"></span><button type="button" class="go" id="archBuyYes">Buy</button><button type="button" class="ghost" id="archBuyNo">Cancel</button></div>
         <div class="arch-power"><span>PULL</span><div class="pbar"><div id="archPow"></div></div><span id="archAng">–</span><span class="arch-reload" title="Reload"><i id="archReload"></i></span></div>
-        <div class="hint" style="margin:6px 0 0"><span id="archKeyHint">Move ◀ ▶ (or A/D), jump (or W/Space), hold Shift to crouch</span> (crouch = smaller target, slower, no jumping). Keys 1-5 switch arrows. Arrow keys and Space always work; change the rest with ⌨ Keys. Drag back anywhere on the field to pull the bow, release to fire. Harder pulls hit harder (body 10-35, headshots 1.6x). Special arrows: Poison (+4/s for 3s), Homing (aim assist), Sniper (flat, fast, 2.2x headshots), Lifesteal (heals half). The 200 HP upgrade starts you at 200. 90 seconds, most HP wins.</div>
+        <div class="hint" style="margin:6px 0 0"><span id="archKeyHint">Move ◀ ▶ (or A/D), jump (or W/Space), hold Shift to crouch</span> (crouch = smaller target, slower, no jumping). Keys 1-5 switch arrows, 6-0 send emotes. Arrow keys and Space always work; change the rest with ⌨ Keys. Drag back anywhere on the field to pull the bow, release to fire. Harder pulls hit harder (body 10-35, headshots 1.6x). Special arrows: Poison (+4/s for 3s), Homing (aim assist), Sniper (flat, fast, 2.2x headshots), Lifesteal (heals half). The 200 HP upgrade starts you at 200. 90 seconds, most HP wins.</div>
       </div>
       <div class="bj-msg" id="archMsg"></div>
       <button type="button" class="pvp-rematch" id="archRematch" hidden>Rematch</button>
+      <div class="arch-fs-lobby" id="archFsLobby"></div>
       <div class="arch-bot" id="archBotBar" hidden>
         <div class="pick small" id="archBotDiff"><button type="button" data-d="easy">Easy</button><button type="button" data-d="normal" class="on">Normal</button><button type="button" data-d="hard">Hard</button><button type="button" data-d="insane">Insane</button></div>
         <div class="arch-bot-row"><button type="button" class="pvp-rematch" id="archBotAgain">↻ Play again</button><button type="button" class="pvp-rematch" id="archBotQuit" style="border-color:var(--line);color:var(--muted)">Exit practice</button></div>
@@ -1367,14 +1379,18 @@ const stakeText = c => `${GAME_NAME[c.game] || ''}${c.game ? ' · ' : ''}${c.fri
 function renderPvp(st){
   // incoming challenges
   const inc = $('pvpIncoming'); inc.innerHTML = '';
-  (st.incoming || []).forEach(c => {
+  const fsl = $('archFsLobby'); fsl.innerHTML = '';
+  const inviteEl = c => {
     const d = document.createElement('div'); d.className = 'pvp-inv';
     d.innerHTML = `<b></b> challenged you · ${stakeText(c)}<div class="row"><button class="go cash">Accept</button><button class="go" style="background:var(--line);color:var(--ink)">Decline</button></div>`;
     d.querySelector('b').textContent = c.from;
     const [acc, dec] = d.querySelectorAll('button');
-    acc.onclick = async () => { acc.disabled = true; const { data, error } = await sb.rpc('pvp_accept', { p_id: c.id }); if (error) { acc.disabled = false; return toast(error.message); } pollPvp(); };
+    acc.onclick = async () => { acc.disabled = true; const { data, error } = await sb.rpc('pvp_accept', { p_id: c.id }); if (error) { acc.disabled = false; return toast(error.message); } if (c.game !== 'archer' && archFsOn()) archFsExit(); if (archBot) archBotStop(); pollPvp(); };
     dec.onclick = async () => { const { error } = await sb.rpc('pvp_decline', { p_id: c.id }); if (error) return toast(error.message); pollPvp(); };
-    inc.appendChild(d);
+    return d;
+  };
+  (st.incoming || []).forEach(c => {
+    inc.appendChild(inviteEl(c)); fsl.appendChild(inviteEl(c));
     if (!pvpSeen.has(c.id)) { pvpSeen.add(c.id); toast(`${c.from} challenged you to ${GAME_NAME[c.game] || '1v1'}!`); }
   });
   $('pvpDot').hidden = !(st.incoming || []).length;
@@ -1401,7 +1417,15 @@ function renderPvp(st){
   $('pvpForm').hidden = live || !!st.outgoing;
   $('pvpDuelCard').hidden = !!(filler || archer);
   $('pvpFillCard').hidden = !filler;
-  $('pvpArchCard').hidden = !archer;
+  $('pvpArchCard').hidden = !archer && !archFsOn();
+  if (archFsOn() && !archer && !live) {   // fullscreen with nothing going on: wait for challenges here
+    if (arch && !arch.bot) archStop(true);
+    const idle = document.createElement('div'); idle.className = 'arch-fs-idle';
+    idle.innerHTML = `${(st.incoming || []).length ? '' : 'No match right now. Challenges show up here.'}<div class="row"><button type="button" class="ghost" id="archFsPractice">🎯 Practice vs bot</button><button type="button" class="ghost" id="archFsOut">Exit fullscreen</button></div>`;
+    fsl.appendChild(idle); $('archFsPractice').onclick = archBotStart; $('archFsOut').onclick = archFsExit;
+    const c = $('archCanvas'); if (c.width) { const g = c.getContext('2d'); g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, c.width, c.height); }
+    $('archCtl').hidden = true; $('archMsg').textContent = ''; $('archTurn').textContent = ''; $('archOppName').textContent = '—';
+  } else if (archer && m.status === 'done' && !(st.incoming || []).length) fsl.innerHTML = '';
   const canMove = live && !filler && !archer && !m.my_move;
   $('pvpMoves').hidden = !canMove;
   if (canMove) document.querySelectorAll('#pvpMoves button').forEach(b => b.disabled = false);
@@ -1621,6 +1645,22 @@ function archPin(a, who){
   archStuck.push({ on: who, dx: a.x - t.x, dy: a.y - t.y, vx: a.vx, vy: a.vy, k: a.k });
   const mine = archStuck.filter(s => s.on === who); if (mine.length > 10) archStuck.splice(archStuck.indexOf(mine[0]), 1);
 }
+const EMOTES = ['👍', '😂', '😭', '🔥', '😎', '🫡', 'GG', 'EZ'];
+let archEmoteAt = 0;
+function archEmote(i, who){   // show an emote bubble over an archer; `who` is 'me' or 'op'
+  if (!arch || !EMOTES[i]) return;
+  const t = who === 'me' ? arch.me : arch.op; t.emote = { i, t: performance.now() };
+}
+function archSayEmote(i){
+  if (!arch || arch.ended || !EMOTES[i]) return;
+  const now = performance.now(); if (now - archEmoteAt < 1200) return; archEmoteAt = now;
+  archEmote(i, 'me');
+  if (arch.bot) { if (Math.random() < 0.5) setTimeout(() => arch && !arch.ended && archEmote(Math.random() < 0.5 ? i : Math.floor(Math.random() * EMOTES.length), 'op'), 600 + Math.random() * 900); }
+  else archSend('e', { i });
+}
+function archEmotesRender(){ $('archEmotes').innerHTML = EMOTES.map((e, i) => `<button type="button" data-e="${i}" class="${/^[A-Z]+$/.test(e) ? 'txt' : ''}" title="${e}">${e}</button>`).join(''); }
+archEmotesRender();
+$('archEmotes').onclick = e => { const b = e.target.closest('button[data-e]'); if (b) archSayEmote(+b.dataset.e); };
 function archMsg(t, cls){ const el = $('archMsg'); el.textContent = t; el.className = 'bj-msg ' + (cls || ''); clearTimeout(archMsgT); if (t) archMsgT = setTimeout(() => { if (arch && !arch.ended) { el.textContent = ''; } }, 1400); }
 function archStart(m){
   archStop(true);
@@ -1657,6 +1697,7 @@ async function archConnect(A){
       if (p.heal > 0) A.myHp = Math.min(A.myMax || 100, A.myHp + p.heal);   // my lifesteal arrow landed
       A.oppHp = p.hp; archFlash = { side: 'op', t: performance.now() }; archMsg((p.part === 'head' ? `HEADSHOT −${p.dmg}` : `Hit −${p.dmg}`) + (p.heal > 0 ? ` · +${p.heal} HP` : ''), 'win'); archHud();
     })
+    .on('broadcast', { event: 'e' }, ({ payload: p }) => { if (arch === A && !A.ended) archEmote(p.i | 0, 'op'); })
     .on('broadcast', { event: 'pr' }, ({ payload: p }) => {   // they parried: p.inc = my arrow (incoming for them), p.mine = their arrow
       if (arch !== A || A.ended) return;
       const mine = A.arrows.find(q => q.id === p.inc), theirs = A.arrows.find(q => q.id === p.mine);
@@ -1817,6 +1858,7 @@ async function archTakeHit(id, head, power, kind){
   if (kind === 'poison') arch.poisonMe = { left: 3, next: now + 1000 };
   const heal = kind === 'vampire' ? Math.floor(dmg / 2) : 0;
   archFlash = { side: 'me', t: now }; archMsg(head ? `You got headshot −${dmg}` : `You got hit −${dmg}`, 'lose'); archHud();
+  if (arch.bot && Math.random() < (head ? 0.5 : 0.18)) setTimeout(() => arch && !arch.ended && archEmote([0, 1, 4, 5, 7][Math.floor(Math.random() * 5)], 'op'), 400);
   if (arch.bot) { if (heal) arch.oppHp = Math.min(arch.oppMax, arch.oppHp + heal), archHud(); if (arch.myHp <= 0) archBotEnd(); return; }
   archSend('h', { id, part: head ? 'head' : 'body', dmg, hp: arch.myHp, heal });
   const { data, error } = await sb.rpc('archer_damage', { p_id: arch.id, p_dmg: dmg, p_kind: kind === 'vampire' ? 'vamp' : 'hit' });
@@ -1840,8 +1882,8 @@ function archGeom(c){
     const w = Math.max(240, Math.min(card.clientWidth, Math.round((window.innerHeight - top - below) * 2.4)));
     if (c.style.width !== w + 'px') c.style.width = w + 'px';
     const free = window.innerHeight - top - below - Math.round(w / 2.4), mt = Math.max(0, Math.round(free / 2)) + top;   // sit between the bars and the controls
-    if (c.style.marginTop !== mt + 'px') c.style.marginTop = mt + 'px';
-  } else if (c.style.width) { c.style.width = ''; c.style.marginTop = ''; }
+    if (c.style.top !== mt + 'px') c.style.top = mt + 'px';
+  } else if (c.style.width) { c.style.width = ''; c.style.top = ''; }
   const W = c.clientWidth, H = Math.max(120, Math.round(W / 2.4));
   if (c.style.height !== H + 'px') c.style.height = H + 'px';
   const gy = H - 14; return { W, H, gy, sx: W / ARCH.W, sy: (gy - 10) / ARCH.H };
@@ -1877,6 +1919,19 @@ function archDraw(){
   archStick(ctx, X(arch.me.x), Y(arch.me.y), arch.dir * fl, flash('me') ? css('--lose') : meC, sy, arch.aim, now >= arch.reloadAt && !arch.ended && ARROWS[archCanUse(archKind) ? archKind : 'normal'].color, arch.me.crouch, walk(arch.me));
   archStick(ctx, X(arch.op.x), Y(arch.op.y), -arch.dir * fl, flash('op') ? css('--lose') : opC, sy, arch.op.aim, !arch.ended, arch.op.crouch, walk(arch.op));
   drawStuck(true);    // arrows stuck in the archers, on top so you can see them
+  for (const [e, who] of [[arch.me, 'me'], [arch.op, 'op']]) {   // emote bubbles
+    if (!e.emote) continue; const age = now - e.emote.t; if (age > 2200) { e.emote = null; continue; }
+    const k = age < 150 ? age / 150 : age > 1900 ? (2200 - age) / 300 : 1, txt = EMOTES[e.emote.i], isTxt = /^[A-Z]+$/.test(txt);
+    const bx = X(e.x), by = Y(e.y + (e.crouch ? 4.2 : 6.2)) - 14 - (1 - k) * 6, fs = Math.max(16, sy * 2.2);
+    ctx.font = (isTxt ? '800 ' : '') + Math.round(isTxt ? fs * 0.8 : fs) + 'px ' + (isTxt ? 'Inter, sans-serif' : 'system-ui, "Apple Color Emoji", "Segoe UI Emoji", sans-serif');
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    const tw = ctx.measureText(txt).width, pw = tw + 18, ph = fs + 12;
+    ctx.globalAlpha = Math.max(0, Math.min(1, k)); ctx.fillStyle = '#f2efe8';
+    ctx.beginPath(); ctx.roundRect ? ctx.roundRect(bx - pw / 2, by - ph / 2, pw, ph, 10) : ctx.rect(bx - pw / 2, by - ph / 2, pw, ph); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(bx - 5, by + ph / 2 - 1); ctx.lineTo(bx + 5, by + ph / 2 - 1); ctx.lineTo(bx, by + ph / 2 + 6); ctx.fill();
+    ctx.fillStyle = isTxt ? (who === 'me' ? css('--accent') : '#2a2635') : '#000'; ctx.fillText(txt, bx, by + 1);
+    ctx.globalAlpha = 1; ctx.textBaseline = 'alphabetic';
+  }
   {   // ping to your opponent (round trip through the live connection); practice has no connection
     const fresh = arch.ping != null && now - (arch.pongAt || 0) < 6000, ms = fresh ? Math.round(arch.ping) : null;
     const col = arch.bot ? '#2fbf6b' : arch.ended ? '#8d8a94' : !arch.joined || ms == null ? '#8d8a94' : ms < 90 ? '#2fbf6b' : ms < 180 ? '#e8b23a' : '#ff4d45';
@@ -2002,7 +2057,8 @@ $('archBuyYes').onclick = async () => {
   // keyboard: arrows + space are fixed, the rest you can rebind (saved on this device)
   const FIXED = { arrowleft: 'left', arrowright: 'right', arrowup: 'jump', ' ': 'jump', arrowdown: 'crouch' };
   const ACTS = [['left', 'Left', 'a'], ['right', 'Right', 'd'], ['jump', 'Jump', 'w'], ['crouch', 'Crouch', 'shift'],
-    ...Object.entries(ARROWS).map(([k, a], i) => ['arrow:' + k, a.icon + ' ' + a.name, String(i + 1)])];   // 1-5 pick an arrow
+    ...Object.entries(ARROWS).map(([k, a], i) => ['arrow:' + k, a.icon + ' ' + a.name, String(i + 1)]),   // 1-5 pick an arrow
+    ...EMOTES.map((e, i) => ['emote:' + i, 'Emote ' + e, ['6', '7', '8', '9', '0', '-', '=', '`'][i]])];   // emotes
   let binds = {}; try { binds = JSON.parse(localStorage.getItem('arch_keys') || '{}'); } catch {}
   for (const [a, , d] of ACTS) if (typeof binds[a] !== 'string') binds[a] = d;
   const keyName = k => ({ ' ': 'Space', shift: 'Shift', control: 'Ctrl', alt: 'Alt', meta: 'Cmd', enter: 'Enter', tab: 'Tab', escape: 'Esc', backspace: 'Bksp', capslock: 'Caps' })[k] || (k.startsWith('arrow') ? k.slice(5).replace(/^./, c => c.toUpperCase()) : k.length === 1 ? k.toUpperCase() : k);
@@ -2027,21 +2083,20 @@ $('archBuyYes').onclick = async () => {
       return keysRender();
     }
     if (!live() || /input|textarea/i.test(ev.target.tagName)) return; const k = actOf(ev.key.toLowerCase()); if (!k) return; ev.preventDefault();
+    if (k.startsWith('emote:')) { if (!ev.repeat) archSayEmote(+k.slice(6)); return; }
     if (k.startsWith('arrow:')) { const kind = k.slice(6); if (!ev.repeat && archCanUse(kind) && archKind !== kind) { archKind = kind; $('archBuy').hidden = true; archQuiverRender(); } return; }
     if (k === 'jump') { if (!ev.repeat) arch.keys.jump = true; } else arch.keys[k] = true;
   });
-  window.addEventListener('keyup', ev => { if (!arch) return; const k = actOf(ev.key.toLowerCase()); if (k && k !== 'jump' && !k.startsWith('arrow:')) arch.keys[k] = false; });
+  window.addEventListener('keyup', ev => { if (!arch) return; const k = actOf(ev.key.toLowerCase()); if (k && k !== 'jump' && !k.startsWith('arrow:') && !k.startsWith('emote:')) arch.keys[k] = false; });
   // fullscreen: real fullscreen where the browser allows it, otherwise the card covers the page
   const card = $('pvpArchCard');
   const fsOn = () => document.fullscreenElement === card || document.webkitFullscreenElement === card || card.classList.contains('arch-fake-fs');
-  const fsSync = () => { card.classList.toggle('arch-fs', fsOn()); $('archFsBtn').textContent = fsOn() ? '✕ Exit fullscreen' : '⛶ Fullscreen'; archDraw(); };
+  const fsSync = () => { card.classList.toggle('arch-fs', fsOn()); $('archFsBtn').textContent = fsOn() ? '✕ Exit fullscreen' : '⛶ Fullscreen'; archDraw(); if (!fsOn()) pollPvp(); };
+  window.archFsOn = fsOn;
+  window.archFsExit = async () => { card.classList.remove('arch-fake-fs'); try { if (document.fullscreenElement) await document.exitFullscreen(); else if (document.webkitFullscreenElement) document.webkitExitFullscreen(); } catch {} fsSync(); };
   document.addEventListener('fullscreenchange', fsSync); document.addEventListener('webkitfullscreenchange', fsSync);
   $('archFsBtn').onclick = async () => {
-    if (fsOn()) {
-      card.classList.remove('arch-fake-fs');
-      try { if (document.fullscreenElement) await document.exitFullscreen(); else if (document.webkitFullscreenElement) document.webkitExitFullscreen(); } catch {}
-      return fsSync();
-    }
+    if (fsOn()) return archFsExit();
     try { if (card.requestFullscreen) await card.requestFullscreen(); else if (card.webkitRequestFullscreen) card.webkitRequestFullscreen(); else throw 0; }
     catch { card.classList.add('arch-fake-fs'); if (window.top !== window) toast('Your browser blocked real fullscreen here. For the full screen, open the game in its own tab.'); }
     setTimeout(fsSync, 50);
