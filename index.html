@@ -342,6 +342,7 @@ tr.me td{color:var(--accent)}
 .title-chip.t-coin{background:rgba(232,178,58,.18);color:var(--gold);border:1px solid var(--gold)}
 .title-chip.t-rb{background:rgba(155,92,246,.18);color:#b794ff;border:1px solid #9b5cf6}
 .title-chip.t-rank{background:var(--accent);color:#fff}
+.title-chip.jew{background:linear-gradient(180deg,#ffffff 0%,#ffffff 22%,#1f5fd6 22%,#1f5fd6 78%,#ffffff 78%,#ffffff 100%);color:#fff;border:1px solid #1f5fd6;text-shadow:0 0 3px #0b3a99,0 0 6px #0b3a99;box-shadow:0 0 8px rgba(60,120,255,.45)}
 .title-chip.ggez{background:#0c1a12;color:#5cf08a;border:1px solid #2fbf6b;text-shadow:0 0 6px rgba(92,240,138,.7);animation:ggezPulse 1.6s ease-in-out infinite}
 @keyframes ggezPulse{0%,100%{box-shadow:0 0 0 rgba(47,191,107,0)}50%{box-shadow:0 0 10px rgba(47,191,107,.75)}}
 .title-chip.murphy{position:relative;overflow:hidden;z-index:0;background:linear-gradient(180deg,#2a1414,#120909);color:#ff6a5e;border:1px solid #8a2b24;text-shadow:0 0 6px rgba(255,80,70,.55)}
@@ -833,6 +834,10 @@ tr.me td{color:var(--accent)}
     <div class="field owner-only">
       <label>Aurora title (rainbow, max only)</label>
       <div style="display:flex;gap:8px"><button type="button" class="ghost" id="adminGiftTitle" style="flex:1">Grant Aurora</button><button type="button" class="ghost" id="adminUnGiftTitle" style="flex:1">Remove</button></div>
+    </div>
+    <div class="field">
+      <label>Jew title (blue and white)</label>
+      <div style="display:flex;gap:8px"><button type="button" class="ghost" id="adminGiftJew" style="flex:1">Grant Jew</button><button type="button" class="ghost" id="adminUnGiftJew" style="flex:1">Remove</button></div>
     </div>
     <div class="field owner-only">
       <label>Tester title (rainbow outline, max only)</label>
@@ -2432,6 +2437,7 @@ function titleChipsAll(p, rank){
   const bal = Number(p.balance) || 0, rb = Number(p.rebirths) || 0, out = [];
   if (p.gifted) out.push(['gifted', 'Aurora']);
   if (p.tester) out.push(['tester', 'Tester']);
+  if (p.jew) out.push(['jew', 'Jew']);
   for (const [n, t] of COIN_TITLES) if (bal >= n) { out.push(['t-coin', t]); break; }
   for (const [n, t] of RB_TITLES) if (rb >= n || (t === 'Celestial' && p.celestial && p.tester)) { out.push([t === 'Celestial' ? 'celestial' : 't-rb', t]); break; }
   if (p.ggez) out.push(['ggez', 'GGEZ']);
@@ -2466,6 +2472,7 @@ function openTitles(){
   rows.push('<div class="t-cat">Special</div>');
   rows.push(line('gifted', 'Aurora', 'Hand-picked by max \u00b7 luck of 100 rebirths'));
   rows.push(line('tester', 'Tester', 'Given by max to game testers'));
+  rows.push(line('jew', 'Jew', 'Given by admins'));
   rows.push('<div class="t-cat">Feats</div>');
   rows.push(line('ggez', 'GGEZ', 'Win 3 1v1s in a row (any game, Archers too)'));
   rows.push(line('murphy', "Murphy's Law", 'Lose a coin flip of 1 billion or more'));
@@ -3109,7 +3116,7 @@ async function loadBoard(){
   $('onlineCount').hidden = !on; $('onlineCount').innerHTML = `<span class="online-dot" style="margin:0 6px 0 0"></span>${on} online`;
   if (mode === 'hidden' && !data.length) { $('board').innerHTML = '<tr><td></td><td>Nobody is leaderboard banned</td><td></td></tr>'; boardShown = mode; return; }
   const frag = document.createDocumentFragment();
-  if (mode === 'money') { myRank = data.findIndex(p => p.id === user.id); const mp = data.find(p => p.id === user.id); if (mp && myProfile) Object.assign(myProfile, { balance: mp.balance, rebirths: mp.rebirths, gifted: mp.gifted, tester: mp.tester, celestial: mp.celestial, ggez: mp.ggez, murphy: mp.murphy, hidden_titles: mp.hidden_titles }); }
+  if (mode === 'money') { myRank = data.findIndex(p => p.id === user.id); const mp = data.find(p => p.id === user.id); if (mp && myProfile) Object.assign(myProfile, { balance: mp.balance, rebirths: mp.rebirths, gifted: mp.gifted, tester: mp.tester, celestial: mp.celestial, ggez: mp.ggez, murphy: mp.murphy, jew: mp.jew, hidden_titles: mp.hidden_titles }); }
   data.forEach((p, i) => frag.appendChild(boardRow(i, p, p.id === user.id, mode === 'rebirths' ? '▲' + (p.rebirths || 0) : short(p.balance))));
   $('board').replaceChildren(frag);   // swap all rows at once: no flash, scroll stays put
   boardShown = mode;
@@ -3165,6 +3172,15 @@ async function giftTester(on){
   const m = `${data.user} ${on ? 'now has' : 'no longer has'} the Tester title`; adminStatus(m, true); toast(m);
   if (!$('tab-board').hidden) loadBoard();
 }
+async function giftJew(on){
+  const n = adminName(); if (!n) return;
+  const { data, error } = await sb.rpc('admin_grant_jew', { p_user: n, p_on: on });
+  if (error) { adminStatus(error.message, false); return toast(error.message); }
+  const m = `${data.user} ${on ? 'now has' : 'no longer has'} the Jew title`; adminStatus(m, true); toast(m);
+  if (!$('tab-board').hidden) loadBoard();
+}
+$('adminGiftJew').onclick = () => giftJew(true);
+$('adminUnGiftJew').onclick = () => giftJew(false);
 $('adminGiftTester').onclick = () => giftTester(true);
 $('adminUnGiftTester').onclick = () => giftTester(false);
 async function giftCelestial(on){
