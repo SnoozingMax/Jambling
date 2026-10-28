@@ -342,6 +342,14 @@ tr.me td{color:var(--accent)}
 .title-chip.t-coin{background:rgba(232,178,58,.18);color:var(--gold);border:1px solid var(--gold)}
 .title-chip.t-rb{background:rgba(155,92,246,.18);color:#b794ff;border:1px solid #9b5cf6}
 .title-chip.t-rank{background:var(--accent);color:#fff}
+.title-chip.ggez{background:#0c1a12;color:#5cf08a;border:1px solid #2fbf6b;text-shadow:0 0 6px rgba(92,240,138,.7);animation:ggezPulse 1.6s ease-in-out infinite}
+@keyframes ggezPulse{0%,100%{box-shadow:0 0 0 rgba(47,191,107,0)}50%{box-shadow:0 0 10px rgba(47,191,107,.75)}}
+.title-chip.murphy{position:relative;overflow:hidden;z-index:0;background:linear-gradient(180deg,#2a1414,#120909);color:#ff6a5e;border:1px solid #8a2b24;text-shadow:0 0 6px rgba(255,80,70,.55)}
+.title-chip.murphy::after{content:"";position:absolute;inset:-2px;z-index:-1;background:linear-gradient(100deg,transparent 35%,rgba(255,120,100,.5) 48%,transparent 52%);opacity:0;animation:murphyFlash 5s linear infinite}
+@keyframes murphyFlash{0%,88%{opacity:0;transform:translateX(-120%)}90%{opacity:1;transform:translateX(0)}92%{opacity:0}94%{opacity:1;transform:translateX(40%)}96%,100%{opacity:0;transform:translateX(120%)}}
+.t-inv{display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--line)}
+.t-inv .t-sw{margin-left:auto;font:600 12px Inter,sans-serif;padding:4px 10px;border-radius:999px;border:1px solid var(--line);background:none;color:var(--ink);cursor:pointer}
+.t-inv.off .title-chip{opacity:.35;filter:grayscale(.6)} .t-inv.off .t-sw{color:var(--muted)}
 .title-chip.gifted{color:#6b5416;border:1px solid rgba(232,178,58,.7);background:repeating-linear-gradient(90deg,#fffdf5 0px,#fff 16px,#f6e6b8 32px,#fff 48px,#fffdf5 64px);box-shadow:0 0 10px rgba(255,240,190,.75),0 0 3px rgba(232,178,58,.5);text-shadow:0 1px 0 rgba(255,255,255,.6);animation:giftedShimmer 3s linear infinite}
 @keyframes giftedShimmer{to{background-position:64px 0}}
 .title-chip.tester{display:inline-flex;align-items:center;justify-content:center;vertical-align:middle;padding:3px 8px;position:relative;z-index:0;border:none;color:transparent;-webkit-text-fill-color:transparent;background:linear-gradient(90deg,#ff6b81,#ffb14d,#ffe95c,#5cf08a,#5cd0ff,#c99bff,#ff6b81);background-size:200% 100%;-webkit-background-clip:text;background-clip:text;animation:testerRainbow 2.5s linear infinite;animation-delay:var(--td,0ms)}
@@ -2416,20 +2424,25 @@ async function openGift(name){
   (name ? $('giftAmt') : $('giftTo')).focus();
 }
 /* ---------- titles ---------- */
+let myProfile = null, myRank = -1;
 const COIN_TITLES = [[1e21, 'Touchable', '1 sextillion coins'], [1e18, 'Untouchable', '1 quintillion coins'], [1e15, 'Goated', '1 quadrillion coins'], [1e12, 'Spoiled', '1 trillion coins']];
 const RB_TITLES = [[200, 'Celestial', '200+ rebirths'], [100, 'The Golden', '100+ rebirths'], [50, 'Ascended', '50+ rebirths'], [10, 'Reborn', '10+ rebirths']];
-function titleChips(bal, rb, rank, gifted, tester, celestial){
-  const out = [];
-  if (gifted) out.push(['gifted', 'Aurora']);
-  if (tester) out.push(['tester', 'Tester']);
+// every title a profile has earned (before the player's own hide choices); rank = spot on the money board or -1
+function titleChipsAll(p, rank){
+  const bal = Number(p.balance) || 0, rb = Number(p.rebirths) || 0, out = [];
+  if (p.gifted) out.push(['gifted', 'Aurora']);
+  if (p.tester) out.push(['tester', 'Tester']);
   for (const [n, t] of COIN_TITLES) if (bal >= n) { out.push(['t-coin', t]); break; }
-  for (const [n, t] of RB_TITLES) if (rb >= n || (t === 'Celestial' && celestial && tester)) { out.push([t === 'Celestial' ? 'celestial' : 't-rb', t]); break; }
+  for (const [n, t] of RB_TITLES) if (rb >= n || (t === 'Celestial' && p.celestial && p.tester)) { out.push([t === 'Celestial' ? 'celestial' : 't-rb', t]); break; }
+  if (p.ggez) out.push(['ggez', 'GGEZ']);
+  if (p.murphy) out.push(['murphy', "Murphy's Law"]);
   if (rank === 0) out.push(['t-rank', 'King']); else if (rank >= 0 && rank < 3) out.push(['t-rank', 'Elite']);
   return out;
 }
-function renderTitles(el, bal, rb, rank, gifted, tester, celestial){
+function titleChips(p, rank){ const hid = p.hidden_titles || []; return titleChipsAll(p, rank).filter(([, t]) => !hid.includes(t)); }
+function renderTitles(el, p, rank){
   el.innerHTML = '';
-  for (const [c, t] of titleChips(Number(bal) || 0, Number(rb) || 0, rank == null ? -1 : rank, gifted, tester, celestial)) {
+  for (const [c, t] of titleChips(p, rank == null ? -1 : rank)) {
     const s = document.createElement('span'); s.className = 'title-chip ' + c; s.textContent = t;
     if (c === 'gifted') s.style.animationDelay = -(Date.now() % 3000) + 'ms';   // sync shimmer to a global clock so the 10s refresh doesn't restart it
     if (c === 'tester') s.style.setProperty('--td', -(Date.now() % 2500) + 'ms');
@@ -2440,6 +2453,12 @@ function renderTitles(el, bal, rb, rank, gifted, tester, celestial){
 function openTitles(){
   const rows = [];
   const line = (cls, t, req) => `<div class="t-row"><span class="title-chip ${cls}">${t}</span><span>${req}</span></div>`;
+  if (myProfile) {   // inventory: what you have, with a show/hide switch on each
+    const hid = myProfile.hidden_titles || [], mine = titleChipsAll(myProfile, myRank);
+    rows.push('<div class="t-cat">Your titles</div>');
+    if (!mine.length) rows.push('<div class="hint" style="margin:0 0 6px">Nothing yet. Keep playing.</div>');
+    for (const [c, t] of mine) rows.push(`<div class="t-inv${hid.includes(t) ? ' off' : ''}" data-t="${t}"><span class="title-chip ${c}">${t}</span><button type="button" class="t-sw">${hid.includes(t) ? 'Hidden' : 'Shown'}</button></div>`);
+  }
   rows.push('<div class="t-cat">Coins</div>');
   COIN_TITLES.slice().reverse().forEach(([n, t, req]) => rows.push(line('t-coin', t, req)));
   rows.push('<div class="t-cat">Rebirths</div>');
@@ -2447,6 +2466,9 @@ function openTitles(){
   rows.push('<div class="t-cat">Special</div>');
   rows.push(line('gifted', 'Aurora', 'Hand-picked by max \u00b7 luck of 100 rebirths'));
   rows.push(line('tester', 'Tester', 'Given by max to game testers'));
+  rows.push('<div class="t-cat">Feats</div>');
+  rows.push(line('ggez', 'GGEZ', 'Win 3 1v1s in a row (any game, Archers too)'));
+  rows.push(line('murphy', "Murphy's Law", 'Lose a coin flip of 1 billion or more'));
   rows.push('<div class="t-cat">Leaderboard</div>');
   rows.push(line('t-rank', 'King', '#1 on the money board'));
   rows.push(line('t-rank', 'Elite', 'Top 3 on the money board'));
@@ -2454,6 +2476,14 @@ function openTitles(){
   $('titlesModal').hidden = false;
 }
 $('titlesOpen').onclick = openTitles;
+$('titlesList').onclick = async e => {
+  const b = e.target.closest('.t-sw'); if (!b || !myProfile) return;
+  const row = b.closest('.t-inv'), t = row.dataset.t, hide = !row.classList.contains('off'); b.disabled = true;
+  const { data, error } = await sb.rpc('set_title_hidden', { p_title: t, p_hidden: hide });
+  b.disabled = false; if (error) return toast(error.message);
+  myProfile.hidden_titles = data || []; row.classList.toggle('off', hide); b.textContent = hide ? 'Hidden' : 'Shown';
+  renderTitles($('whoTitles'), myProfile, -1); loadBoard && loadBoard();
+};
 $('titlesCancel').onclick = () => { $('titlesModal').hidden = true; };
 $('giftOpen').onclick = () => openGift();
 $('giftCancel').onclick = () => { $('giftModal').hidden = true; };
@@ -2522,7 +2552,7 @@ async function loadProfile(){
   const { data, error } = await sb.from('profiles').select('*').eq('id', user.id).single();
   if (error) return toast(error.message);
   $('who').textContent = data.username;
-  renderTitles($('whoTitles'), data.balance, data.rebirths || 0, -1, data.gifted, data.tester, data.celestial);
+  myProfile = data; renderTitles($('whoTitles'), data, -1);
   setRebirths(data.rebirths || 0);
   boostUntil = data.boost_until ? new Date(data.boost_until).getTime() : 0;
   if (data.banned) { toast('This account is banned.'); setTimeout(() => sb.auth.signOut(), 1500); return; }
@@ -2610,6 +2640,7 @@ $('flipBtn').onclick = async () => {
   $('coin').style.transform = `rotateY(${coinRot}deg)`;
   setTimeout(() => {
     setBalance(data.balance);
+    if (data.murphy && myProfile && !myProfile.murphy) { myProfile.murphy = true; renderTitles($('whoTitles'), myProfile, -1); toast("Title unlocked: Murphy's Law", 4000); }
     const r = $('coinResult');
     r.textContent = data.won ? `${data.result}! +${fmt(data.delta ?? bet)}` : `${data.result}. −${fmt(bet)}`;
     r.className = 'result ' + (data.won ? 'win' : 'lose');
@@ -3048,7 +3079,7 @@ function boardRow(i, p, isMe, right){
   tr.children[1].textContent = p.username;   // safe from HTML injection
   if (isOnline(p)) { const d = document.createElement('span'); d.className = 'online-dot'; d.title = 'Online'; tr.children[1].appendChild(d); }
   if (p.rebirths && boardMode !== 'rebirths') { const b = document.createElement('span'); b.className = 'lb-rb'; b.textContent = '▲' + p.rebirths; tr.children[1].appendChild(b); }
-  { const tb = document.createElement('span'); tb.className = 'titles'; renderTitles(tb, p.balance, p.rebirths || 0, boardMode === 'money' ? i : -1, p.gifted, p.tester, p.celestial); tr.children[1].appendChild(tb); }
+  { const tb = document.createElement('span'); tb.className = 'titles'; renderTitles(tb, p, boardMode === 'money' ? i : -1); tr.children[1].appendChild(tb); }
   tr.children[2].textContent = right;
   return tr;
 }
@@ -3078,6 +3109,7 @@ async function loadBoard(){
   $('onlineCount').hidden = !on; $('onlineCount').innerHTML = `<span class="online-dot" style="margin:0 6px 0 0"></span>${on} online`;
   if (mode === 'hidden' && !data.length) { $('board').innerHTML = '<tr><td></td><td>Nobody is leaderboard banned</td><td></td></tr>'; boardShown = mode; return; }
   const frag = document.createDocumentFragment();
+  if (mode === 'money') { myRank = data.findIndex(p => p.id === user.id); const mp = data.find(p => p.id === user.id); if (mp && myProfile) Object.assign(myProfile, { balance: mp.balance, rebirths: mp.rebirths, gifted: mp.gifted, tester: mp.tester, celestial: mp.celestial, ggez: mp.ggez, murphy: mp.murphy, hidden_titles: mp.hidden_titles }); }
   data.forEach((p, i) => frag.appendChild(boardRow(i, p, p.id === user.id, mode === 'rebirths' ? '▲' + (p.rebirths || 0) : short(p.balance))));
   $('board').replaceChildren(frag);   // swap all rows at once: no flash, scroll stays put
   boardShown = mode;
