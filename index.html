@@ -1960,8 +1960,8 @@ const ARCH_BOT = {
   // dodge chance, reaction time (s), run speed, random hops/s, headshot tries, arrows it may use, smart dodges (crouch/jump/step by reading the arrow)
   easy:   { aimErr: 7.5, lead: 0,    angMin: 38, angMax: 62, fireMin: 2.2, fireMax: 3.2, dodge: 0.25, react: 0.5,  move: 0.6,  hop: 0,    head: 0,    arrows: ['normal'], smart: false },
   normal: { aimErr: 1.8, lead: 0.75, angMin: 20, angMax: 45, fireMin: 1.3, fireMax: 1.9, dodge: 0.6,  react: 0.3,  move: 0.85, hop: 0.15, head: 0.2,  arrows: ['normal', 'poison'], smart: true },
-  hard:   { aimErr: 0.6, lead: 1.0,  angMin: 10, angMax: 30, fireMin: 1.0, fireMax: 1.3, dodge: 0.92, react: 0.18, move: 1,    hop: 0.4,  head: 0.45, arrows: ['normal', 'poison', 'sniper', 'homing'], smart: true, parry: 0.3 },
-  insane: { aimErr: 0.25, lead: 1.0, angMin: 6,  angMax: 22, fireMin: 1.0, fireMax: 1.1, dodge: 0.88, react: 0.12, move: 1,    hop: 0.5,  head: 0.6,  arrows: ['normal', 'poison', 'sniper', 'homing', 'vampire'], smart: true, parry: 0.55 }
+  hard:   { aimErr: 1.2, lead: 0.9,  angMin: 14, angMax: 36, fireMin: 1.25, fireMax: 1.6, dodge: 0.65, react: 0.26, move: 0.95, hop: 0.25, head: 0.3,  arrows: ['normal', 'poison', 'homing'], smart: true, parry: 0.12 },
+  insane: { aimErr: 0.25, lead: 1.0, angMin: 6,  angMax: 22, fireMin: 1.0, fireMax: 1.1, dodge: 0.9,  react: 0.12, move: 1,    hop: 0.5,  head: 0.6,  arrows: ['normal', 'poison', 'sniper', 'homing', 'vampire'], smart: true, parry: 0.55 }
 };
 function archBotStart(){
   archStop(true); archStuck = []; archFlash = null; archSparks = []; archDebris = [];
