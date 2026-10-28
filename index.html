@@ -207,7 +207,7 @@ canvas{width:100%;height:100%;display:block}
 .arch-tools{display:flex;justify-content:flex-end;gap:6px;margin:0 0 8px}
 .arch-tools .ghost{font-size:12px;padding:4px 9px;color:var(--muted)}
 .arch-tools .ghost:hover{color:var(--ink)}
-.arch-keys{display:none;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin:0 0 8px}
+.arch-keys{display:none;grid-template-columns:repeat(auto-fill,minmax(88px,1fr));gap:6px;margin:0 0 8px}
 .arch-keys.open{display:grid}
 .arch-keys button{background:none;border:1px solid var(--line);border-radius:8px;padding:6px 4px;font-size:12px;color:var(--ink);cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:2px}
 .arch-keys button small{color:var(--muted);font-size:10px;letter-spacing:.04em;text-transform:uppercase}
@@ -641,7 +641,7 @@ tr.me td{color:var(--accent)}
         <div class="arch-quiver" id="archQuiver"></div>
         <div class="arch-buy" id="archBuy" hidden><span id="archBuyText"></span><button type="button" class="go" id="archBuyYes">Buy</button><button type="button" class="ghost" id="archBuyNo">Cancel</button></div>
         <div class="arch-power"><span>PULL</span><div class="pbar"><div id="archPow"></div></div><span id="archAng">–</span><span class="arch-reload" title="Reload"><i id="archReload"></i></span></div>
-        <div class="hint" style="margin:6px 0 0"><span id="archKeyHint">Move ◀ ▶ (or A/D), jump (or W/Space), hold Shift to crouch</span> (crouch = smaller target, slower, no jumping). Arrow keys and Space always work; change the others with ⌨ Keys. Drag back anywhere on the field to pull the bow, release to fire. Harder pulls hit harder (body 10-35, headshots 1.6x). Special arrows: Poison (+4/s for 3s), Homing (aim assist), Sniper (flat, fast, 2.2x headshots), Lifesteal (heals half). The 200 HP upgrade starts you at 200. 90 seconds, most HP wins.</div>
+        <div class="hint" style="margin:6px 0 0"><span id="archKeyHint">Move ◀ ▶ (or A/D), jump (or W/Space), hold Shift to crouch</span> (crouch = smaller target, slower, no jumping). Keys 1-5 switch arrows. Arrow keys and Space always work; change the rest with ⌨ Keys. Drag back anywhere on the field to pull the bow, release to fire. Harder pulls hit harder (body 10-35, headshots 1.6x). Special arrows: Poison (+4/s for 3s), Homing (aim assist), Sniper (flat, fast, 2.2x headshots), Lifesteal (heals half). The 200 HP upgrade starts you at 200. 90 seconds, most HP wins.</div>
       </div>
       <div class="bj-msg" id="archMsg"></div>
       <button type="button" class="pvp-rematch" id="archRematch" hidden>Rematch</button>
@@ -1987,7 +1987,8 @@ $('archBuyYes').onclick = async () => {
   // keyboard
   // keyboard: arrows + space are fixed, the rest you can rebind (saved on this device)
   const FIXED = { arrowleft: 'left', arrowright: 'right', arrowup: 'jump', ' ': 'jump', arrowdown: 'crouch' };
-  const ACTS = [['left', 'Left', 'a'], ['right', 'Right', 'd'], ['jump', 'Jump', 'w'], ['crouch', 'Crouch', 'shift']];
+  const ACTS = [['left', 'Left', 'a'], ['right', 'Right', 'd'], ['jump', 'Jump', 'w'], ['crouch', 'Crouch', 'shift'],
+    ...Object.entries(ARROWS).map(([k, a], i) => ['arrow:' + k, a.icon + ' ' + a.name, String(i + 1)])];   // 1-5 pick an arrow
   let binds = {}; try { binds = JSON.parse(localStorage.getItem('arch_keys') || '{}'); } catch {}
   for (const [a, , d] of ACTS) if (typeof binds[a] !== 'string') binds[a] = d;
   const keyName = k => ({ ' ': 'Space', shift: 'Shift', control: 'Ctrl', alt: 'Alt', meta: 'Cmd', enter: 'Enter', tab: 'Tab', escape: 'Esc', backspace: 'Bksp', capslock: 'Caps' })[k] || (k.startsWith('arrow') ? k.slice(5).replace(/^./, c => c.toUpperCase()) : k.length === 1 ? k.toUpperCase() : k);
@@ -2011,9 +2012,11 @@ $('archBuyYes').onclick = async () => {
       try { localStorage.setItem('arch_keys', JSON.stringify(binds)); } catch {}
       return keysRender();
     }
-    if (!live() || /input|textarea/i.test(ev.target.tagName)) return; const k = actOf(ev.key.toLowerCase()); if (!k) return; ev.preventDefault(); if (k === 'jump') { if (!ev.repeat) arch.keys.jump = true; } else arch.keys[k] = true;
+    if (!live() || /input|textarea/i.test(ev.target.tagName)) return; const k = actOf(ev.key.toLowerCase()); if (!k) return; ev.preventDefault();
+    if (k.startsWith('arrow:')) { const kind = k.slice(6); if (!ev.repeat && archCanUse(kind) && archKind !== kind) { archKind = kind; $('archBuy').hidden = true; archQuiverRender(); } return; }
+    if (k === 'jump') { if (!ev.repeat) arch.keys.jump = true; } else arch.keys[k] = true;
   });
-  window.addEventListener('keyup', ev => { if (!arch) return; const k = actOf(ev.key.toLowerCase()); if (k && k !== 'jump') arch.keys[k] = false; });
+  window.addEventListener('keyup', ev => { if (!arch) return; const k = actOf(ev.key.toLowerCase()); if (k && k !== 'jump' && !k.startsWith('arrow:')) arch.keys[k] = false; });
   // fullscreen: real fullscreen where the browser allows it, otherwise the card covers the page
   const card = $('pvpArchCard');
   const fsOn = () => document.fullscreenElement === card || document.webkitFullscreenElement === card || card.classList.contains('arch-fake-fs');
