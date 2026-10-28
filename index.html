@@ -213,10 +213,23 @@ canvas{width:100%;height:100%;display:block}
 .arch-keys button small{color:var(--muted);font-size:10px;letter-spacing:.04em;text-transform:uppercase}
 .arch-keys button kbd{font:600 12px "IBM Plex Mono",monospace;background:#2a2635;border-radius:5px;padding:1px 7px;min-width:28px}
 .arch-keys button.listen{border-color:var(--accent)} .arch-keys button.listen kbd{color:var(--accent)}
-.arch-table:fullscreen{background:#0f0f12;border:0;border-radius:0;padding:12px 16px;display:flex;flex-direction:column;overflow:auto}
-.arch-table.arch-fake-fs{position:fixed;inset:0;z-index:999;margin:0;border:0;border-radius:0;padding:12px 16px;background:#0f0f12;overflow:auto;display:flex;flex-direction:column}
-.arch-table.arch-fs .arch-canvas{margin:0 auto}
-.arch-table.arch-fs .hint{display:none}
+.arch-table.arch-fs{position:fixed;inset:0;z-index:999;margin:0;border:0;border-radius:0;padding:0;background:#0f0f12;overflow:hidden;display:flex;align-items:flex-start;justify-content:center}
+.arch-fs .arch-canvas{border:0;border-radius:0;margin:0}
+.arch-fs .arch-top{position:absolute;top:8px;left:14px;right:14px;z-index:2;pointer-events:none}
+.arch-fs .arch-tools{position:absolute;top:46px;right:14px;z-index:3;margin:0}
+.arch-fs .arch-tools .ghost{background:rgba(20,18,28,.75)}
+.arch-fs .arch-keys{position:absolute;top:84px;right:14px;z-index:3;width:min(560px,calc(100% - 28px));margin:0;background:rgba(15,15,18,.92);padding:8px;border-radius:10px;border:1px solid var(--line)}
+.arch-fs .arch-ctl{position:absolute;left:14px;right:14px;bottom:10px;z-index:2;margin:0}
+.arch-fs .arch-btn{padding:10px 0;font-size:16px;background:rgba(20,18,28,.72)}
+.arch-fs .arch-quiver{grid-template-columns:repeat(6,1fr);gap:6px;margin-top:6px}
+.arch-fs .arch-quiver button{padding:6px 4px;font-size:12px;background:rgba(20,18,28,.72)} .arch-fs .arch-quiver button.on{background:var(--ink)} .arch-fs .arch-quiver button small{display:none}
+.arch-fs .arch-power,.arch-fs .hint{display:none}
+.arch-fs .arch-buy{background:rgba(15,15,18,.92)}
+.arch-fs .bj-msg{position:absolute;top:42%;left:0;right:0;z-index:2;pointer-events:none;font-size:36px;text-shadow:0 2px 12px #000}
+.arch-fs #archRematch{position:absolute;top:56%;left:50%;transform:translateX(-50%);z-index:3}
+.arch-fs .arch-bot{position:absolute;bottom:16px;left:0;right:0;z-index:3;gap:8px}
+.arch-fs .arch-ctl:not([hidden])~.arch-bot{bottom:auto;top:62px;transform:scale(.8);transform-origin:top center}
+.arch-fs #archShop{display:none}
 .arch-power{display:flex;align-items:center;gap:8px;margin-top:8px;font:600 11px "IBM Plex Mono",monospace;color:var(--muted)}
 .pbar{flex:1;height:10px;background:var(--field);border:1px solid var(--line);border-radius:999px;overflow:hidden}
 .pbar>div{height:100%;width:0;background:linear-gradient(90deg,var(--win),var(--gold),var(--lose))}
@@ -1822,12 +1835,13 @@ function archFire(aim){
 }
 function archGeom(c){
   const card = $('pvpArchCard'), fs = card.classList.contains('arch-fs');
-  if (fs) {   // fill the screen but keep the field's shape: as wide as fits under the bars and controls
-    let used = 0; for (const el of card.children) if (el !== c && !el.hidden) used += el.offsetHeight;
-    const availH = Math.max(160, window.innerHeight - used - 36), maxW = card.clientWidth - 32;
-    const w = Math.max(240, Math.min(maxW, Math.round(availH * 2.4)));
+  if (fs) {   // fullscreen: the field is as big as the screen allows (same shape), controls float over it
+    const ctl = $('archCtl'), below = ctl.hidden ? 0 : ctl.offsetHeight + 28, top = $('pvpArchCard').querySelector('.arch-top').offsetHeight + 12;
+    const w = Math.max(240, Math.min(card.clientWidth, Math.round((window.innerHeight - top - below) * 2.4)));
     if (c.style.width !== w + 'px') c.style.width = w + 'px';
-  } else if (c.style.width) c.style.width = '';
+    const free = window.innerHeight - top - below - Math.round(w / 2.4), mt = Math.max(0, Math.round(free / 2)) + top;   // sit between the bars and the controls
+    if (c.style.marginTop !== mt + 'px') c.style.marginTop = mt + 'px';
+  } else if (c.style.width) { c.style.width = ''; c.style.marginTop = ''; }
   const W = c.clientWidth, H = Math.max(120, Math.round(W / 2.4));
   if (c.style.height !== H + 'px') c.style.height = H + 'px';
   const gy = H - 14; return { W, H, gy, sx: W / ARCH.W, sy: (gy - 10) / ARCH.H };
@@ -2029,7 +2043,7 @@ $('archBuyYes').onclick = async () => {
       return fsSync();
     }
     try { if (card.requestFullscreen) await card.requestFullscreen(); else if (card.webkitRequestFullscreen) card.webkitRequestFullscreen(); else throw 0; }
-    catch { card.classList.add('arch-fake-fs'); }
+    catch { card.classList.add('arch-fake-fs'); if (window.top !== window) toast('Your browser blocked real fullscreen here. For the full screen, open the game in its own tab.'); }
     setTimeout(fsSync, 50);
   };
   window.addEventListener('keydown', ev => { if (ev.key === 'Escape' && card.classList.contains('arch-fake-fs')) { card.classList.remove('arch-fake-fs'); fsSync(); } });
