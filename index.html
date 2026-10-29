@@ -46,6 +46,7 @@ nav button.on{color:var(--ink);border-color:var(--accent)}
 label{display:block;font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:0 0 6px}
 .field{margin-bottom:16px}
 input[type=number],input[type=text],input[type=email],input[type=password]{width:100%;padding:11px 12px;border:1px solid var(--line);border-radius:10px;background:var(--field);outline:none}
+#adminTitlePick{padding:9px 10px;border:1px solid var(--line);border-radius:10px;background:var(--field);color:var(--ink);font:inherit;min-width:0}
 input:focus{border-color:var(--ink)}
 .chips{display:flex;gap:6px;margin-top:8px}
 .chips button{flex:1;padding:6px 0;border:1px solid var(--line);background:var(--field);border-radius:8px;cursor:pointer;font-family:"IBM Plex Mono";font-size:13px}
@@ -204,6 +205,23 @@ canvas{width:100%;height:100%;display:block}
 .arch-mid{display:flex;flex-direction:column;align-items:center;gap:2px;white-space:nowrap}
 .arch-canvas{width:100%;max-width:100%;height:auto;display:block;background:linear-gradient(#16141c,#1d1a26);border:1px solid var(--line);border-radius:12px;touch-action:none;cursor:crosshair;user-select:none;-webkit-user-select:none}
 .arch-ctl{margin-top:10px}
+.obby-top{display:flex;align-items:center;gap:18px;flex-wrap:wrap;margin-bottom:10px}
+.obby-stat{display:flex;flex-direction:column;line-height:1.1}
+.obby-stat small{font:700 10px "IBM Plex Mono",monospace;letter-spacing:.08em;color:var(--muted)}
+.obby-stat b{font:600 18px Fraunces,serif}
+.obby-tools{margin-left:auto;display:flex;gap:6px}
+.obby-tools .ghost{font-size:12px;padding:4px 9px;color:var(--muted)}
+.obby-wrap{position:relative;border-radius:12px;overflow:hidden;border:1px solid var(--line);background:#8fc8ff;touch-action:none;user-select:none;-webkit-user-select:none}
+.obby-wrap canvas{display:block;width:100%;cursor:grab}
+.obby-flash{position:absolute;inset:0;background:#ff3b2f;opacity:0;pointer-events:none}
+.obby-msg{position:absolute;top:12px;left:0;right:0;text-align:center;font:600 20px Fraunces,serif;color:#fff;text-shadow:0 2px 8px rgba(0,0,0,.6);pointer-events:none;opacity:0;transition:opacity .3s}
+.obby-msg.on{opacity:1}
+.obby-joy{position:absolute;width:110px;height:110px;margin:-55px 0 0 -55px;border-radius:50%;background:rgba(255,255,255,.15);border:2px solid rgba(255,255,255,.5);pointer-events:none}
+.obby-joy div{position:absolute;left:50%;top:50%;width:44px;height:44px;margin:-22px 0 0 -22px;border-radius:50%;background:rgba(255,255,255,.75)}
+.obby-jump{position:absolute;right:18px;bottom:18px;width:84px;height:84px;border-radius:50%;border:2px solid rgba(255,255,255,.7);background:rgba(255,90,60,.75);color:#fff;font:800 15px Inter,sans-serif;touch-action:none;display:none}
+@media (pointer:coarse){.obby-jump{display:block}}
+.obby-loading{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:#8fc8ff;color:#1d3557;font:600 18px Fraunces,serif}
+.obby-wrap.obby-fs{position:fixed;inset:0;z-index:999;border:0;border-radius:0}
 .arch-tools{display:flex;justify-content:flex-end;gap:6px;margin:0 0 8px}
 .arch-tools .ghost{font-size:12px;padding:4px 9px;color:var(--muted)}
 .arch-tools .ghost:hover{color:var(--ink)}
@@ -356,12 +374,12 @@ tr.me td{color:var(--accent)}
 .title-chip.tester{display:inline-flex;align-items:center;justify-content:center;vertical-align:middle;padding:3px 8px;position:relative;z-index:0;border:none;color:transparent;-webkit-text-fill-color:transparent;background:linear-gradient(90deg,#ff6b81,#ffb14d,#ffe95c,#5cf08a,#5cd0ff,#c99bff,#ff6b81);background-size:200% 100%;-webkit-background-clip:text;background-clip:text;animation:testerRainbow 2.5s linear infinite;animation-delay:var(--td,0ms)}
 .title-chip.tester::before{content:"";position:absolute;inset:0;z-index:-1;border-radius:999px;padding:1.5px;background:linear-gradient(90deg,#ff6b81,#ffb14d,#ffe95c,#5cf08a,#5cd0ff,#c99bff,#ff6b81);background-size:200% 100%;-webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude;animation:testerRainbow 2.5s linear infinite;animation-delay:var(--td,0ms)}
 @keyframes testerRainbow{to{background-position:200% 0}}
-.title-chip.celestial{display:inline-flex;align-items:center;justify-content:center;vertical-align:middle;line-height:normal;overflow:hidden;position:relative;z-index:0;border:1px solid rgba(150,175,255,.55);color:#eef2ff;background:linear-gradient(90deg,#140e3a,#2a1d6b,#1e3a8a,#3a2a84,#140e3a);background-size:200% 100%;text-shadow:0 0 6px rgba(170,190,255,.85);animation:celestial 4.5s linear infinite;animation-delay:var(--td,0ms)}
-.title-chip.celestial::before,.title-chip.celestial::after{content:"";position:absolute;z-index:-1;width:22px;height:2px;border-radius:2px;pointer-events:none;background:linear-gradient(90deg,transparent,rgba(255,255,255,.8));box-shadow:0 0 5px rgba(190,210,255,.6);opacity:0}
-.title-chip.celestial::before{top:22%;left:-28%;animation:shoot 6s ease-in infinite}
-.title-chip.celestial::after{top:46%;left:-28%;animation:shoot 8.5s ease-in 3.2s infinite}
-@keyframes celestial{0%{background-position:0 0;box-shadow:0 0 9px rgba(120,135,255,.45),0 0 18px rgba(95,120,255,.28)}50%{box-shadow:0 0 15px rgba(150,165,255,.72),0 0 30px rgba(115,140,255,.42)}100%{background-position:200% 0;box-shadow:0 0 9px rgba(120,135,255,.45),0 0 18px rgba(95,120,255,.28)}}
-@keyframes shoot{0%{transform:translate(0,0) rotate(7deg);opacity:0}10%{opacity:0}17%{opacity:.7}33%{transform:translate(130px,11px) rotate(7deg);opacity:0}100%{transform:translate(130px,11px) rotate(7deg);opacity:0}}
+.title-chip.celestial{display:inline-flex;align-items:center;justify-content:center;vertical-align:middle;line-height:normal;overflow:hidden;position:relative;z-index:0;border:1px solid rgba(150,175,255,.55);color:#f4f6ff;background:#0a0720;text-shadow:0 0 2px #000,0 0 4px #000,0 0 8px rgba(170,190,255,.8);animation:celestialGlow 4.5s ease-in-out infinite}
+.title-chip.celestial::before{content:"";position:absolute;z-index:-1;left:50%;top:50%;width:150%;aspect-ratio:1/1;border-radius:50%;pointer-events:none;transform:translate(-50%,-50%) rotate(0deg);filter:blur(1.2px);background:radial-gradient(circle,#fff6e6 0 1.5%,rgba(255,215,245,.75) 3.5%,rgba(190,150,255,.45) 8%,rgba(120,90,255,.12) 16%,transparent 30%),conic-gradient(from 0deg,transparent 0 10%,rgba(150,115,255,.7) 19%,rgba(90,180,255,.5) 27%,transparent 37%,transparent 50%,rgba(150,115,255,.7) 59%,rgba(255,140,225,.45) 67%,transparent 78%);-webkit-mask:radial-gradient(circle,#000 30%,transparent 62%);mask:radial-gradient(circle,#000 30%,transparent 62%);animation:galaxySpin 16s linear infinite;animation-delay:var(--td,0ms)}
+.title-chip.celestial::after{content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;background:radial-gradient(1px 1px at 8% 30%,#fff 70%,transparent 72%),radial-gradient(1px 1px at 22% 72%,#fff 70%,transparent 72%),radial-gradient(1.5px 1.5px at 36% 22%,#dfe8ff 70%,transparent 72%),radial-gradient(1px 1px at 58% 80%,#fff 70%,transparent 72%),radial-gradient(1px 1px at 71% 28%,#ffe9c9 70%,transparent 72%),radial-gradient(1.5px 1.5px at 86% 64%,#fff 70%,transparent 72%),radial-gradient(1px 1px at 93% 20%,#cfe0ff 70%,transparent 72%);animation:twinkle 2.6s ease-in-out infinite alternate;animation-delay:var(--td,0ms)}
+@keyframes galaxySpin{to{transform:translate(-50%,-50%) rotate(360deg)}}
+@keyframes twinkle{0%{opacity:.45}100%{opacity:1}}
+@keyframes celestialGlow{0%,100%{box-shadow:0 0 9px rgba(120,135,255,.45),0 0 18px rgba(95,120,255,.28)}50%{box-shadow:0 0 15px rgba(150,165,255,.72),0 0 30px rgba(115,140,255,.42)}}
 .t-cat{font:700 11px "IBM Plex Mono",monospace;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:14px 0 8px}
 .t-row{display:flex;align-items:center;gap:10px;padding:5px 0}
 .t-row span:last-child{color:var(--muted);font-size:13px}
@@ -443,6 +461,7 @@ tr.me td{color:var(--accent)}
     <button data-tab="bj">Blackjack</button>
     <button data-tab="mines">Mines</button>
     <button data-tab="pvp">1v1 <span class="dot" id="pvpDot" hidden></span></button>
+    <button data-tab="obby">Obby</button>
     <button data-tab="board">Leaderboard</button>
   </nav>
 
@@ -692,6 +711,27 @@ tr.me td{color:var(--accent)}
   </div>
 
   <!-- leaderboard -->
+  <div id="tab-obby" hidden>
+    <div class="card obby-card">
+      <div class="obby-top">
+        <div class="obby-stat"><small>STAGE</small><b id="obbyStage">0 / 6</b></div>
+        <div class="obby-stat"><small>TIME</small><b id="obbyTime">0.0s</b></div>
+        <div class="obby-stat"><small>DEATHS</small><b id="obbyDeaths">0</b></div>
+        <div class="obby-stat"><small>BEST</small><b id="obbyBest">–</b></div>
+        <div class="obby-stat"><small>ONLINE</small><b id="obbyOnline">1</b></div>
+        <div class="obby-tools"><button type="button" class="ghost" id="obbyRestart">↻ Restart</button><button type="button" class="ghost" id="obbyFs">⛶ Fullscreen</button></div>
+      </div>
+      <div class="obby-wrap" id="obbyWrap">
+        <canvas id="obbyCanvas"></canvas>
+        <div class="obby-flash"></div>
+        <div class="obby-msg" id="obbyMsg"></div>
+        <div class="obby-joy" hidden><div></div></div>
+        <button type="button" class="obby-jump">JUMP</button>
+        <div class="obby-loading" id="obbyLoading">Loading the obby…</div>
+      </div>
+      <div class="hint" style="margin-top:8px">WASD or arrows to run, Space to jump, drag to look around, scroll to zoom, R to restart. On touch: left side is a joystick, right side turns the camera. Green pads are checkpoints, red is lava, the gold pad is the finish. Everyone online is in the same world.</div>
+    </div>
+  </div>
   <div id="tab-board" hidden>
     <div class="seg" id="boardSeg">
       <button data-b="money" class="on">Money</button>
@@ -842,6 +882,10 @@ tr.me td{color:var(--accent)}
     <div class="field owner-only">
       <label>Tester title (rainbow outline, max only)</label>
       <div style="display:flex;gap:8px"><button type="button" class="ghost" id="adminGiftTester" style="flex:1">Grant Tester</button><button type="button" class="ghost" id="adminUnGiftTester" style="flex:1">Remove</button></div>
+    </div>
+    <div class="field owner-only">
+      <label>Any title (needs Tester, max only)</label>
+      <div style="display:flex;gap:8px"><select id="adminTitlePick" style="flex:1"></select><button type="button" class="ghost" id="adminGrantAny">Grant</button><button type="button" class="ghost" id="adminUnGrantAny">Remove</button></div>
     </div>
     <div class="field owner-only">
       <label>Celestial title (needs Tester, max only)</label>
@@ -2443,8 +2487,11 @@ function titleChipsAll(p, rank){
   if (p.ggez) out.push(['ggez', 'GGEZ']);
   if (p.murphy) out.push(['murphy', "Murphy's Law"]);
   if (rank === 0) out.push(['t-rank', 'King']); else if (rank >= 0 && rank < 3) out.push(['t-rank', 'Elite']);
+  for (const t of p.granted_titles || []) if (TITLE_CLASS[t] && !out.some(([, x]) => x === t)) out.push([TITLE_CLASS[t], t]);   // handed out by max (Tester holders only)
   return out;
 }
+const TITLE_CLASS = { Aurora: 'gifted', Tester: 'tester', Jew: 'jew', Spoiled: 't-coin', Goated: 't-coin', Untouchable: 't-coin', Touchable: 't-coin', Reborn: 't-rb', Ascended: 't-rb', 'The Golden': 't-rb', Celestial: 'celestial', GGEZ: 'ggez', "Murphy's Law": 'murphy', King: 't-rank', Elite: 't-rank' };
+const GRANTABLE = ['Spoiled', 'Goated', 'Untouchable', 'Touchable', 'Reborn', 'Ascended', 'The Golden', 'Celestial', 'GGEZ', "Murphy's Law", 'King', 'Elite'];
 function titleChips(p, rank){ const hid = p.hidden_titles || []; return titleChipsAll(p, rank).filter(([, t]) => !hid.includes(t)); }
 function renderTitles(el, p, rank){
   el.innerHTML = '';
@@ -2600,12 +2647,47 @@ $('daily').onclick = async () => {
 /* ---------- tabs ---------- */
 document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
   document.querySelectorAll('nav button').forEach(x => x.classList.toggle('on', x === b));
-  ['coin', 'crash', 'ride', 'bj', 'mines', 'pvp', 'board'].forEach(t => $('tab-' + t).hidden = t !== b.dataset.tab);
+  ['coin', 'crash', 'ride', 'bj', 'mines', 'pvp', 'obby', 'board'].forEach(t => $('tab-' + t).hidden = t !== b.dataset.tab);
+  if (b.dataset.tab === 'obby') obbyOpen(); else if (window.Obby) Obby.stop();
   if (b.dataset.tab === 'board') loadBoard();
   if (b.dataset.tab === 'pvp') { loadPvpOnline(); loadPvpHistory(); pollPvp(); }
   if (b.dataset.tab === 'ride') { drawRide(); updateRideRug(); }
   if (b.dataset.tab === 'crash' && !round && !ghost) drawGraph(1);
 });
+
+/* ---------- obby (3D course, everyone online together) ---------- */
+const OBBY_V = 1;
+let obbyMsgT = null;
+function nameColor(n){   // a steady color per name (hsl 65% / 55%)
+  let h = 0; for (const c of n) h = (h * 31 + c.charCodeAt(0)) >>> 0; const hue = h % 360, s = 0.65, l = 0.55;
+  const f = k => { const kk = (k + hue / 30) % 12, c = s * Math.min(l, 1 - l); return Math.round((l - c * Math.max(-1, Math.min(kk - 3, 9 - kk, 1))) * 255); };
+  return (f(0) << 16) | (f(8) << 8) | f(4);
+}
+async function obbyOpen(){
+  if (!user) return;
+  if (!window.Obby) {
+    await new Promise((res, rej) => { const s = document.createElement('script'); s.src = 'obby.js?v=' + OBBY_V; s.onload = res; s.onerror = rej; document.head.appendChild(s); }).catch(() => toast('Could not load the obby'));
+    if (!window.Obby) return;
+  }
+  const name = (myProfile && myProfile.username) || $('who').textContent || 'player';
+  try {
+    await Obby.start({ sb, me: { id: user.id, name, color: nameColor(name) }, wrap: $('obbyWrap'), canvas: $('obbyCanvas'), on: {
+      hud: h => { $('obbyStage').textContent = `${h.cp} / ${h.stages}`; $('obbyDeaths').textContent = h.deaths; $('obbyBest').textContent = h.best == null ? '–' : h.best.toFixed(1) + 's'; $('obbyOnline').textContent = h.players; },
+      timer: t => { if (t != null) $('obbyTime').textContent = t.toFixed(1) + 's'; },
+      msg: t => { const el = $('obbyMsg'); el.textContent = t; el.classList.add('on'); clearTimeout(obbyMsgT); obbyMsgT = setTimeout(() => el.classList.remove('on'), 2200); }
+    } });
+    $('obbyLoading').hidden = true;
+  } catch (e) { $('obbyLoading').textContent = 'The obby could not start here (' + (e && e.message || e) + ')'; }
+}
+$('obbyRestart').onclick = () => window.Obby && Obby.restart();
+$('obbyFs').onclick = async () => {
+  const w = $('obbyWrap'); const on = w.classList.contains('obby-fs') || document.fullscreenElement === w;
+  if (on) { w.classList.remove('obby-fs'); try { if (document.fullscreenElement) await document.exitFullscreen(); } catch {} }
+  else { try { if (w.requestFullscreen) await w.requestFullscreen(); else throw 0; } catch { w.classList.add('obby-fs'); } }
+  setTimeout(() => { w.classList.toggle('obby-fs', !!document.fullscreenElement || w.classList.contains('obby-fs')); $('obbyFs').textContent = w.classList.contains('obby-fs') ? '✕ Exit' : '⛶ Fullscreen'; window.Obby && Obby.resize(); }, 80);
+};
+document.addEventListener('fullscreenchange', () => { const w = $('obbyWrap'); if (!document.fullscreenElement) w.classList.remove('obby-fs'); $('obbyFs').textContent = w.classList.contains('obby-fs') ? '✕ Exit' : '⛶ Fullscreen'; window.Obby && Obby.resize(); });
+window.addEventListener('keydown', e => { if (e.key === 'Escape' && $('obbyWrap').classList.contains('obby-fs') && !document.fullscreenElement) { $('obbyWrap').classList.remove('obby-fs'); window.Obby && Obby.resize(); } });
 
 /* ---------- bet chips ---------- */
 document.querySelectorAll('.chips').forEach(c => c.onclick = e => {
@@ -3116,7 +3198,7 @@ async function loadBoard(){
   $('onlineCount').hidden = !on; $('onlineCount').innerHTML = `<span class="online-dot" style="margin:0 6px 0 0"></span>${on} online`;
   if (mode === 'hidden' && !data.length) { $('board').innerHTML = '<tr><td></td><td>Nobody is leaderboard banned</td><td></td></tr>'; boardShown = mode; return; }
   const frag = document.createDocumentFragment();
-  if (mode === 'money') { myRank = data.findIndex(p => p.id === user.id); const mp = data.find(p => p.id === user.id); if (mp && myProfile) Object.assign(myProfile, { balance: mp.balance, rebirths: mp.rebirths, gifted: mp.gifted, tester: mp.tester, celestial: mp.celestial, ggez: mp.ggez, murphy: mp.murphy, jew: mp.jew, hidden_titles: mp.hidden_titles }); }
+  if (mode === 'money') { myRank = data.findIndex(p => p.id === user.id); const mp = data.find(p => p.id === user.id); if (mp && myProfile) Object.assign(myProfile, { balance: mp.balance, rebirths: mp.rebirths, gifted: mp.gifted, tester: mp.tester, celestial: mp.celestial, ggez: mp.ggez, murphy: mp.murphy, jew: mp.jew, granted_titles: mp.granted_titles, hidden_titles: mp.hidden_titles }); }
   data.forEach((p, i) => frag.appendChild(boardRow(i, p, p.id === user.id, mode === 'rebirths' ? '▲' + (p.rebirths || 0) : short(p.balance))));
   $('board').replaceChildren(frag);   // swap all rows at once: no flash, scroll stays put
   boardShown = mode;
@@ -3179,6 +3261,16 @@ async function giftJew(on){
   const m = `${data.user} ${on ? 'now has' : 'no longer has'} the Jew title`; adminStatus(m, true); toast(m);
   if (!$('tab-board').hidden) loadBoard();
 }
+$('adminTitlePick').innerHTML = GRANTABLE.map(t => `<option>${t}</option>`).join('');
+async function grantAny(on){
+  const n = adminName(); if (!n) return; const t = $('adminTitlePick').value;
+  const { data, error } = await sb.rpc('owner_grant_title', { p_user: n, p_title: t, p_on: on });
+  if (error) { adminStatus(error.message, false); return toast(error.message); }
+  const m = `${data.user} ${on ? 'now has' : 'no longer has'} the ${t} title`; adminStatus(m, true); toast(m);
+  if (!$('tab-board').hidden) loadBoard();
+}
+$('adminGrantAny').onclick = () => grantAny(true);
+$('adminUnGrantAny').onclick = () => grantAny(false);
 $('adminGiftJew').onclick = () => giftJew(true);
 $('adminUnGiftJew').onclick = () => giftJew(false);
 $('adminGiftTester').onclick = () => giftTester(true);
