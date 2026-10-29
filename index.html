@@ -212,7 +212,8 @@ canvas{width:100%;height:100%;display:block}
 .obby-tools{margin-left:auto;display:flex;gap:6px}
 .obby-tools .ghost{font-size:12px;padding:4px 9px;color:var(--muted)}
 .obby-wrap{position:relative;border-radius:12px;overflow:hidden;border:1px solid var(--line);background:#8fc8ff;touch-action:none;user-select:none;-webkit-user-select:none}
-.obby-wrap canvas{display:block;width:100%;cursor:grab}
+.obby-wrap canvas{display:block;width:100%;max-width:100%;cursor:grab}
+.game>*{min-width:0}
 .obby-flash{position:absolute;inset:0;background:#ff3b2f;opacity:0;pointer-events:none}
 .obby-msg{position:absolute;top:12px;left:0;right:0;text-align:center;font:600 20px Fraunces,serif;color:#fff;text-shadow:0 2px 8px rgba(0,0,0,.6);pointer-events:none;opacity:0;transition:opacity .3s}
 .obby-msg.on{opacity:1}
@@ -221,7 +222,8 @@ canvas{width:100%;height:100%;display:block}
 .obby-jump{position:absolute;right:18px;bottom:18px;width:84px;height:84px;border-radius:50%;border:2px solid rgba(255,255,255,.7);background:rgba(255,90,60,.75);color:#fff;font:800 15px Inter,sans-serif;touch-action:none;display:none}
 @media (pointer:coarse){.obby-jump{display:block}}
 .obby-loading{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:#8fc8ff;color:#1d3557;font:600 18px Fraunces,serif}
-.obby-wrap.obby-fs{position:fixed;inset:0;z-index:999;border:0;border-radius:0}
+.obby-wrap.obby-fs{position:fixed;inset:0;z-index:999;border:0;border-radius:0;width:100vw;height:100vh;background:#0f0f12}
+.obby-wrap:fullscreen,.obby-wrap:-webkit-full-screen{width:100vw;height:100vh;border:0;border-radius:0}
 .hs-cross{position:absolute;left:50%;top:50%;width:26px;height:26px;margin:-13px 0 0 -13px;pointer-events:none;background:radial-gradient(circle,rgba(255,255,255,.95) 0 2px,transparent 3px),linear-gradient(#fff,#fff) center/2px 8px no-repeat,linear-gradient(#fff,#fff) center/8px 2px no-repeat;border:1.5px solid rgba(255,255,255,.7);border-radius:50%;filter:drop-shadow(0 0 2px #000)}
 .hs-fire{position:absolute;right:18px;bottom:118px;width:84px;height:84px;border-radius:50%;border:2px solid rgba(255,255,255,.7);background:rgba(220,50,40,.8);color:#fff;font:800 14px Inter,sans-serif;touch-action:none;display:none}
 @media (pointer:coarse){.hs-fire:not([hidden]){display:block}}
@@ -232,16 +234,26 @@ canvas{width:100%;height:100%;display:block}
 .hs-overlay .hs-bar{pointer-events:auto;margin:0;background:rgba(15,15,18,.55);padding:4px 6px;border-radius:10px;gap:4px}
 .hs-overlay .hs-bar .hint{display:none}
 .hs-overlay .hint{color:#ddd}
-.hs-status{bottom:auto;top:12px}
+.hs-status{bottom:auto;top:62px}
 @media (pointer:coarse){.hs-overlay{right:112px}}
 .hs-bar{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:8px}
 .hs-pick{background:rgba(30,28,40,.9);border:1px solid rgba(255,255,255,.18);border-radius:999px;padding:5px 9px;font:600 12px Inter,sans-serif;color:#fff;cursor:pointer;white-space:nowrap}
 .hs-pick kbd{font:600 10px "IBM Plex Mono",monospace;background:#2a2635;border-radius:4px;padding:1px 5px;margin-left:4px;color:var(--muted)}
 .hs-pick.on{border-color:#fff;background:#f2efe8;color:#141418} .hs-pick.on kbd{color:#141418;background:#ddd}
 .hs-pick.used{opacity:.4} .hs-pick.lock{opacity:.5}
-.hs-swatches{display:flex;flex-wrap:wrap;gap:4px;flex:1;min-width:0}
+.hs-swatches{display:flex;flex-wrap:nowrap;gap:4px;flex:1;min-width:0;overflow-x:auto;padding:2px 0;scrollbar-width:none} .hs-swatches::-webkit-scrollbar{display:none}
+.hs-swatches button{flex:0 0 auto}
+#hsPoses,#hsItems,#hsTauntBar{display:contents}
+.hs-sep{width:1px;height:22px;background:rgba(255,255,255,.2);margin:0 2px}
+.hs-taunt{background:var(--accent);border-color:var(--accent)} .hs-taunt.cool{opacity:.5}
+.hs-tauntnote{font:500 11px Inter,sans-serif;color:#ddd}
 .hs-swatches button{width:20px;height:20px;border-radius:6px;border:2px solid rgba(255,255,255,.15);cursor:pointer;padding:0}
 .hs-swatches button.on{border-color:#fff;box-shadow:0 0 0 2px var(--accent)}
+.g3-hud{position:absolute;top:8px;left:8px;z-index:3;display:flex;gap:14px;flex-wrap:wrap;align-items:center;padding:6px 12px;border-radius:10px;background:rgba(15,15,18,.55);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);pointer-events:none;max-width:calc(100% - 70px)}
+.g3-hud .obby-stat small{color:#c9c6d4} .g3-hud .obby-stat b{color:#fff;font-size:17px;text-shadow:0 1px 3px rgba(0,0,0,.6)}
+.g3-fs,.g3-tools{position:absolute;top:8px;right:8px;z-index:4}
+.g3-tools{display:flex;gap:6px}
+.g3-fs,.g3-tools .ghost{background:rgba(15,15,18,.6);color:#fff;border-color:rgba(255,255,255,.3);font-size:15px;padding:6px 11px;line-height:1}
 .obby-stagename{position:absolute;left:12px;bottom:12px;font:600 13px "IBM Plex Mono",monospace;color:#fff;text-shadow:0 1px 4px rgba(0,0,0,.6);pointer-events:none;letter-spacing:.06em}
 .obby-top-row{display:flex;gap:10px;align-items:center;padding:5px 0;border-bottom:1px solid var(--line);font-size:13px}
 .obby-top-row b{font:600 13px "IBM Plex Mono",monospace;min-width:22px;color:var(--muted)}
@@ -704,16 +716,16 @@ tr.me td{color:var(--accent)}
       <button type="button" class="pvp-rematch" id="fillRematch" hidden>Rematch</button>
     </div>
     <div class="card" id="pvpHideCard" hidden>
-      <div class="obby-top">
-        <div class="obby-stat"><small>YOU ARE</small><b id="hsRole">–</b></div>
-        <div class="obby-stat"><small>ROUND</small><b id="hsRound">–</b></div>
-        <div class="obby-stat"><small id="hsPhaseLbl">TIME</small><b id="hsTimer">–</b></div>
-        <div class="obby-stat"><small>SURVIVED · YOU / THEM</small><b id="hsTimes">– / –</b></div>
-        <div class="obby-stat" id="hsAmmoBox" hidden><small>SHELLS</small><b id="hsAmmo">8</b></div>
-        <div class="obby-tools"><button type="button" class="ghost" id="hsFs">⛶ Fullscreen</button></div>
-      </div>
       <div class="obby-wrap" id="hsWrap">
         <canvas id="hsCanvas"></canvas>
+        <div class="g3-hud">
+          <div class="obby-stat"><small>YOU ARE</small><b id="hsRole">–</b></div>
+          <div class="obby-stat"><small>ROUND</small><b id="hsRound">–</b></div>
+          <div class="obby-stat"><small id="hsPhaseLbl">TIME</small><b id="hsTimer">–</b></div>
+          <div class="obby-stat"><small>PTS · YOU / THEM</small><b id="hsTimes">– / –</b></div>
+          <div class="obby-stat" id="hsAmmoBox" hidden><small>SHELLS</small><b id="hsAmmo">8</b></div>
+        </div>
+        <button type="button" class="ghost g3-fs" id="hsFs">⛶</button>
         <div class="obby-msg" id="hsMsg"></div>
         <div class="hs-cross" id="hsCross" hidden></div>
         <div class="obby-joy" hidden><div></div></div>
@@ -729,14 +741,13 @@ tr.me td{color:var(--accent)}
             <div class="hs-swatches" id="hsSwatches"></div>
             <button type="button" class="hs-pick" id="hsUnpaint">Clear <kbd>G</kbd></button>
           </div>
-          <div class="hs-bar" id="hsPoses" hidden></div>
-          <div class="hs-bar hs-items" id="hsItems" hidden></div>
+          <div class="hs-bar" id="hsActions" hidden><span id="hsPoses"></span><span class="hs-sep"></span><span id="hsItems"></span><span class="hs-sep"></span><span id="hsTauntBar" hidden><button type="button" class="hs-pick hs-taunt" id="hsTaunt" title="pings your spot to the hunter">📣 Taunt · +8 pts <kbd>T</kbd></button></span></div>
         </div>
       </div>
       <div class="arch-emotes" id="hsEmotes"></div>
       <div class="bj-msg" id="hsResult"></div>
       <button type="button" class="pvp-rematch" id="hsRematch" hidden>Rematch</button>
-      <div class="hint" style="margin-top:8px">Hider: run off during the 25 seconds, press F to paint yourself the color of whatever you're touching (or tap a swatch), R to cycle poses (lie flat on roofs, curl up by rocks). Moving breaks a pose. Hunter: you're blind until the hunt starts, then click or tap FIRE to shoot where the crosshair points. 8 shells, 60 seconds. Both players hide once; the one who survives longer wins.</div>
+      <div class="hint" style="margin-top:8px">Hider: run off during the 25 seconds, press F to paint yourself the color of whatever you're touching (or tap a swatch), R to cycle poses (lie flat on roofs, curl up by rocks). Moving breaks a pose. Every second you stay hidden is a point, and a Taunt (T) pings your spot to the hunter for +8. Hunter: you're blind until the hunt starts, then click or tap FIRE to shoot where the crosshair points. 8 shells, 60 seconds. Both players hide once; most points wins.</div>
     </div>
     <div class="card arch-table" id="pvpArchCard" hidden>
       <div class="arch-top">
@@ -778,17 +789,17 @@ tr.me td{color:var(--accent)}
   <!-- leaderboard -->
   <div id="tab-obby" hidden>
     <div class="card obby-card">
-      <div class="obby-top">
-        <div class="obby-stat"><small>STAGE</small><b id="obbyStage">0 / 12</b></div>
-        <div class="obby-stat"><small>COINS</small><b id="obbyCoins">0</b></div>
-        <div class="obby-stat"><small>TIME</small><b id="obbyTime">0.0s</b></div>
-        <div class="obby-stat"><small>DEATHS</small><b id="obbyDeaths">0</b></div>
-        <div class="obby-stat"><small>BEST</small><b id="obbyBest">–</b></div>
-        <div class="obby-stat"><small>ONLINE</small><b id="obbyOnline">1</b></div>
-        <div class="obby-tools"><button type="button" class="ghost" id="obbyRestart">↻ Restart</button><button type="button" class="ghost" id="obbyFs">⛶ Fullscreen</button></div>
-      </div>
       <div class="obby-wrap" id="obbyWrap">
         <canvas id="obbyCanvas"></canvas>
+        <div class="g3-hud">
+          <div class="obby-stat"><small>STAGE</small><b id="obbyStage">0 / 12</b></div>
+          <div class="obby-stat"><small>COINS</small><b id="obbyCoins">0</b></div>
+          <div class="obby-stat"><small>TIME</small><b id="obbyTime">0.0s</b></div>
+          <div class="obby-stat"><small>DEATHS</small><b id="obbyDeaths">0</b></div>
+          <div class="obby-stat"><small>BEST</small><b id="obbyBest">–</b></div>
+          <div class="obby-stat"><small>ONLINE</small><b id="obbyOnline">1</b></div>
+        </div>
+        <div class="g3-tools"><button type="button" class="ghost" id="obbyRestart">↻</button><button type="button" class="ghost" id="obbyFs">⛶</button></div>
         <div class="obby-flash"></div>
         <div class="obby-msg" id="obbyMsg"></div>
         <div class="obby-joy" hidden><div></div></div>
@@ -1492,7 +1503,7 @@ const HINTS = {
   duel: 'Basically shadow boxing. Land 3 hits in a row to win. Can\'t pick the same side twice in a row.',
   filler: 'You own bottom-left, they own top-right. Take turns picking a color to grow your blob (not your or their current color). Most of the board when it fills up wins.',
   archer: 'Real-time stick-man archery. Run, jump to dodge, drag back to pull the bow and release. Harder pulls hit harder, headshots 1.6x. 100 HP, 90 seconds, most HP wins.',
-  hide: '3D hide and seek. The hider gets 25 seconds to run off, paint themselves the color of the map and strike a pose. Then the hunter gets 60 seconds and 8 shotgun shells to find them. Both players hide once; whoever survives longer wins.'
+  hide: '3D hide and seek. The hider gets 25 seconds to run off, paint themselves the color of the map and strike a pose. Then the hunter gets 60 seconds and 8 shotgun shells to find them. A point per second hidden, +8 per taunt. Both players hide once; most points wins.'
 };
 document.querySelectorAll('#pvpGame button').forEach(b => b.onclick = () => {
   pvpGameSel = b.dataset.g;
@@ -1890,8 +1901,8 @@ function renderArcher(m){
   archDraw();
 }
 /* ---------- Chameleon (3D hide & seek, hide.js) ---------- */
-const HS_V = 2;
-let hsOwned = [], hsPrices = { freeze: 3e9, smoke: 2e9, decoy: 5e9 }, hsShopKind = null, hsStarting = null, hsDeadline = null, hsMsgT = null, hsLastSecsAt = 0;
+const HS_V = 3;
+let hsOwned = [], hsPrices = { freeze: 3e9, smoke: 2e9, decoy: 5e9 }, hsShopKind = null, hsStarting = null, hsDeadline = null, hsMsgT = null, hsTauntCool = 0, hsLive = null;
 const HS_ITEMS = { freeze: { name: 'Freeze', icon: '❄️', desc: 'Freezes the hunter in place for 4 seconds' }, smoke: { name: 'Smoke bomb', icon: '💨', desc: 'A cloud nobody can see into for 9 seconds' }, decoy: { name: 'Decoy', icon: '🪆', desc: 'Drops a painted copy of you. The hunter has to shoot it to find out' } };
 async function hsLoadItems(){ const { data, error } = await sb.rpc('hs_items'); if (!error && data) { hsOwned = data.owned || []; hsPrices = data.prices || hsPrices; } hsShopRender(); }
 function hsShopRender(){
@@ -1913,12 +1924,13 @@ function hsHud(h){
   $('hsAmmoBox').hidden = !!h.hider || !(h.phase === 'seek' || h.phase === 'hide'); $('hsAmmo').textContent = h.ammo;
   $('hsCross').hidden = !!h.hider || h.phase !== 'seek'; $('hsFireBtn').hidden = !!h.hider || h.phase !== 'seek';
   const hiding = h.hider && (h.phase === 'hide' || h.phase === 'seek');
-  $('hsPaint').hidden = !hiding; $('hsPoses').hidden = !hiding; $('hsItems').hidden = !hiding;
+  $('hsPaint').hidden = !hiding; $('hsActions').hidden = !hiding; $('hsTauntBar').hidden = !(h.hider && h.phase === 'seek');
+  hsTauntCool = h.tauntIn || 0; $('hsTaunt').classList.toggle('cool', hsTauntCool > 0); $('hsTaunt').innerHTML = hsTauntCool > 0 ? `📣 Taunt · ${hsTauntCool.toFixed(0)}s` : '📣 Taunt · +8 pts <kbd>T</kbd>';
   if (hiding) {
     const pal = Hide.palette();
     if ($('hsSwatches').children.length !== pal.length) $('hsSwatches').innerHTML = pal.map(c => `<button type="button" data-c="${c}" style="background:#${c.toString(16).padStart(6, '0')}"></button>`).join('');
     [...$('hsSwatches').children].forEach(b => b.classList.toggle('on', +b.dataset.c === h.color));
-    $('hsPoses').innerHTML = Hide.POSES.map(p => `<button type="button" class="hs-pick${h.pose === p ? ' on' : ''}" data-pose="${p}">${Hide.POSE_LABEL[p]}</button>`).join('') + '<span class="hint" style="margin:0">R cycles · C crouch</span>';
+    $('hsPoses').innerHTML = Hide.POSES.map(p => `<button type="button" class="hs-pick${h.pose === p ? ' on' : ''}" data-pose="${p}" title="R cycles poses, C crouches">${Hide.POSE_LABEL[p]}</button>`).join('');
     $('hsItems').innerHTML = Object.entries(HS_ITEMS).map(([k, it], i) => { const own = (h.items || []).includes(k), used = h.used && h.used[k];
       return `<button type="button" class="hs-pick${used ? ' used' : own ? '' : ' lock'}" data-item="${k}">${it.icon} ${it.name}${own ? (used ? ' · used' : ` <kbd>${i + 1}</kbd>`) : ' · 🔒 shop'}</button>`; }).join('');
   }
@@ -1933,6 +1945,7 @@ $('hsItems').onclick = e => { const b = e.target.closest('button[data-item]'); i
 $('hsEmotes').innerHTML = EMOTES.map((e, i) => `<button type="button" data-e="${i}" class="${/^[A-Z]+$/.test(e) ? 'txt' : ''}">${e}</button>`).join('');
 $('hsEmotes').onclick = e => { const b = e.target.closest('button[data-e]'); if (b && window.Hide) Hide.emote(EMOTES[+b.dataset.e]); };
 $('hsRematch').onclick = pvpRematch;
+$('hsTaunt').onclick = () => window.Hide && Hide.taunt();
 async function hsEnsure(){
   if (hsStarting === true) return true;
   if (!hsStarting) hsStarting = (async () => {
@@ -1941,6 +1954,7 @@ async function hsEnsure(){
     await Hide.start({ sb, me: { id: user.id, name, color: nameColor(name) }, wrap: $('hsWrap'), canvas: $('hsCanvas'), on: {
       hud: hsHud, msg: hsMsg,
       freeze: s => { $('hsFreeze').hidden = !(s > 0); $('hsFreezeT').textContent = s > 0 ? s.toFixed(1) + 's' : ''; },
+      taunt: async () => { if (!pvp || pvp.game !== 'hide') return; const { data, error } = await sb.rpc('hide_taunt', { p_id: pvp.id }); if (error) toast(error.message); else { toast('📣 Taunt! +8 points'); pollPvp(); } },
       caught: async () => { if (!pvp || pvp.game !== 'hide') return; const { data, error } = await sb.rpc('hide_catch', { p_id: pvp.id }); if (error) { if (!/Not now/.test(error.message)) toast(error.message); } else pollPvp(); }
     } });
     $('hsLoading').hidden = true; hsStarting = true;
@@ -1956,24 +1970,26 @@ async function renderHide(m){
   $('hsRound').textContent = hs.round ? `${hs.round} / 2` : '–';
   $('hsPhaseLbl').textContent = hs.phase === 'hide' ? 'HIDING' : hs.phase === 'seek' ? 'HUNT' : hs.phase === 'pause' ? 'NEXT ROUND' : 'TIME';
   if (live && hs.secs != null) { const d = Date.now() + hs.secs * 1000; if (hsDeadline == null || Math.abs(d - hsDeadline) > 900) hsDeadline = d; } else hsDeadline = null;
-  const ft = v => v == null ? '–' : (Number(v) >= 60 ? '60 ✓' : Number(v).toFixed(1) + 's');
-  $('hsTimes').textContent = `${ft(m.my_time)} / ${ft(m.opp_time)}`;
+  // score = seconds hidden + taunt bonus. While a round runs, the hider's time ticks live.
+  const hiderMe = hs.hider && user && hs.hider === user.id, elapsed = hs.phase === 'seek' ? Math.max(0, 60 - (hs.secs || 0)) : 0;
+  const liveMine = live && m.my_time == null && hiderMe && hs.phase === 'seek', liveOpp = live && m.opp_time == null && !hiderMe && hs.phase === 'seek';
+  hsLive = { mine: liveMine, opp: liveOpp, base: Date.now(), elapsed, myB: m.my_bonus || 0, oppB: m.opp_bonus || 0, myT: m.my_time, oppT: m.opp_time };
+  hsScores();
   if (!live) {
     const label = { win: 'You win!', lose: m.opp + ' wins', tie: 'Draw' }[m.outcome] || '';
     const money = m.friendly ? ' (friendly)' : m.outcome === 'win' ? ` +${fmt(m.stake)}` : m.outcome === 'lose' ? ` −${fmt(m.stake)}` : ' · stakes back';
     const el = $('hsResult'); el.textContent = label ? label + money : ''; el.className = 'bj-msg ' + (m.outcome === 'win' ? 'win' : m.outcome === 'lose' ? 'lose' : '');
-    if (m.balance != null) setBalance(m.balance); $('hsBlind').hidden = true; $('hsCross').hidden = true; $('hsFireBtn').hidden = true; $('hsPaint').hidden = true; $('hsPoses').hidden = true; $('hsItems').hidden = true; $('hsAmmoBox').hidden = true; $('hsTimer').textContent = '–';
+    if (m.balance != null) setBalance(m.balance); $('hsBlind').hidden = true; $('hsCross').hidden = true; $('hsFireBtn').hidden = true; $('hsPaint').hidden = true; $('hsActions').hidden = true; $('hsAmmoBox').hidden = true; $('hsTimer').textContent = '–';
   } else $('hsResult').textContent = '';
 }
-setInterval(() => { if (hsDeadline == null) return; const left = Math.max(0, (hsDeadline - Date.now()) / 1000); $('hsTimer').textContent = left.toFixed(0) + 's'; $('hsBlindT').textContent = left.toFixed(0); }, 250);
-$('hsFs').onclick = async () => {
-  const w = $('hsWrap'); const on = w.classList.contains('obby-fs') || document.fullscreenElement === w;
-  if (on) { w.classList.remove('obby-fs'); try { if (document.fullscreenElement) await document.exitFullscreen(); } catch {} }
-  else { try { if (w.requestFullscreen) await w.requestFullscreen(); else throw 0; } catch { w.classList.add('obby-fs'); } }
-  setTimeout(() => { w.classList.toggle('obby-fs', !!document.fullscreenElement || w.classList.contains('obby-fs')); $('hsFs').textContent = w.classList.contains('obby-fs') ? '✕ Exit' : '⛶ Fullscreen'; window.Hide && Hide.resize(); }, 80);
-};
-document.addEventListener('fullscreenchange', () => { const w = $('hsWrap'); if (!document.fullscreenElement) w.classList.remove('obby-fs'); $('hsFs').textContent = w.classList.contains('obby-fs') ? '✕ Exit' : '⛶ Fullscreen'; window.Hide && Hide.resize(); });
-window.addEventListener('keydown', e => { if (e.key === 'Escape' && $('hsWrap').classList.contains('obby-fs') && !document.fullscreenElement) { $('hsWrap').classList.remove('obby-fs'); window.Hide && Hide.resize(); } });
+function hsScores(){
+  const L = hsLive; if (!L) return;
+  const run = L.elapsed + (Date.now() - L.base) / 1000;
+  const sc = (t, b, isLive) => { if (t == null && !isLive) return b ? `${b} pts` : '–'; const secs = t != null ? Number(t) : Math.min(60, run); return `${(secs + b).toFixed(0)} pts`; };
+  $('hsTimes').textContent = `${sc(L.myT, L.myB, L.mine)} / ${sc(L.oppT, L.oppB, L.opp)}`;
+}
+setInterval(() => { hsScores(); if (hsDeadline == null) return; const left = Math.max(0, (hsDeadline - Date.now()) / 1000); $('hsTimer').textContent = left.toFixed(0) + 's'; $('hsBlindT').textContent = left.toFixed(0); }, 250);
+g3Fullscreen('hsWrap', 'hsFs', () => window.Hide && Hide.resize());
 
 function archHud(){
   if (!arch) return;
@@ -2853,14 +2869,24 @@ async function obbyTop(){
 $('obbyEmotes').innerHTML = EMOTES.map((e, i) => `<button type="button" data-e="${i}" class="${/^[A-Z]+$/.test(e) ? 'txt' : ''}">${e}</button>`).join('');
 $('obbyEmotes').onclick = e => { const b = e.target.closest('button[data-e]'); if (b && window.Obby) Obby.emote(EMOTES[+b.dataset.e]); };
 $('obbyRestart').onclick = () => window.Obby && Obby.restart();
-$('obbyFs').onclick = async () => {
-  const w = $('obbyWrap'); const on = w.classList.contains('obby-fs') || document.fullscreenElement === w;
-  if (on) { w.classList.remove('obby-fs'); try { if (document.fullscreenElement) await document.exitFullscreen(); } catch {} }
-  else { try { if (w.requestFullscreen) await w.requestFullscreen(); else throw 0; } catch { w.classList.add('obby-fs'); } }
-  setTimeout(() => { w.classList.toggle('obby-fs', !!document.fullscreenElement || w.classList.contains('obby-fs')); $('obbyFs').textContent = w.classList.contains('obby-fs') ? '✕ Exit' : '⛶ Fullscreen'; window.Obby && Obby.resize(); }, 80);
-};
-document.addEventListener('fullscreenchange', () => { const w = $('obbyWrap'); if (!document.fullscreenElement) w.classList.remove('obby-fs'); $('obbyFs').textContent = w.classList.contains('obby-fs') ? '✕ Exit' : '⛶ Fullscreen'; window.Obby && Obby.resize(); });
-window.addEventListener('keydown', e => { if (e.key === 'Escape' && $('obbyWrap').classList.contains('obby-fs') && !document.fullscreenElement) { $('obbyWrap').classList.remove('obby-fs'); window.Obby && Obby.resize(); } });
+// fullscreen for the 3D games: real fullscreen where the browser allows it (prefixed on iPad), otherwise the view covers the page
+const fsEl = () => document.fullscreenElement || document.webkitFullscreenElement || null;
+function g3Fullscreen(wrapId, btnId, onResize){
+  const w = $(wrapId), b = $(btnId);
+  const isOn = () => w.classList.contains('obby-fs') || fsEl() === w;
+  const sync = () => { w.classList.toggle('obby-fs', fsEl() === w || w.classList.contains('fake-fs')); b.textContent = isOn() ? '✕' : '⛶'; b.title = isOn() ? 'Exit fullscreen' : 'Fullscreen'; onResize(); setTimeout(onResize, 120); setTimeout(onResize, 400); };
+  b.onclick = async () => {
+    if (isOn()) { w.classList.remove('fake-fs', 'obby-fs'); try { if (document.exitFullscreen && document.fullscreenElement) await document.exitFullscreen(); else if (document.webkitExitFullscreen && document.webkitFullscreenElement) document.webkitExitFullscreen(); } catch {} return sync(); }
+    let ok = false;
+    try { if (w.requestFullscreen) { await w.requestFullscreen(); ok = true; } else if (w.webkitRequestFullscreen) { w.webkitRequestFullscreen(); ok = true; } } catch { ok = false; }
+    if (!ok) { w.classList.add('fake-fs'); if (window.top !== window) toast('Fullscreen is blocked inside this page. Open the game in its own tab for true fullscreen.'); }
+    sync();
+  };
+  document.addEventListener('fullscreenchange', sync); document.addEventListener('webkitfullscreenchange', sync);
+  window.addEventListener('keydown', e => { if (e.key === 'Escape' && w.classList.contains('fake-fs')) { w.classList.remove('fake-fs'); sync(); } });
+  window.addEventListener('resize', () => { if (isOn()) onResize(); });
+}
+g3Fullscreen('obbyWrap', 'obbyFs', () => window.Obby && Obby.resize());
 
 /* ---------- bet chips ---------- */
 document.querySelectorAll('.chips').forEach(c => c.onclick = e => {

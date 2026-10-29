@@ -389,6 +389,7 @@ window.Obby = (function () {
   }
   function resize() {
     if (!renderer) return;
+    canvas.style.width = '100%'; canvas.style.height = '';   // let the layout settle before measuring (a wide canvas would hold the column open)
     const w = wrap.clientWidth, h = wrap.classList.contains('obby-fs') ? window.innerHeight : Math.max(260, Math.min(Math.round(window.innerHeight * 0.72), Math.round(w * 0.6)));
     renderer.setSize(w, h, false); canvas.style.width = w + 'px'; canvas.style.height = h + 'px'; camera.aspect = w / h; camera.updateProjectionMatrix();
   }

@@ -1,6 +1,7 @@
 -- Jambling: 1v1 Chameleon (Meccha Chameleon-style hide & seek in a 3D map). Run once in Supabase > SQL Editor (after archer_rt.sql / pvp_fix.sql / archer_upgrades.sql).
 --   * Two rounds: each player hides once. 25s to hide, paint yourself and pose (the hunter is blind), then 60s for the hunter to find and shoot them.
 --   * Whoever survives longer as the hider wins (both survive the full 60s or get tagged at the same second = draw).
+--   * Score = seconds hidden (max 60) + 8 per taunt (a taunt pings your spot to the hunter). Higher total after both rounds wins.
 --   * Hider gadgets (bought once, one use per round): Freeze, Smoke bomb, Decoy.
 --   * Hide 25s + hunt 60s = 85s per round, 4s pause between rounds.
 
@@ -9,6 +10,9 @@ alter table pvp_matches add column if not exists hs_r2_start timestamptz;
 alter table pvp_matches add column if not exists hs_r2_end timestamptz;
 alter table pvp_matches add column if not exists hs_t1 numeric;   -- seconds the challenger survived as hider
 alter table pvp_matches add column if not exists hs_t2 numeric;   -- seconds the other player survived as hider
+alter table pvp_matches add column if not exists hs_b1 int not null default 0;   -- taunt bonus points, challenger
+alter table pvp_matches add column if not exists hs_b2 int not null default 0;   -- taunt bonus points, other player
+alter table pvp_matches add column if not exists hs_taunt_at timestamptz;        -- last taunt (10s cooldown)
 
 -- ---------- gadgets ----------
 create table if not exists hs_owned (
@@ -73,13 +77,33 @@ language plpgsql security definer set search_path = public as $$
 declare m pvp_matches;
 begin
   select * into m from pvp_matches where id = p_id;
-  if m.hs_t1 > m.hs_t2 then perform _pvp_finish(m.id, m.a, 'win');
-  elsif m.hs_t2 > m.hs_t1 then perform _pvp_finish(m.id, m.b, 'win');
+  -- score = seconds hidden (max 60) + 8 per taunt
+  if m.hs_t1 + m.hs_b1 > m.hs_t2 + m.hs_b2 then perform _pvp_finish(m.id, m.a, 'win');
+  elsif m.hs_t2 + m.hs_b2 > m.hs_t1 + m.hs_b1 then perform _pvp_finish(m.id, m.b, 'win');
   else perform _pvp_finish(m.id, null, 'tie'); end if;
 end $$;
 revoke execute on function _hs_finish(uuid) from public, anon, authenticated;
 
--- the seeker touched the hider (either player's game may report it; the first report counts)
+-- taunt: the hider pings their spot to the hunter and banks 8 points (10s cooldown, hunt phase only)
+create or replace function hide_taunt(p_id uuid) returns json
+language plpgsql security definer set search_path = public as $$
+declare me uuid := auth.uid(); m pvp_matches; info json;
+begin
+  if me is null then raise exception 'Not signed in'; end if;
+  select * into m from pvp_matches where id = p_id and (a = me or b = me) for update;
+  if not found or m.status <> 'live' or m.game <> 'hide' then raise exception 'No live match'; end if;
+  info := _hs_info(m);
+  if info->>'phase' <> 'seek' or (info->>'hider')::uuid <> me then raise exception 'Not now'; end if;
+  if m.hs_taunt_at is not null and m.hs_taunt_at > now() - interval '10 seconds' then raise exception 'Taunt is cooling down'; end if;
+  if me = m.a then update pvp_matches set hs_b1 = hs_b1 + 8, hs_taunt_at = now() where id = m.id;
+  else update pvp_matches set hs_b2 = hs_b2 + 8, hs_taunt_at = now() where id = m.id; end if;
+  select * into m from pvp_matches where id = p_id;
+  return _pvp_view(m, me);
+end $$;
+revoke execute on function hide_taunt(uuid) from anon;
+grant execute on function hide_taunt(uuid) to authenticated;
+
+-- the seeker shot the hider (either player's game may report it; the first report counts)
 create or replace function hide_catch(p_id uuid) returns json
 language plpgsql security definer set search_path = public as $$
 declare me uuid := auth.uid(); m pvp_matches; el numeric;
@@ -153,7 +177,7 @@ begin
            a_max = _archer_maxhp(m.a), b_max = _archer_maxhp(m.b), round = 0, log = '[]',
            rt_start = now(), a_hit_at = null, b_hit_at = null, a_acted = now(), b_acted = now() where id = m.id;
   elsif m.game = 'hide' then
-    update pvp_matches set status = 'live', rt_start = now(), hs_r1_end = null, hs_r2_start = null, hs_r2_end = null, hs_t1 = null, hs_t2 = null,
+    update pvp_matches set status = 'live', rt_start = now(), hs_r1_end = null, hs_r2_start = null, hs_r2_end = null, hs_t1 = null, hs_t2 = null, hs_b1 = 0, hs_b2 = 0, hs_taunt_at = null,
            round = 0, log = '[]', a_acted = now(), b_acted = now() where id = m.id;
   else
     update pvp_matches set status = 'live', attacker = m.a, streak = 0, round = 1,
@@ -174,6 +198,8 @@ begin
       'opp', (select username from profiles where id = case when is_a then m.b else m.a end),
       'hs', _hs_info(m),
       'my_time', case when is_a then m.hs_t1 else m.hs_t2 end, 'opp_time', case when is_a then m.hs_t2 else m.hs_t1 end,
+      'my_bonus', case when is_a then m.hs_b1 else m.hs_b2 end, 'opp_bonus', case when is_a then m.hs_b2 else m.hs_b1 end,
+      'my_score', case when is_a then m.hs_t1 + m.hs_b1 else m.hs_t2 + m.hs_b2 end, 'opp_score', case when is_a then m.hs_t2 + m.hs_b2 else m.hs_t1 + m.hs_b1 end,
       'my_items', _hs_owned(me),
       'outcome', case when m.status <> 'done' then null when m.winner is null then 'tie' when m.winner = me then 'win' else 'lose' end,
       'balance', (select balance from profiles where id = me));
