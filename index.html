@@ -412,6 +412,11 @@ tr.me td{color:var(--accent)}
 .title-chip.speedrun{position:relative;overflow:hidden;z-index:0;background:#06141c;color:#7ff3ff;border:1px solid #23b8d6;font-style:italic;text-shadow:0 0 6px rgba(80,230,255,.7)}
 .title-chip.speedrun::before{content:"";position:absolute;inset:0;z-index:-1;background:repeating-linear-gradient(90deg,transparent 0 10px,rgba(120,240,255,.22) 10px 12px,transparent 12px 22px);background-size:44px 100%;animation:speedLines .6s linear infinite}
 @keyframes speedLines{from{background-position:44px 0}to{background-position:0 0}}
+.title-chip.honored{position:relative;overflow:hidden;z-index:0;color:#f4fbff;background:radial-gradient(120% 160% at 50% 50%,#0a1430 0%,#050814 70%);border:1px solid #9fd8ff;text-shadow:0 0 6px rgba(140,210,255,.95),0 0 2px #fff;box-shadow:0 0 8px rgba(110,190,255,.45);animation:honGlow 3.2s ease-in-out infinite}
+.title-chip.honored::before{content:"";position:absolute;inset:-60%;z-index:-1;background:conic-gradient(from 0deg,transparent 0 30%,rgba(90,150,255,.35) 38%,transparent 46%,transparent 64%,rgba(255,80,90,.28) 72%,rgba(170,90,255,.35) 78%,transparent 86%);animation:honSpin 6s linear infinite}
+.title-chip.honored::after{content:"";position:absolute;inset:0;z-index:-1;border-radius:inherit;box-shadow:inset 0 0 6px rgba(160,220,255,.55)}
+@keyframes honSpin{to{transform:rotate(360deg)}}
+@keyframes honGlow{0%,100%{box-shadow:0 0 8px rgba(110,190,255,.45)}50%{box-shadow:0 0 14px rgba(150,120,255,.6),0 0 4px rgba(200,235,255,.7)}}
 .title-chip.ggez{background:#0c1a12;color:#5cf08a;border:1px solid #2fbf6b;text-shadow:0 0 6px rgba(92,240,138,.7);animation:ggezPulse 1.6s ease-in-out infinite}
 @keyframes ggezPulse{0%,100%{box-shadow:0 0 0 rgba(47,191,107,0)}50%{box-shadow:0 0 10px rgba(47,191,107,.75)}}
 .title-chip.murphy{position:relative;overflow:hidden;z-index:0;background:linear-gradient(180deg,#2a1414,#120909);color:#ff6a5e;border:1px solid #8a2b24;text-shadow:0 0 6px rgba(255,80,70,.55)}
@@ -984,7 +989,7 @@ tr.me td{color:var(--accent)}
       <div style="display:flex;gap:8px"><button type="button" class="ghost" id="adminGiftTester" style="flex:1">Grant Tester</button><button type="button" class="ghost" id="adminUnGiftTester" style="flex:1">Remove</button></div>
     </div>
     <div class="field owner-only">
-      <label>Any title (needs Tester, max only)</label>
+      <label>Any title (max only · Creator needs Tester)</label>
       <div style="display:flex;gap:8px"><select id="adminTitlePick" style="flex:1"></select><button type="button" class="ghost" id="adminGrantAny">Grant</button><button type="button" class="ghost" id="adminUnGrantAny">Remove</button></div>
     </div>
     <div class="field owner-only">
@@ -2693,8 +2698,8 @@ function titleChipsAll(p, rank){
   for (const t of p.granted_titles || []) if (TITLE_CLASS[t] && !out.some(([, x]) => x === t)) out.push([TITLE_CLASS[t], t]);   // handed out by max (Tester holders only)
   return out;
 }
-const TITLE_CLASS = { Quick: 'speedrun', Creator: 'creator', OG: 'og', Aurora: 'gifted', Tester: 'tester', Jew: 'jew', Spoiled: 't-coin', Goated: 't-coin', Untouchable: 't-coin', Touchable: 't-coin', Reborn: 't-rb', Ascended: 't-rb', 'The Golden': 't-rb', Celestial: 'celestial', GGEZ: 'ggez', "Murphy's Law": 'murphy', King: 't-rank', Elite: 't-rank' };
-const GRANTABLE = ['Creator', 'Spoiled', 'Goated', 'Untouchable', 'Touchable', 'Reborn', 'Ascended', 'The Golden', 'Celestial', 'GGEZ', "Murphy's Law", 'King', 'Elite'];
+const TITLE_CLASS = { 'Honored One': 'honored', Quick: 'speedrun', Creator: 'creator', OG: 'og', Aurora: 'gifted', Tester: 'tester', Jew: 'jew', Spoiled: 't-coin', Goated: 't-coin', Untouchable: 't-coin', Touchable: 't-coin', Reborn: 't-rb', Ascended: 't-rb', 'The Golden': 't-rb', Celestial: 'celestial', GGEZ: 'ggez', "Murphy's Law": 'murphy', King: 't-rank', Elite: 't-rank' };
+const GRANTABLE = ['Creator', 'Honored One', 'OG', 'Aurora', 'Tester', 'Jew', 'Quick', 'Spoiled', 'Goated', 'Untouchable', 'Touchable', 'Reborn', 'Ascended', 'The Golden', 'Celestial', 'GGEZ', "Murphy's Law", 'King', 'Elite'];
 function titleChips(p, rank){ const hid = p.hidden_titles || []; return titleChipsAll(p, rank).filter(([, t]) => !hid.includes(t)); }
 function renderTitles(el, p, rank){
   el.innerHTML = '';
@@ -2724,6 +2729,7 @@ function openTitles(){
   rows.push('<div class="t-cat">Special</div>');
   rows.push(line('gifted', 'Aurora', 'Hand-picked by max \u00b7 luck of 100 rebirths'));
   rows.push(`<div class="t-row"><span class="title-chip creator"><span class="cr">Creator</span></span><span>Made Jambling. There is only one</span></div>`);
+  rows.push(line('honored', 'Honored One', 'Given by max'));
   rows.push(line('og', 'OG', 'Given by max to the originals'));
   rows.push(line('tester', 'Tester', 'Given by max to game testers'));
   rows.push(line('jew', 'Jew', 'Given by admins'));
