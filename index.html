@@ -826,7 +826,7 @@ tr.me td{color:var(--accent)}
       <div class="obby-wrap" id="obbyWrap">
         <canvas id="obbyCanvas"></canvas>
         <div class="g3-hud">
-          <div class="obby-stat"><small>STAGE</small><b id="obbyStage">0 / 12</b></div>
+          <div class="obby-stat"><small>STAGE</small><b id="obbyStage">0 / 18</b></div>
           <div class="obby-stat"><small>COINS</small><b id="obbyCoins">0</b></div>
           <div class="obby-stat"><small>TIME</small><b id="obbyTime">0.0s</b></div>
           <div class="obby-stat"><small>DEATHS</small><b id="obbyDeaths">0</b></div>
@@ -2872,7 +2872,7 @@ document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
 });
 
 /* ---------- obby (3D course, everyone online together) ---------- */
-const OBBY_V = 5;
+const OBBY_V = 6;
 let obbyMsgT = null;
 function nameColor(n){   // a steady color per name (hsl 65% / 55%)
   let h = 0; for (const c of n) h = (h * 31 + c.charCodeAt(0)) >>> 0; const hue = h % 360, s = 0.65, l = 0.55;

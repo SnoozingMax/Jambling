@@ -82,10 +82,42 @@ window.Obby = (function () {
     box(6, 28.5, 320, 3, 0.6, 8, { color: C.conveyor, belt: { x: 0, z: -5 }, stripe: true });
     box(6, 28.5, 327, 3, 0.6, 3, { color: C.bounce, bounce: 20 });
     box(6, 34, 335, 4, 0.6, 4, { color: C.purple });
-    cp(6, 34, 342, 'Finish');
-    // ---- 12 finish
-    box(6, 34, 352, 10, 1, 10, { color: C.gold, finish: true }); finishBox = P[P.length - 1];
-    [-4, 4].forEach(dx => wall(6 + dx, 35, 352, 0.8, 5, 0.8, { color: C.white }));
+    cp(6, 34, 342, 'Ice Rink');
+    // ---- 12 ice rink: slippery, you slide. Don't overshoot the gaps
+    [[6, 348, 3, 5], [4, 356, 3, 4], [8.5, 363, 3, 4], [6, 370, 2.5, 4]].forEach(([x, z, w, d]) => box(x, 34, z, w, 0.5, d, { color: C.ice, ice: true }));
+    coin(4, 36, 356); coin(8.5, 36, 363);
+    cp(6, 34, 377, 'Wind Bridge');
+    // ---- 13 wind bridge: a narrow bridge with crosswinds. Lean into it
+    box(6, 34, 392, 1.4, 0.5, 24, { color: C.beam });
+    box(6, 34, 386, 14, 6, 8, { color: 0x9ad8ff, zone: 'wind', wind: { x: 9, z: 0 } });
+    box(6, 34, 398, 14, 6, 8, { color: 0x9ad8ff, zone: 'wind', wind: { x: -9, z: 0 } });
+    coin(6, 36, 392);
+    cp(6, 34, 408, 'Crumble');
+    // ---- 14 crumbling blocks: they drop half a second after you land. Keep moving
+    [[6, 413], [4.5, 417], [7.5, 421], [6, 425], [4.5, 429], [7.5, 433], [6, 437]].forEach(([x, z]) => box(x, 34, z, 2.2, 0.6, 2.2, { color: 0xc98a5a, fall: true }));
+    coin(6, 36, 425);
+    cp(6, 34, 443, 'Moon Jumps');
+    // ---- 15 low gravity: huge floaty jumps over huge gaps
+    box(6, 34, 465, 30, 14, 50, { color: 0xc9a8ff, zone: 'lowg' });
+    [[6, 452], [6, 462], [6, 473], [6, 484]].forEach(([x, z], i) => box(x, 34 + (i % 2) * 2, z, 3, 0.6, 3, { color: C.purple }));
+    coin(6, 40, 457); coin(6, 42, 468); coin(6, 42, 479);
+    cp(6, 34, 492, 'Cannon Alley');
+    // ---- 16 cannon alley: blocks come flying at you down two lanes. Jump them
+    box(6, 34, 510, 5, 0.5, 28, { color: 0x8d93a6 });
+    box(4.8, 34.5, 520, 1.6, 0.8, 1.6, { color: C.lava, kill: true, cyc: { axis: 'z', from: 497, to: 524, speed: 11, phase: 0 } });
+    box(7.2, 34.5, 520, 1.6, 0.8, 1.6, { color: C.lava, kill: true, cyc: { axis: 'z', from: 497, to: 524, speed: 11, phase: 14 } });
+    box(6, 34.5, 520, 1.2, 0.8, 1.2, { color: C.lava, kill: true, cyc: { axis: 'z', from: 497, to: 524, speed: 15, phase: 7 } });
+    coin(6, 36, 510);
+    cp(6, 34, 528, 'Warp');
+    // ---- 17 warp pads: step on one to teleport. One of them is a trap
+    box(3, 34, 534, 2.2, 0.6, 2.2, { color: C.teal, tp: [6, 46, 548] }); box(9, 34, 534, 2.2, 0.6, 2.2, { color: C.teal, tp: [6, 35, 528] });
+    box(6, 45, 548, 6, 1, 6, { color: C.purple }); coin(6, 48, 548);
+    box(6, 42, 556, 3, 0.6, 3, { color: C.bounce, bounce: 22 });
+    box(6, 48, 565, 4, 0.6, 4, { color: C.purple });
+    cp(6, 48, 572, 'Finish');
+    // ---- 18 finish
+    box(6, 48, 582, 10, 1, 10, { color: C.gold, finish: true }); finishBox = P[P.length - 1];
+    [-4, 4].forEach(dx => wall(6 + dx, 49, 582, 0.8, 5, 0.8, { color: C.white }));
     return P;
   }
 
@@ -105,6 +137,7 @@ window.Obby = (function () {
   }
   function matFor(p) {
     if (p.lava) return new THREE.MeshLambertMaterial({ color: p.color, emissive: 0x6a1008 });
+    if (p.zone) return new THREE.MeshBasicMaterial({ color: p.color, transparent: true, opacity: 0.12, depthWrite: false });
     if (p.stripe) { const t = stripeTexture(); t.repeat.set(1, p.d / 2); p.tex = t; return new THREE.MeshLambertMaterial({ map: t }); }
     const t = studTex.clone(); t.needsUpdate = true; t.repeat.set(Math.max(1, Math.round(p.w)), Math.max(1, Math.round(p.d)));
     return new THREE.MeshLambertMaterial({ color: p.color, map: t, transparent: !!p.blink || !!p.truss, opacity: p.truss ? 0.85 : 1 });
@@ -121,7 +154,7 @@ window.Obby = (function () {
     const geo = new THREE.BoxGeometry(1, 1, 1);
     for (const p of parts) {
       const m = new THREE.Mesh(geo, matFor(p)); m.scale.set(p.w, p.h, p.d); m.position.set(p.x, p.y + p.h / 2, p.z);
-      m.castShadow = !p.lava; m.receiveShadow = true; scene.add(m); p.mesh = m; p.x0 = p.x; p.y0 = p.y; p.z0 = p.z;
+      m.castShadow = !p.lava && !p.zone; m.receiveShadow = !p.zone; scene.add(m); p.mesh = m; p.x0 = p.x; p.y0 = p.y; p.z0 = p.z;
       if (p.cp != null) { const ring = new THREE.Mesh(new THREE.TorusGeometry(2.2, 0.14, 8, 40), new THREE.MeshBasicMaterial({ color: 0xffffff })); ring.rotation.x = Math.PI / 2; ring.position.set(p.x, p.y + p.h + 0.06, p.z); scene.add(ring); p.ring = ring; }
       if (p.bounce) { const top = new THREE.Mesh(new THREE.CylinderGeometry(1, 1.2, 0.3, 24), new THREE.MeshLambertMaterial({ color: 0xffffff })); top.position.set(p.x, p.y + p.h + 0.15, p.z); scene.add(top); p.top = top; }
       if (p.kill) killers.push(p);
@@ -200,7 +233,7 @@ window.Obby = (function () {
 
   /* ---------- physics ---------- */
   function partBox(p) { return { x0: p.x - p.w / 2, x1: p.x + p.w / 2, y0: p.y, y1: p.y + p.h, z0: p.z - p.d / 2, z1: p.z + p.d / 2 }; }
-  function solid(p) { return !p.kill && !p.truss && !(p.blink && !p.on); }
+  function solid(p) { return !p.kill && !p.truss && !p.zone && !p.gone && !(p.blink && !p.on); }
   function overlapXZ(b, pad = 0) { return S.x + PW + pad > b.x0 && S.x - PW - pad < b.x1 && S.z + PW + pad > b.z0 && S.z - PW - pad < b.z1; }
   function respawn() {
     const c = cps[S.cp]; S.x = c[0]; S.y = c[1]; S.z = c[2]; S.vx = S.vy = S.vz = 0; S.ground = null; S.climb = false;
@@ -213,6 +246,11 @@ window.Obby = (function () {
       if (p.move) { const v = Math.sin(t * p.move.speed + p.move.phase) * p.move.amp; const o = p[p.move.axis]; p[p.move.axis] = p[p.move.axis + '0'] + v; p['d' + p.move.axis] = p[p.move.axis] - o; p['v' + p.move.axis] = Math.cos(t * p.move.speed + p.move.phase) * p.move.amp * p.move.speed; p.mesh.position.set(p.x, p.y + p.h / 2, p.z); }
       if (p.blink) { const k = (t + p.blink.phase) % p.blink.period; p.on = k < p.blink.on; p.mesh.material.opacity = p.on ? (k > p.blink.on - 0.5 ? 0.45 : 1) : 0.08; }
       if (p.tex && p.belt) p.tex.offset.y -= p.belt.z * dt * 0.08 || p.belt.x * dt * 0.08;
+      if (p.cyc) { const c = p.cyc, len = c.to - c.from; p[c.axis] = c.to - ((t * c.speed + c.phase) % len); p.mesh.position.set(p.x, p.y + p.h / 2, p.z); }
+      if (p.fall && p.fallT != null) { const age = t - p.fallT;
+        if (age < 0.5) p.mesh.position.x = p.x + Math.sin(age * 70) * 0.08;
+        else if (age < 3) { p.gone = true; p.mesh.position.set(p.x, p.y0 + p.h / 2 - (age - 0.5) * 9, p.z); p.mesh.material.opacity = 1; }
+        else { p.fallT = null; p.gone = false; p.mesh.position.set(p.x, p.y + p.h / 2, p.z); } }
     }
     for (const s of spinners) { s.a += s.speed * dt; s.mesh.rotation.y = s.a; }
     for (const d of discs) { d.a += d.speed * dt; d.mesh.rotation.y = d.a; }
@@ -228,7 +266,9 @@ window.Obby = (function () {
     const il = Math.hypot(ix, iz); if (il > 1) { ix /= il; iz /= il; }
     const fy = cam.yaw, fx = -Math.sin(fy), fz = -Math.cos(fy), rx = Math.cos(fy), rz = -Math.sin(fy);
     const sp = SPEED * (S.sprint ? SPRINT : 1), wx = (fx * iz + rx * ix) * sp, wz = (fz * iz + rz * ix) * sp;
-    const acc = S.ground ? 20 : 7; S.vx += (wx - S.vx) * Math.min(1, acc * dt); S.vz += (wz - S.vz) * Math.min(1, acc * dt);
+    let gMul = 1;
+    for (const z of parts) if (z.zone) { const b = partBox(z); if (overlapXZ(b) && S.y + PH > b.y0 && S.y < b.y1) { if (z.wind) { S.vx += z.wind.x * dt; S.vz += z.wind.z * dt; } if (z.zone === 'lowg') gMul = 0.4; } }
+    const acc = S.ground ? (S.ground.ice ? 1.6 : 20) : 7; S.vx += (wx - S.vx) * Math.min(1, acc * dt); S.vz += (wz - S.vz) * Math.min(1, acc * dt);
     S.moving = il > 0.1; if (S.moving) S.yaw = Math.atan2(wx, wz);
     // trusses: hug one and push into it to climb
     S.climb = false;
@@ -237,7 +277,7 @@ window.Obby = (function () {
     if (S.ground) S.air = 0; else S.air += dt;
     if (jumpQ) { S.jumpBuf = 0.12; jumpQ = false; }
     if (S.jumpBuf > 0) { S.jumpBuf -= dt; if (S.ground || S.air < 0.1 || S.climb) { const wasClimb = S.climb, g0 = S.ground; S.vy = JUMP; if (g0 && g0.move) { S.vx += g0.vx || 0; S.vz += g0.vz || 0; if ((g0.vy || 0) > 0) S.vy += g0.vy; } if (g0 && g0.belt) { S.vx += g0.belt.x; S.vz += g0.belt.z; } S.ground = null; S.air = 1; S.jumpBuf = 0; S.climb = false; snd.jump(); if (wasClimb) { S.vz -= fz * 3; S.vx -= fx * 3; } } }
-    if (!S.climb) S.vy -= G * dt; if (S.vy < -45) S.vy = -45;
+    if (!S.climb) S.vy -= G * gMul * dt; if (S.vy < -45) S.vy = -45;
     if (S.t0 == null && !S.done && (S.moving || S.vy > 0)) S.t0 = t;
     // move + collide, one axis at a time
     const boxes = parts.filter(solid).map(p => (p.b = partBox(p), p));
@@ -251,6 +291,8 @@ window.Obby = (function () {
     for (const p of boxes) { const b = p.b; if (!overlapXZ(b) || S.y + PH <= b.y0 || S.y >= b.y1) continue;
       if (S.vy <= 0 && S.y > b.y1 - 0.9) { S.y = b.y1; S.vy = 0; S.ground = p; } else if (S.vy > 0 && S.y + PH < b.y0 + 0.5) { S.y = b.y0 - PH; S.vy = 0; } else { S.y = b.y1; S.vy = 0; S.ground = p; } }
     for (const d of discs) { if (!onDisc(d) || S.y + PH <= d.y || S.y >= d.y + d.h) continue; if (S.vy <= 0 && S.y > d.y + d.h - 0.7) { S.y = d.y + d.h; S.vy = 0; S.ground = d; } }
+    if (S.ground && S.ground.fall && S.ground.fallT == null) S.ground.fallT = t;
+    if (S.ground && S.ground.tp) { const [tx, ty, tz] = S.ground.tp; burst(S.x, S.y + 1, S.z, 0x4fd1c5, 12); S.x = tx; S.y = ty; S.z = tz; S.vx = S.vz = 0; S.vy = 2; S.ground = null; burst(tx, ty + 1, tz, 0x4fd1c5, 12); snd.cp(); toastLocal('Warped!'); }
     if (S.ground && S.ground.bounce) { S.vy = S.ground.bounce; S.ground.top.scale.y = 0.4; S.ground = null; S.air = 1; snd.bounce(); burst(S.x, S.y, S.z, 0xff8ad8, 8); }
     for (const p of parts) if (p.top && p.top.scale.y < 1) p.top.scale.y = Math.min(1, p.top.scale.y + dt * 3);
     // hazards
@@ -274,7 +316,7 @@ window.Obby = (function () {
     send('fin', { secs: +secs.toFixed(1), deaths: S.deaths });
     onHud.finish && onHud.finish(secs, S.deaths, S.coins);
   }
-  function restart() { S.cp = 0; S.deaths = 0; S.coins = 0; S.t0 = null; S.done = false; for (const c of coins) { c.got = false; c.mesh.visible = true; } respawn(); hud(); }
+  function restart() { for (const p of parts) if (p.fall) { p.fallT = null; p.gone = false; p.mesh.position.set(p.x, p.y + p.h / 2, p.z); } S.cp = 0; S.deaths = 0; S.coins = 0; S.t0 = null; S.done = false; for (const c of coins) { c.got = false; c.mesh.visible = true; } respawn(); hud(); }
 
   /* ---------- effects ---------- */
   const fxGeo = () => new THREE.BoxGeometry(0.22, 0.22, 0.22);
