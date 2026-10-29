@@ -2686,14 +2686,14 @@ function titleChipsAll(p, rank){
   if (p.jew) out.push(['jew', 'Jew']);
   for (const [n, t] of COIN_TITLES) if (bal >= n) { out.push(['t-coin', t]); break; }
   for (const [n, t] of RB_TITLES) if (rb >= n || (t === 'Celestial' && p.celestial && p.tester)) { out.push([t === 'Celestial' ? 'celestial' : 't-rb', t]); break; }
-  if (p.speedrun) out.push(['speedrun', 'Speedrunner']);
+  if (p.speedrun) out.push(['speedrun', 'Quick']);
   if (p.ggez) out.push(['ggez', 'GGEZ']);
   if (p.murphy) out.push(['murphy', "Murphy's Law"]);
   if (rank === 0) out.push(['t-rank', 'King']); else if (rank >= 0 && rank < 3) out.push(['t-rank', 'Elite']);
   for (const t of p.granted_titles || []) if (TITLE_CLASS[t] && !out.some(([, x]) => x === t)) out.push([TITLE_CLASS[t], t]);   // handed out by max (Tester holders only)
   return out;
 }
-const TITLE_CLASS = { Speedrunner: 'speedrun', Creator: 'creator', OG: 'og', Aurora: 'gifted', Tester: 'tester', Jew: 'jew', Spoiled: 't-coin', Goated: 't-coin', Untouchable: 't-coin', Touchable: 't-coin', Reborn: 't-rb', Ascended: 't-rb', 'The Golden': 't-rb', Celestial: 'celestial', GGEZ: 'ggez', "Murphy's Law": 'murphy', King: 't-rank', Elite: 't-rank' };
+const TITLE_CLASS = { Quick: 'speedrun', Creator: 'creator', OG: 'og', Aurora: 'gifted', Tester: 'tester', Jew: 'jew', Spoiled: 't-coin', Goated: 't-coin', Untouchable: 't-coin', Touchable: 't-coin', Reborn: 't-rb', Ascended: 't-rb', 'The Golden': 't-rb', Celestial: 'celestial', GGEZ: 'ggez', "Murphy's Law": 'murphy', King: 't-rank', Elite: 't-rank' };
 const GRANTABLE = ['Creator', 'Spoiled', 'Goated', 'Untouchable', 'Touchable', 'Reborn', 'Ascended', 'The Golden', 'Celestial', 'GGEZ', "Murphy's Law", 'King', 'Elite'];
 function titleChips(p, rank){ const hid = p.hidden_titles || []; return titleChipsAll(p, rank).filter(([, t]) => !hid.includes(t)); }
 function renderTitles(el, p, rank){
@@ -2728,7 +2728,7 @@ function openTitles(){
   rows.push(line('tester', 'Tester', 'Given by max to game testers'));
   rows.push(line('jew', 'Jew', 'Given by admins'));
   rows.push('<div class="t-cat">Feats</div>');
-  rows.push(line('speedrun', 'Speedrunner', 'Beat the Obby in under 100 seconds'));
+  rows.push(line('speedrun', 'Quick', 'Beat the Obby in under 100 seconds'));
   rows.push(line('ggez', 'GGEZ', 'Win 3 1v1s in a row (any game, Archers too)'));
   rows.push(line('murphy', "Murphy's Law", 'Lose a coin flip of 1 billion or more'));
   rows.push('<div class="t-cat">Leaderboard</div>');
@@ -2881,7 +2881,7 @@ async function obbyOpen(){
   try {
     await Obby.start({ sb, me: { id: user.id, name, color: nameColor(name) }, wrap: $('obbyWrap'), canvas: $('obbyCanvas'), on: {
       hud: h => { $('obbyStage').textContent = `${h.cp} / ${h.stages}`; $('obbyCoins').textContent = `${h.coins} / ${h.totalCoins}`; $('obbyDeaths').textContent = h.deaths; $('obbyBest').textContent = h.best == null ? '–' : h.best.toFixed(1) + 's'; $('obbyOnline').textContent = h.players; $('obbyStageName').textContent = h.cp ? `STAGE ${h.cp} · ${(h.stage || '').toUpperCase()}` : 'SPAWN'; },
-      finish: async (secs, deaths, coins) => { const { data, error } = await sb.rpc('obby_finish', { p_secs: +secs.toFixed(2), p_deaths: deaths, p_coins: coins }); if (!error && data) { if (data.rank) toast(`Obby: ${secs.toFixed(1)}s · #${data.rank} on the board`); if (data.speedrun && myProfile && !myProfile.speedrun) { myProfile.speedrun = true; renderTitles($('whoTitles'), myProfile, -1); setTimeout(() => toast('Title unlocked: Speedrunner', 4000), 1500); } obbyTop(); } },
+      finish: async (secs, deaths, coins) => { const { data, error } = await sb.rpc('obby_finish', { p_secs: +secs.toFixed(2), p_deaths: deaths, p_coins: coins }); if (!error && data) { if (data.rank) toast(`Obby: ${secs.toFixed(1)}s · #${data.rank} on the board`); if (data.speedrun && myProfile && !myProfile.speedrun) { myProfile.speedrun = true; renderTitles($('whoTitles'), myProfile, -1); setTimeout(() => toast('Title unlocked: Quick', 4000), 1500); } obbyTop(); } },
       emote: i => { if (window.Obby && EMOTES[i]) Obby.emote(EMOTES[i]); },
       timer: t => { if (t != null) $('obbyTime').textContent = t.toFixed(1) + 's'; },
       msg: t => { const el = $('obbyMsg'); el.textContent = t; el.classList.add('on'); clearTimeout(obbyMsgT); obbyMsgT = setTimeout(() => el.classList.remove('on'), 2200); }
