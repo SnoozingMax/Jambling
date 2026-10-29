@@ -222,6 +222,26 @@ canvas{width:100%;height:100%;display:block}
 @media (pointer:coarse){.obby-jump{display:block}}
 .obby-loading{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:#8fc8ff;color:#1d3557;font:600 18px Fraunces,serif}
 .obby-wrap.obby-fs{position:fixed;inset:0;z-index:999;border:0;border-radius:0}
+.hs-cross{position:absolute;left:50%;top:50%;width:26px;height:26px;margin:-13px 0 0 -13px;pointer-events:none;background:radial-gradient(circle,rgba(255,255,255,.95) 0 2px,transparent 3px),linear-gradient(#fff,#fff) center/2px 8px no-repeat,linear-gradient(#fff,#fff) center/8px 2px no-repeat;border:1.5px solid rgba(255,255,255,.7);border-radius:50%;filter:drop-shadow(0 0 2px #000)}
+.hs-fire{position:absolute;right:18px;bottom:118px;width:84px;height:84px;border-radius:50%;border:2px solid rgba(255,255,255,.7);background:rgba(220,50,40,.8);color:#fff;font:800 14px Inter,sans-serif;touch-action:none;display:none}
+@media (pointer:coarse){.hs-fire:not([hidden]){display:block}}
+.hs-blind{position:absolute;inset:0;background:#0b0b10;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;font:600 16px Inter,sans-serif;z-index:3}
+.hs-blind span{font-size:48px} .hs-blind b{font:700 64px Fraunces,serif;line-height:1} .hs-blind small{color:var(--muted);font-size:14px}
+.hs-freeze{position:absolute;inset:0;background:rgba(120,190,255,.28);box-shadow:inset 0 0 80px rgba(160,220,255,.9);display:flex;align-items:center;justify-content:center;color:#fff;font:800 28px Inter,sans-serif;text-shadow:0 2px 8px rgba(0,60,120,.8);pointer-events:none;z-index:2}
+.hs-overlay{position:absolute;left:8px;right:8px;bottom:8px;display:flex;flex-direction:column;gap:4px;pointer-events:none;z-index:2}
+.hs-overlay .hs-bar{pointer-events:auto;margin:0;background:rgba(15,15,18,.55);padding:4px 6px;border-radius:10px;gap:4px}
+.hs-overlay .hs-bar .hint{display:none}
+.hs-overlay .hint{color:#ddd}
+.hs-status{bottom:auto;top:12px}
+@media (pointer:coarse){.hs-overlay{right:112px}}
+.hs-bar{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:8px}
+.hs-pick{background:rgba(30,28,40,.9);border:1px solid rgba(255,255,255,.18);border-radius:999px;padding:5px 9px;font:600 12px Inter,sans-serif;color:#fff;cursor:pointer;white-space:nowrap}
+.hs-pick kbd{font:600 10px "IBM Plex Mono",monospace;background:#2a2635;border-radius:4px;padding:1px 5px;margin-left:4px;color:var(--muted)}
+.hs-pick.on{border-color:#fff;background:#f2efe8;color:#141418} .hs-pick.on kbd{color:#141418;background:#ddd}
+.hs-pick.used{opacity:.4} .hs-pick.lock{opacity:.5}
+.hs-swatches{display:flex;flex-wrap:wrap;gap:4px;flex:1;min-width:0}
+.hs-swatches button{width:20px;height:20px;border-radius:6px;border:2px solid rgba(255,255,255,.15);cursor:pointer;padding:0}
+.hs-swatches button.on{border-color:#fff;box-shadow:0 0 0 2px var(--accent)}
 .obby-stagename{position:absolute;left:12px;bottom:12px;font:600 13px "IBM Plex Mono",monospace;color:#fff;text-shadow:0 1px 4px rgba(0,0,0,.6);pointer-events:none;letter-spacing:.06em}
 .obby-top-row{display:flex;gap:10px;align-items:center;padding:5px 0;border-bottom:1px solid var(--line);font-size:13px}
 .obby-top-row b{font:600 13px "IBM Plex Mono",monospace;min-width:22px;color:var(--muted)}
@@ -624,6 +644,7 @@ tr.me td{color:var(--accent)}
           <button type="button" data-g="duel" class="on">Shadow Boxing</button>
           <button type="button" data-g="filler">Filler</button>
           <button type="button" data-g="archer">Archers</button>
+          <button type="button" data-g="hide">Chameleon</button>
         </div>
         <div class="pick" id="pvpMode" style="margin-bottom:14px">
           <button type="button" data-m="friendly" class="on">Friendly</button>
@@ -635,6 +656,11 @@ tr.me td{color:var(--accent)}
         </div>
         <button class="go" id="pvpSend">Send challenge</button>
         <button type="button" class="ghost arch-practice" id="archPractice" hidden>🎯 Practice Archers vs Bot · free</button>
+        <div class="arch-shop" id="hsShop" hidden>
+          <label>Chameleon gadgets (for the hider)</label>
+          <div id="hsShopList"></div>
+          <div class="arch-buy" id="hsShopBuy" hidden><span id="hsShopBuyText"></span><button type="button" class="go" id="hsShopYes">Buy</button><button type="button" class="ghost" id="hsShopNo">Cancel</button></div>
+        </div>
         <div class="arch-shop" id="archShop" hidden>
           <label>Archers armory</label>
           <div id="archShopList"></div>
@@ -676,6 +702,41 @@ tr.me td{color:var(--accent)}
       <div class="fill-grid" id="fillGrid"></div>
       <div class="bj-msg" id="fillMsg"></div>
       <button type="button" class="pvp-rematch" id="fillRematch" hidden>Rematch</button>
+    </div>
+    <div class="card" id="pvpHideCard" hidden>
+      <div class="obby-top">
+        <div class="obby-stat"><small>YOU ARE</small><b id="hsRole">–</b></div>
+        <div class="obby-stat"><small>ROUND</small><b id="hsRound">–</b></div>
+        <div class="obby-stat"><small id="hsPhaseLbl">TIME</small><b id="hsTimer">–</b></div>
+        <div class="obby-stat"><small>SURVIVED · YOU / THEM</small><b id="hsTimes">– / –</b></div>
+        <div class="obby-stat" id="hsAmmoBox" hidden><small>SHELLS</small><b id="hsAmmo">8</b></div>
+        <div class="obby-tools"><button type="button" class="ghost" id="hsFs">⛶ Fullscreen</button></div>
+      </div>
+      <div class="obby-wrap" id="hsWrap">
+        <canvas id="hsCanvas"></canvas>
+        <div class="obby-msg" id="hsMsg"></div>
+        <div class="hs-cross" id="hsCross" hidden></div>
+        <div class="obby-joy" hidden><div></div></div>
+        <button type="button" class="obby-jump">JUMP</button>
+        <button type="button" class="hs-fire" id="hsFireBtn" hidden>🔫 FIRE</button>
+        <div class="hs-blind" id="hsBlind" hidden><span>🙈</span><b id="hsBlindT">25</b><small id="hsBlindTxt">They're hiding…</small></div>
+        <div class="hs-freeze" id="hsFreeze" hidden>❄️ FROZEN <b id="hsFreezeT"></b></div>
+        <div class="obby-stagename hs-status" id="hsStatus"></div>
+        <div class="obby-loading" id="hsLoading">Loading the map…</div>
+        <div class="hs-overlay">
+          <div class="hs-bar" id="hsPaint" hidden>
+            <button type="button" class="hs-pick" id="hsMatch">🎯 Match surface <kbd>F</kbd></button>
+            <div class="hs-swatches" id="hsSwatches"></div>
+            <button type="button" class="hs-pick" id="hsUnpaint">Clear <kbd>G</kbd></button>
+          </div>
+          <div class="hs-bar" id="hsPoses" hidden></div>
+          <div class="hs-bar hs-items" id="hsItems" hidden></div>
+        </div>
+      </div>
+      <div class="arch-emotes" id="hsEmotes"></div>
+      <div class="bj-msg" id="hsResult"></div>
+      <button type="button" class="pvp-rematch" id="hsRematch" hidden>Rematch</button>
+      <div class="hint" style="margin-top:8px">Hider: run off during the 25 seconds, press F to paint yourself the color of whatever you're touching (or tap a swatch), R to cycle poses (lie flat on roofs, curl up by rocks). Moving breaks a pose. Hunter: you're blind until the hunt starts, then click or tap FIRE to shoot where the crosshair points. 8 shells, 60 seconds. Both players hide once; the one who survives longer wins.</div>
     </div>
     <div class="card arch-table" id="pvpArchCard" hidden>
       <div class="arch-top">
@@ -1375,7 +1436,7 @@ $('adminNoticeSave').onclick = async () => {
 
 /* ---------- 1v1 blackjack ---------- */
 let pvpMode = 'friendly', pvpGameSel = 'duel', pvp = null, pvpSeen = new Set(), pvpLast = null, pvpHistFor = null;
-const GAME_NAME = { duel: 'Shadow Boxing', filler: 'Filler', archer: 'Archers' };
+const GAME_NAME = { duel: 'Shadow Boxing', filler: 'Filler', archer: 'Archers', hide: 'Chameleon' };
 async function pvpRematch(){
   const m = pvpLast; if (!m) return;
   $('pvpRematch').disabled = $('fillRematch').disabled = $('archRematch').disabled = true;
@@ -1430,7 +1491,8 @@ document.querySelectorAll('#pvpMode button').forEach(b => b.onclick = () => {
 const HINTS = {
   duel: 'Basically shadow boxing. Land 3 hits in a row to win. Can\'t pick the same side twice in a row.',
   filler: 'You own bottom-left, they own top-right. Take turns picking a color to grow your blob (not your or their current color). Most of the board when it fills up wins.',
-  archer: 'Real-time stick-man archery. Run, jump to dodge, drag back to pull the bow and release. Harder pulls hit harder, headshots 1.6x. 100 HP, 90 seconds, most HP wins.'
+  archer: 'Real-time stick-man archery. Run, jump to dodge, drag back to pull the bow and release. Harder pulls hit harder, headshots 1.6x. 100 HP, 90 seconds, most HP wins.',
+  hide: '3D hide and seek. The hider gets 25 seconds to run off, paint themselves the color of the map and strike a pose. Then the hunter gets 60 seconds and 8 shotgun shells to find them. Both players hide once; whoever survives longer wins.'
 };
 document.querySelectorAll('#pvpGame button').forEach(b => b.onclick = () => {
   pvpGameSel = b.dataset.g;
@@ -1438,7 +1500,9 @@ document.querySelectorAll('#pvpGame button').forEach(b => b.onclick = () => {
   $('pvpHintText').textContent = HINTS[pvpGameSel];
   $('archPractice').hidden = pvpGameSel !== 'archer';
   $('archShop').hidden = pvpGameSel !== 'archer';
+  $('hsShop').hidden = pvpGameSel !== 'hide';
   if (pvpGameSel === 'archer') archLoadArrows();
+  if (pvpGameSel === 'hide') hsLoadItems();
 });
 const stakeText = c => `${GAME_NAME[c.game] || ''}${c.game ? ' · ' : ''}${c.friendly ? 'Friendly' : fmt(c.stake) + ' coins each'}`;
 function renderPvp(st){
@@ -1473,15 +1537,18 @@ function renderPvp(st){
   const live = m && m.status === 'live';
   const filler = m && m.game === 'filler';
   const archer = m && m.game === 'archer';
+  const hide = m && m.game === 'hide';
+  if (!hide && window.Hide && Hide.match.id) Hide.stop();
   if (archBot && live) archBotStop();                       // a real match takes over from practice
   if (archBot) {
-    $('pvpForm').hidden = !!st.outgoing; $('pvpDuelCard').hidden = true; $('pvpFillCard').hidden = true; $('pvpArchCard').hidden = false;
+    $('pvpForm').hidden = !!st.outgoing; $('pvpDuelCard').hidden = true; $('pvpFillCard').hidden = true; $('pvpArchCard').hidden = false; $('pvpHideCard').hidden = true;
     $('pvpMoves').hidden = true; $('pvpColors').hidden = true; $('pvpRematch').hidden = true; $('fillRematch').hidden = true; $('archRematch').hidden = true;
     return;
   }
   $('pvpForm').hidden = live || !!st.outgoing;
-  $('pvpDuelCard').hidden = !!(filler || archer);
+  $('pvpDuelCard').hidden = !!(filler || archer || hide);
   $('pvpFillCard').hidden = !filler;
+  $('pvpHideCard').hidden = !hide;
   $('pvpArchCard').hidden = !archer && !archFsOn();
   if (archFsOn() && !archer && !live) {   // fullscreen with nothing going on: wait for challenges here
     if (arch && !arch.bot) archStop(true);
@@ -1496,10 +1563,11 @@ function renderPvp(st){
   if (canMove) document.querySelectorAll('#pvpMoves button').forEach(b => b.disabled = false);
   $('pvpColors').hidden = !(live && filler && m.my_turn);
   const doneRematch = m && m.status === 'done' && !st.outgoing;
-  $('pvpRematch').hidden = !(doneRematch && !filler && !archer);
+  $('pvpRematch').hidden = !(doneRematch && !filler && !archer && !hide);
   $('fillRematch').hidden = !(doneRematch && filler);
   $('archRematch').hidden = !(doneRematch && archer);
-  if (m && m.status === 'done') { const rt = '↻ Rematch' + (m.friendly ? '' : ` · ${short(m.stake)}`); $('pvpRematch').textContent = rt; $('fillRematch').textContent = rt; $('archRematch').textContent = rt; pvpLast = m; }
+  $('hsRematch').hidden = !(doneRematch && hide);
+  if (m && m.status === 'done') { const rt = '↻ Rematch' + (m.friendly ? '' : ` · ${short(m.stake)}`); $('pvpRematch').textContent = rt; $('fillRematch').textContent = rt; $('archRematch').textContent = rt; $('hsRematch').textContent = rt; pvpLast = m; }
   if (m && m.status === 'done' && pvpHistFor !== m.id) { pvpHistFor = m.id; loadPvpHistory(); }
   const msg = $('pvpMsg');
   if (!m) {
@@ -1509,6 +1577,7 @@ function renderPvp(st){
   }
   if (filler) { renderFiller(m); return; }
   if (archer) { renderArcher(m); return; }
+  if (hide) { renderHide(m); return; }
   $('pvpOppName').textContent = m.opp;
   const lg = m.log || [], last = lg[lg.length - 1];
   $('pvpRoundLog').innerHTML = last ? exchangeLine(last, m.challenger, m.opp) : '';
@@ -1820,6 +1889,92 @@ function renderArcher(m){
   }
   archDraw();
 }
+/* ---------- Chameleon (3D hide & seek, hide.js) ---------- */
+const HS_V = 2;
+let hsOwned = [], hsPrices = { freeze: 3e9, smoke: 2e9, decoy: 5e9 }, hsShopKind = null, hsStarting = null, hsDeadline = null, hsMsgT = null, hsLastSecsAt = 0;
+const HS_ITEMS = { freeze: { name: 'Freeze', icon: '❄️', desc: 'Freezes the hunter in place for 4 seconds' }, smoke: { name: 'Smoke bomb', icon: '💨', desc: 'A cloud nobody can see into for 9 seconds' }, decoy: { name: 'Decoy', icon: '🪆', desc: 'Drops a painted copy of you. The hunter has to shoot it to find out' } };
+async function hsLoadItems(){ const { data, error } = await sb.rpc('hs_items'); if (!error && data) { hsOwned = data.owned || []; hsPrices = data.prices || hsPrices; } hsShopRender(); }
+function hsShopRender(){
+  const el = $('hsShopList'); if (!el) return;
+  el.innerHTML = Object.entries(HS_ITEMS).map(([k, it]) => `<div class="shop-row"><span class="ic">${it.icon}</span><span class="tx"><b>${it.name}</b><small>${it.desc}</small></span>` +
+    (hsOwned.includes(k) ? '<span class="own">✓ Owned</span>' : `<button type="button" class="go" data-buy="${k}">${short(hsPrices[k] || 0)}</button>`) + '</div>').join('');
+}
+$('hsShopList').onclick = e => { const b = e.target.closest('[data-buy]'); if (!b) return; hsShopKind = b.dataset.buy; $('hsShopBuyText').textContent = `Buy ${HS_ITEMS[hsShopKind].name} for ${short(hsPrices[hsShopKind])} coins? You keep it forever, one use per round.`; $('hsShopBuy').hidden = false; };
+$('hsShopNo').onclick = () => { $('hsShopBuy').hidden = true; hsShopKind = null; };
+$('hsShopYes').onclick = async () => {
+  const k = hsShopKind; if (!k) return; $('hsShopYes').disabled = true;
+  const { data, error } = await sb.rpc('hs_buy', { p_kind: k }); $('hsShopYes').disabled = false;
+  if (error) return toast(error.message);
+  hsOwned = data.owned || hsOwned; if (data.balance != null) setBalance(data.balance); $('hsShopBuy').hidden = true; hsShopKind = null; hsShopRender(); toast(`${HS_ITEMS[k].name} unlocked`);
+};
+function hsMsg(t){ const el = $('hsMsg'); el.textContent = t; el.classList.add('on'); clearTimeout(hsMsgT); hsMsgT = setTimeout(() => el.classList.remove('on'), 2600); }
+function hsHud(h){
+  $('hsRole').textContent = h.phase === 'done' || !h.phase ? '–' : h.hider ? '🦎 Hider' : '🔫 Hunter';
+  $('hsAmmoBox').hidden = !!h.hider || !(h.phase === 'seek' || h.phase === 'hide'); $('hsAmmo').textContent = h.ammo;
+  $('hsCross').hidden = !!h.hider || h.phase !== 'seek'; $('hsFireBtn').hidden = !!h.hider || h.phase !== 'seek';
+  const hiding = h.hider && (h.phase === 'hide' || h.phase === 'seek');
+  $('hsPaint').hidden = !hiding; $('hsPoses').hidden = !hiding; $('hsItems').hidden = !hiding;
+  if (hiding) {
+    const pal = Hide.palette();
+    if ($('hsSwatches').children.length !== pal.length) $('hsSwatches').innerHTML = pal.map(c => `<button type="button" data-c="${c}" style="background:#${c.toString(16).padStart(6, '0')}"></button>`).join('');
+    [...$('hsSwatches').children].forEach(b => b.classList.toggle('on', +b.dataset.c === h.color));
+    $('hsPoses').innerHTML = Hide.POSES.map(p => `<button type="button" class="hs-pick${h.pose === p ? ' on' : ''}" data-pose="${p}">${Hide.POSE_LABEL[p]}</button>`).join('') + '<span class="hint" style="margin:0">R cycles · C crouch</span>';
+    $('hsItems').innerHTML = Object.entries(HS_ITEMS).map(([k, it], i) => { const own = (h.items || []).includes(k), used = h.used && h.used[k];
+      return `<button type="button" class="hs-pick${used ? ' used' : own ? '' : ' lock'}" data-item="${k}">${it.icon} ${it.name}${own ? (used ? ' · used' : ` <kbd>${i + 1}</kbd>`) : ' · 🔒 shop'}</button>`; }).join('');
+  }
+  const bl = $('hsBlind'); bl.hidden = !(h.phase === 'hide' && !h.hider);
+  $('hsStatus').textContent = h.phase === 'hide' ? (h.hider ? 'HIDE · PAINT · POSE' : 'WAIT') : h.phase === 'seek' ? (h.hider ? 'STAY HIDDEN' : 'HUNT') : h.phase === 'pause' ? 'SWAPPING…' : '';
+}
+$('hsSwatches').onclick = e => { const b = e.target.closest('button[data-c]'); if (b && window.Hide) Hide.paint(+b.dataset.c); };
+$('hsMatch').onclick = () => window.Hide && Hide.matchColor();
+$('hsUnpaint').onclick = () => window.Hide && Hide.paint(null);
+$('hsPoses').onclick = e => { const b = e.target.closest('button[data-pose]'); if (b && window.Hide) Hide.setPose(b.dataset.pose); };
+$('hsItems').onclick = e => { const b = e.target.closest('button[data-item]'); if (!b || !window.Hide) return; if (!Hide.useItem(b.dataset.item)) { if (!hsOwned.includes(b.dataset.item)) toast('Buy that in the Chameleon gadgets shop (1v1 tab, left side)'); } };
+$('hsEmotes').innerHTML = EMOTES.map((e, i) => `<button type="button" data-e="${i}" class="${/^[A-Z]+$/.test(e) ? 'txt' : ''}">${e}</button>`).join('');
+$('hsEmotes').onclick = e => { const b = e.target.closest('button[data-e]'); if (b && window.Hide) Hide.emote(EMOTES[+b.dataset.e]); };
+$('hsRematch').onclick = pvpRematch;
+async function hsEnsure(){
+  if (hsStarting === true) return true;
+  if (!hsStarting) hsStarting = (async () => {
+    if (!window.Hide) await new Promise((res, rej) => { const s = document.createElement('script'); s.src = 'hide.js?v=' + HS_V; s.onload = res; s.onerror = rej; document.head.appendChild(s); });
+    const name = (myProfile && myProfile.username) || $('who').textContent || 'player';
+    await Hide.start({ sb, me: { id: user.id, name, color: nameColor(name) }, wrap: $('hsWrap'), canvas: $('hsCanvas'), on: {
+      hud: hsHud, msg: hsMsg,
+      freeze: s => { $('hsFreeze').hidden = !(s > 0); $('hsFreezeT').textContent = s > 0 ? s.toFixed(1) + 's' : ''; },
+      caught: async () => { if (!pvp || pvp.game !== 'hide') return; const { data, error } = await sb.rpc('hide_catch', { p_id: pvp.id }); if (error) { if (!/Not now/.test(error.message)) toast(error.message); } else pollPvp(); }
+    } });
+    $('hsLoading').hidden = true; hsStarting = true;
+  })().catch(e => { hsStarting = null; $('hsLoading').textContent = 'The map could not load (' + (e && e.message || e) + ')'; });
+  await hsStarting; return hsStarting === true;
+}
+async function renderHide(m){
+  const live = m.status === 'live';
+  if (!await hsEnsure()) return;
+  if (!Hide.isOpen()) Hide.start({});
+  Hide.update(m);
+  const hs = m.hs || {};
+  $('hsRound').textContent = hs.round ? `${hs.round} / 2` : '–';
+  $('hsPhaseLbl').textContent = hs.phase === 'hide' ? 'HIDING' : hs.phase === 'seek' ? 'HUNT' : hs.phase === 'pause' ? 'NEXT ROUND' : 'TIME';
+  if (live && hs.secs != null) { const d = Date.now() + hs.secs * 1000; if (hsDeadline == null || Math.abs(d - hsDeadline) > 900) hsDeadline = d; } else hsDeadline = null;
+  const ft = v => v == null ? '–' : (Number(v) >= 60 ? '60 ✓' : Number(v).toFixed(1) + 's');
+  $('hsTimes').textContent = `${ft(m.my_time)} / ${ft(m.opp_time)}`;
+  if (!live) {
+    const label = { win: 'You win!', lose: m.opp + ' wins', tie: 'Draw' }[m.outcome] || '';
+    const money = m.friendly ? ' (friendly)' : m.outcome === 'win' ? ` +${fmt(m.stake)}` : m.outcome === 'lose' ? ` −${fmt(m.stake)}` : ' · stakes back';
+    const el = $('hsResult'); el.textContent = label ? label + money : ''; el.className = 'bj-msg ' + (m.outcome === 'win' ? 'win' : m.outcome === 'lose' ? 'lose' : '');
+    if (m.balance != null) setBalance(m.balance); $('hsBlind').hidden = true; $('hsCross').hidden = true; $('hsFireBtn').hidden = true; $('hsPaint').hidden = true; $('hsPoses').hidden = true; $('hsItems').hidden = true; $('hsAmmoBox').hidden = true; $('hsTimer').textContent = '–';
+  } else $('hsResult').textContent = '';
+}
+setInterval(() => { if (hsDeadline == null) return; const left = Math.max(0, (hsDeadline - Date.now()) / 1000); $('hsTimer').textContent = left.toFixed(0) + 's'; $('hsBlindT').textContent = left.toFixed(0); }, 250);
+$('hsFs').onclick = async () => {
+  const w = $('hsWrap'); const on = w.classList.contains('obby-fs') || document.fullscreenElement === w;
+  if (on) { w.classList.remove('obby-fs'); try { if (document.fullscreenElement) await document.exitFullscreen(); } catch {} }
+  else { try { if (w.requestFullscreen) await w.requestFullscreen(); else throw 0; } catch { w.classList.add('obby-fs'); } }
+  setTimeout(() => { w.classList.toggle('obby-fs', !!document.fullscreenElement || w.classList.contains('obby-fs')); $('hsFs').textContent = w.classList.contains('obby-fs') ? '✕ Exit' : '⛶ Fullscreen'; window.Hide && Hide.resize(); }, 80);
+};
+document.addEventListener('fullscreenchange', () => { const w = $('hsWrap'); if (!document.fullscreenElement) w.classList.remove('obby-fs'); $('hsFs').textContent = w.classList.contains('obby-fs') ? '✕ Exit' : '⛶ Fullscreen'; window.Hide && Hide.resize(); });
+window.addEventListener('keydown', e => { if (e.key === 'Escape' && $('hsWrap').classList.contains('obby-fs') && !document.fullscreenElement) { $('hsWrap').classList.remove('obby-fs'); window.Hide && Hide.resize(); } });
+
 function archHud(){
   if (!arch) return;
   $('archMyHp').style.width = Math.max(0, arch.myHp / (arch.myMax || 100) * 100) + '%'; $('archMyHpN').textContent = arch.myHp;
