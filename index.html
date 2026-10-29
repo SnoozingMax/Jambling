@@ -725,7 +725,7 @@ tr.me td{color:var(--accent)}
           <div class="obby-stat"><small>PTS · YOU / THEM</small><b id="hsTimes">– / –</b></div>
           <div class="obby-stat" id="hsAmmoBox" hidden><small>SHELLS</small><b id="hsAmmo">8</b></div>
         </div>
-        <button type="button" class="ghost g3-fs" id="hsFs">⛶</button>
+        <div class="g3-tools"><button type="button" class="ghost g3-zin" title="Zoom in (=)">＋</button><button type="button" class="ghost g3-zout" title="Zoom out (-)">－</button><button type="button" class="ghost" id="hsFs">⛶</button></div>
         <div class="obby-msg" id="hsMsg"></div>
         <div class="hs-cross" id="hsCross" hidden></div>
         <div class="obby-joy" hidden><div></div></div>
@@ -799,7 +799,7 @@ tr.me td{color:var(--accent)}
           <div class="obby-stat"><small>BEST</small><b id="obbyBest">–</b></div>
           <div class="obby-stat"><small>ONLINE</small><b id="obbyOnline">1</b></div>
         </div>
-        <div class="g3-tools"><button type="button" class="ghost" id="obbyRestart">↻</button><button type="button" class="ghost" id="obbyFs">⛶</button></div>
+        <div class="g3-tools"><button type="button" class="ghost g3-zin" title="Zoom in (=)">＋</button><button type="button" class="ghost g3-zout" title="Zoom out (-)">－</button><button type="button" class="ghost" id="obbyRestart" title="Restart (R)">↻</button><button type="button" class="ghost" id="obbyFs">⛶</button></div>
         <div class="obby-flash"></div>
         <div class="obby-msg" id="obbyMsg"></div>
         <div class="obby-joy" hidden><div></div></div>
@@ -809,7 +809,7 @@ tr.me td{color:var(--accent)}
       </div>
       <div class="arch-emotes" id="obbyEmotes"></div>
       <div class="obby-board"><div class="t-cat" style="margin:12px 0 6px">Fastest runs</div><div id="obbyTop" class="hint" style="margin:0">Finish the course to get on the board.</div></div>
-      <div class="hint" style="margin-top:8px">WASD or arrows to run, Space to jump, hold Shift to sprint, drag to look around, scroll to zoom, R to restart, 1-8 to emote. On touch: left side is a joystick (push far to sprint), right side turns the camera. Green pads are checkpoints, red is lava, pink pads bounce, yellow trusses are climbable, the gold pad is the finish. Grab the coins on the way. Everyone online is in the same world.</div>
+      <div class="hint" style="margin-top:8px">WASD or arrows to run, Space to jump, hold Shift to sprint, drag to look around, scroll, pinch or the + / − buttons to zoom, R to restart, 1-8 to emote. On touch: left side is a joystick (push far to sprint), right side turns the camera. Green pads are checkpoints, red is lava, pink pads bounce, yellow trusses are climbable, the gold pad is the finish. Grab the coins on the way. Everyone online is in the same world.</div>
     </div>
   </div>
   <div id="tab-board" hidden>
@@ -1901,7 +1901,7 @@ function renderArcher(m){
   archDraw();
 }
 /* ---------- Chameleon (3D hide & seek, hide.js) ---------- */
-const HS_V = 3;
+const HS_V = 4;
 let hsOwned = [], hsPrices = { freeze: 3e9, smoke: 2e9, decoy: 5e9 }, hsShopKind = null, hsStarting = null, hsDeadline = null, hsMsgT = null, hsTauntCool = 0, hsLive = null;
 const HS_ITEMS = { freeze: { name: 'Freeze', icon: '❄️', desc: 'Freezes the hunter in place for 4 seconds' }, smoke: { name: 'Smoke bomb', icon: '💨', desc: 'A cloud nobody can see into for 9 seconds' }, decoy: { name: 'Decoy', icon: '🪆', desc: 'Drops a painted copy of you. The hunter has to shoot it to find out' } };
 async function hsLoadItems(){ const { data, error } = await sb.rpc('hs_items'); if (!error && data) { hsOwned = data.owned || []; hsPrices = data.prices || hsPrices; } hsShopRender(); }
@@ -2835,7 +2835,7 @@ document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
 });
 
 /* ---------- obby (3D course, everyone online together) ---------- */
-const OBBY_V = 3;
+const OBBY_V = 4;
 let obbyMsgT = null;
 function nameColor(n){   // a steady color per name (hsl 65% / 55%)
   let h = 0; for (const c of n) h = (h * 31 + c.charCodeAt(0)) >>> 0; const hue = h % 360, s = 0.65, l = 0.55;

@@ -5,6 +5,7 @@ window.Obby = (function () {
   let parts = [], killers = [], spinners = [], discs = [], coins = [], cps = [], stages = [], finishBox = null, player, remote = {}, lastSend = 0, lastSig = '', fx = [], clouds = [];
   const S = { x: 0, y: 1, z: 0, vx: 0, vy: 0, vz: 0, yaw: 0, ground: null, cp: 0, deaths: 0, t0: null, done: false, best: null, moving: false, coins: 0, air: 0, jumpBuf: 0, climb: false, lastGround: null, sprint: false };
   const cam = { yaw: Math.PI, pitch: 0.32, dist: 8, lastDrag: 0 };
+  function zoom(d, abs) { cam.dist = Math.max(3, Math.min(16, abs ? d : cam.dist + d)); }
   const keys = {}; let joy = null, jumpQ = false, studTex = null;
   const onHud = {};
   const now = () => performance.now() / 1000;
@@ -305,6 +306,7 @@ window.Obby = (function () {
     if (!open || /input|textarea|select/i.test(e.target.tagName)) return;
     const k = e.key.toLowerCase();
     if (k === ' ') { e.preventDefault(); if (down && !e.repeat) jumpQ = true; return; }
+    if (down && (k === '-' || k === '=' || k === '+')) { zoom(k === '-' ? 1.5 : -1.5); return; }
     if (k === 'shift') { S.sprint = down; return; }
     if (k === 'r' && down) return restart();
     if (down && /^[1-8]$/.test(k) && onHud.emote) return onHud.emote(+k - 1);
@@ -315,19 +317,29 @@ window.Obby = (function () {
     window.addEventListener('blur', () => { for (const k in keys) keys[k] = false; joy = null; S.sprint = false; });
     const ptr = {};
     canvas.addEventListener('pointerdown', e => {
-      canvas.setPointerCapture(e.pointerId);
+      try { canvas.setPointerCapture(e.pointerId); } catch {}
       const r = canvas.getBoundingClientRect(), touch = e.pointerType === 'touch';
       if (touch && e.clientX - r.left < r.width * 0.45) { ptr[e.pointerId] = { kind: 'joy', ox: e.clientX, oy: e.clientY }; joy = { x: 0, y: 0 }; showJoy(e.clientX - r.left, e.clientY - r.top, 0, 0); }
       else ptr[e.pointerId] = { kind: 'cam', lx: e.clientX, ly: e.clientY };
     });
+    const pinch = { ids: null, d0: 0, dist0: 0 };
+    const pinchDist = () => { const [a, b] = pinch.ids.map(id => ptr[id]); return Math.hypot(a.lx - b.lx, a.ly - b.ly); };
     canvas.addEventListener('pointermove', e => {
       const p = ptr[e.pointerId]; if (!p) return;
+      if (p.kind === 'cam') { p.lx2 = e.clientX; p.ly2 = e.clientY;
+        const cams = Object.keys(ptr).filter(id => ptr[id].kind === 'cam');
+        if (cams.length >= 2) {   // two fingers on the view: pinch to zoom
+          if (!pinch.ids) { pinch.ids = cams.slice(0, 2); pinch.ids.forEach(id => { ptr[id].lx = ptr[id].lx2 ?? ptr[id].lx; ptr[id].ly = ptr[id].ly2 ?? ptr[id].ly; }); pinch.d0 = pinchDist(); pinch.dist0 = cam.dist; }
+          p.lx = e.clientX; p.ly = e.clientY; const d = pinchDist(); if (pinch.d0 > 10 && d > 10) zoom(pinch.dist0 * pinch.d0 / d, true); p.pinched = true; return;
+        }
+      }
       if (p.kind === 'joy') { const dx = e.clientX - p.ox, dy = e.clientY - p.oy, l = Math.hypot(dx, dy), m = Math.min(1, l / 45); joy = { x: l ? dx / l * m : 0, y: l ? dy / l * m : 0 }; S.sprint = l > 60; const r = canvas.getBoundingClientRect(); showJoy(p.ox - r.left, p.oy - r.top, dx, dy); }
       else { cam.yaw -= (e.clientX - p.lx) * 0.006; cam.pitch = Math.max(-0.3, Math.min(1.25, cam.pitch + (e.clientY - p.ly) * 0.005)); p.lx = e.clientX; p.ly = e.clientY; cam.lastDrag = now(); }
     });
-    const end = e => { const p = ptr[e.pointerId]; if (!p) return; delete ptr[e.pointerId]; if (p.kind === 'joy') { joy = null; S.sprint = false; hideJoy(); } };
+    const end = e => { const p = ptr[e.pointerId]; if (!p) return; delete ptr[e.pointerId]; if (pinch.ids && pinch.ids.includes(String(e.pointerId))) pinch.ids = null; if (p.kind === 'joy') { joy = null; S.sprint = false; hideJoy(); } };
     canvas.addEventListener('pointerup', end); canvas.addEventListener('pointercancel', end);
-    canvas.addEventListener('wheel', e => { e.preventDefault(); cam.dist = Math.max(3, Math.min(16, cam.dist + e.deltaY * 0.01)); }, { passive: false });
+    canvas.addEventListener('wheel', e => { e.preventDefault(); zoom(cam.dist + e.deltaY * 0.01, true); }, { passive: false });
+    for (const [sel, dz] of [['.g3-zin', -1.5], ['.g3-zout', 1.5]]) { const zb = wrap.querySelector(sel); if (zb) zb.addEventListener('click', () => zoom(cam.dist + dz, true)); }
     const jb = wrap.querySelector('.obby-jump'); if (jb) jb.addEventListener('pointerdown', e => { e.preventDefault(); jumpQ = true; });
   }
   function showJoy(x, y, dx, dy) { const j = wrap.querySelector('.obby-joy'); if (!j) return; j.hidden = false; j.style.left = x + 'px'; j.style.top = y + 'px'; const l = Math.hypot(dx, dy), m = Math.min(45, l); j.firstElementChild.style.transform = `translate(${l ? dx / l * m : 0}px,${l ? dy / l * m : 0}px)`; }

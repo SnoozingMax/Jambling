@@ -8,6 +8,7 @@ window.Hide = (function () {
   const M = { id: null, oppName: '', hider: false, phase: null, round: 0, secs: 0, items: [], used: {}, caughtSent: 0, key: '', tauntAt: 0 };
   let pings = [];
   const cam = { yaw: Math.PI, pitch: 0.3, dist: 7 };
+  function zoom(d, abs) { cam.dist = Math.max(2, Math.min(14, abs ? d : cam.dist + d)); }
   const keys = {}; let joy = null, jumpQ = false, fireQ = false;
   const onHud = {};
   const now = () => performance.now() / 1000;
@@ -338,6 +339,7 @@ window.Hide = (function () {
     if (!open || /input|textarea|select/i.test(e.target.tagName)) return;
     const k = e.key.toLowerCase();
     if (k === ' ') { e.preventDefault(); if (down && !e.repeat) jumpQ = true; return; }
+    if (down && (k === '-' || k === '=' || k === '+')) { zoom(k === '-' ? 1.5 : -1.5); return; }
     if (down && !e.repeat) {
       if ({ 1: 'freeze', 2: 'smoke', 3: 'decoy' }[k]) return useItem({ 1: 'freeze', 2: 'smoke', 3: 'decoy' }[k]);
       if (k === 'r' && M.hider) return setMyPose(POSES[(POSES.indexOf(S.pose) + 1) % POSES.length]);
@@ -354,22 +356,32 @@ window.Hide = (function () {
     const ptr = {};
     canvas.addEventListener('contextmenu', e => e.preventDefault());
     canvas.addEventListener('pointerdown', e => {
-      canvas.setPointerCapture(e.pointerId);
+      try { canvas.setPointerCapture(e.pointerId); } catch {}
       const r = canvas.getBoundingClientRect(), touch = e.pointerType === 'touch';
       if (touch && e.clientX - r.left < r.width * 0.45) { ptr[e.pointerId] = { kind: 'joy', ox: e.clientX, oy: e.clientY }; joy = { x: 0, y: 0 }; showJoy(e.clientX - r.left, e.clientY - r.top, 0, 0); }
       else ptr[e.pointerId] = { kind: 'cam', lx: e.clientX, ly: e.clientY, sx: e.clientX, sy: e.clientY, t: now(), touch };
     });
+    const pinch = { ids: null, d0: 0, dist0: 0 };
+    const pinchDist = () => { const [a, b] = pinch.ids.map(id => ptr[id]); return Math.hypot(a.lx - b.lx, a.ly - b.ly); };
     canvas.addEventListener('pointermove', e => {
       const p = ptr[e.pointerId]; if (!p) return;
+      if (p.kind === 'cam') { p.lx2 = e.clientX; p.ly2 = e.clientY;
+        const cams = Object.keys(ptr).filter(id => ptr[id].kind === 'cam');
+        if (cams.length >= 2) {   // two fingers on the view: pinch to zoom
+          if (!pinch.ids) { pinch.ids = cams.slice(0, 2); pinch.ids.forEach(id => { ptr[id].lx = ptr[id].lx2 ?? ptr[id].lx; ptr[id].ly = ptr[id].ly2 ?? ptr[id].ly; }); pinch.d0 = pinchDist(); pinch.dist0 = cam.dist; }
+          p.lx = e.clientX; p.ly = e.clientY; const d = pinchDist(); if (pinch.d0 > 10 && d > 10) zoom(pinch.dist0 * pinch.d0 / d, true); p.pinched = true; return;
+        }
+      }
       if (p.kind === 'joy') { const dx = e.clientX - p.ox, dy = e.clientY - p.oy, l = Math.hypot(dx, dy), m = Math.min(1, l / 45); joy = { x: l ? dx / l * m : 0, y: l ? dy / l * m : 0 }; const r = canvas.getBoundingClientRect(); showJoy(p.ox - r.left, p.oy - r.top, dx, dy); }
       else { cam.yaw -= (e.clientX - p.lx) * 0.006; cam.pitch = Math.max(-0.35, Math.min(1.25, cam.pitch + (e.clientY - p.ly) * 0.005)); p.lx = e.clientX; p.ly = e.clientY; }
     });
-    const end = e => { const p = ptr[e.pointerId]; if (!p) return; delete ptr[e.pointerId];
+    const end = e => { const p = ptr[e.pointerId]; if (!p) return; delete ptr[e.pointerId]; if (pinch.ids && pinch.ids.includes(String(e.pointerId))) pinch.ids = null;
       if (p.kind === 'joy') { joy = null; hideJoy(); }
-      else if (!p.touch && Math.hypot(e.clientX - p.sx, e.clientY - p.sy) < 6 && now() - p.t < 0.35) fireQ = true;   // a click (not a drag) fires
+      else if (!p.touch && !p.pinched && Math.hypot(e.clientX - p.sx, e.clientY - p.sy) < 6 && now() - p.t < 0.35) fireQ = true;   // a click (not a drag) fires
     };
     canvas.addEventListener('pointerup', end); canvas.addEventListener('pointercancel', end);
-    canvas.addEventListener('wheel', e => { e.preventDefault(); cam.dist = Math.max(2, Math.min(14, cam.dist + e.deltaY * 0.01)); }, { passive: false });
+    canvas.addEventListener('wheel', e => { e.preventDefault(); zoom(cam.dist + e.deltaY * 0.01, true); }, { passive: false });
+    for (const [sel, dz] of [['.g3-zin', -1.5], ['.g3-zout', 1.5]]) { const zb = wrap.querySelector(sel); if (zb) zb.addEventListener('click', () => zoom(cam.dist + dz, true)); }
     const jb = wrap.querySelector('.obby-jump'); if (jb) jb.addEventListener('pointerdown', e => { e.preventDefault(); jumpQ = true; });
     const fb = wrap.querySelector('.hs-fire'); if (fb) fb.addEventListener('pointerdown', e => { e.preventDefault(); fireQ = true; });
   }
@@ -470,6 +482,6 @@ window.Hide = (function () {
     async start(opts) { if (!renderer) await init(opts); open = true; last = 0; resize(); if (!raf) frame(); },
     update,
     stop() { open = false; if (raf) cancelAnimationFrame(raf); raf = null; if (ch) { const c = ch; ch = null; joined = false; sb.removeChannel(c).catch(() => {}); } M.id = null; M.key = ''; },
-    isOpen: () => open, cam, _opp: () => opp, _cam3: () => camera, taunt, resize, emote, useItem, setPose: setMyPose, paint: setMyPaint, matchColor: () => { setMyPaint(nearestColor()); snd.paint(); }, palette, fire: () => { fireQ = true; }, ITEMS, POSES, POSE_LABEL, state: S, match: M
+    isOpen: () => open, zoom, cam, _opp: () => opp, _cam3: () => camera, taunt, resize, emote, useItem, setPose: setMyPose, paint: setMyPaint, matchColor: () => { setMyPaint(nearestColor()); snd.paint(); }, palette, fire: () => { fireQ = true; }, ITEMS, POSES, POSE_LABEL, state: S, match: M
   };
 })();
