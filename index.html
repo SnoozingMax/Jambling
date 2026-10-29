@@ -404,12 +404,12 @@ tr.me td{color:var(--accent)}
 .title-chip.og{position:relative;overflow:hidden;z-index:0;background:linear-gradient(180deg,#1b1408,#0c0904);border:1px solid #c9a24a;color:transparent;-webkit-text-fill-color:transparent;background-clip:padding-box;font-family:Fraunces,serif;font-weight:800;letter-spacing:.12em}
 .title-chip.og::before{content:"OG";position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:linear-gradient(100deg,#b8862b 0%,#f6dc8c 30%,#fff6d6 42%,#f6dc8c 54%,#b8862b 100%);background-size:250% 100%;-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;animation:ogShine 3.2s linear infinite;animation-delay:var(--td,0ms)}
 @keyframes ogShine{0%{background-position:120% 0}100%{background-position:-130% 0}}
-.title-chip.creator{position:relative;isolation:isolate;overflow:hidden;padding:3px 10px;border:0;background:#050505;font:600 10px Inter,sans-serif;letter-spacing:.32em;text-indent:.32em;box-shadow:0 0 0 1px rgba(255,255,255,.14),0 2px 10px rgba(0,0,0,.5)}
-.title-chip.creator::before{content:"";position:absolute;inset:0;z-index:-1;border-radius:999px;padding:1px;background:linear-gradient(var(--cra,0deg),rgba(255,255,255,.08) 30%,rgba(255,255,255,.95) 50%,rgba(255,255,255,.08) 70%);-webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude;animation:crSpin 6s linear infinite;animation-delay:var(--td,0ms)}
-.title-chip.creator .cr-t{background:linear-gradient(100deg,#8a8a8a 0%,#d9d9d9 30%,#ffffff 45%,#d9d9d9 60%,#8a8a8a 100%);background-size:300% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;-webkit-text-fill-color:transparent;animation:crText 6s ease-in-out infinite;animation-delay:var(--td,0ms)}
-@property --cra{syntax:"<angle>";inherits:false;initial-value:0deg}
-@keyframes crSpin{to{--cra:360deg}}
-@keyframes crText{0%,100%{background-position:100% 0}50%{background-position:0% 0}}
+.title-chip.creator{display:inline-flex;align-items:center;justify-content:center;vertical-align:middle;line-height:normal;overflow:hidden;position:relative;z-index:0;border:1px solid rgba(255,255,255,.45);color:#fff;background:linear-gradient(90deg,#0b0b12,#1d1b2b,#2b2436,#1d1b2b,#0b0b12);background-size:200% 100%;text-shadow:0 0 6px rgba(255,255,255,.75);animation:crBg 6s linear infinite;animation-delay:var(--td,0ms)}
+.title-chip.creator::before{content:"";position:absolute;z-index:-1;top:0;bottom:0;left:-40%;width:35%;pointer-events:none;background:linear-gradient(100deg,transparent,rgba(255,255,255,.32),transparent);transform:skewX(-20deg);animation:crSheen 4.5s ease-in-out infinite;animation-delay:var(--td,0ms)}
+.title-chip.creator::after{content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;background:radial-gradient(1px 1px at 5% 50%,#fff 70%,transparent 72%),radial-gradient(1px 1px at 28% 10%,rgba(255,255,255,.8) 70%,transparent 72%),radial-gradient(1px 1px at 55% 92%,rgba(255,238,200,.85) 70%,transparent 72%),radial-gradient(1px 1px at 78% 10%,rgba(255,255,255,.8) 70%,transparent 72%),radial-gradient(1px 1px at 95% 50%,#dfe6ff 70%,transparent 72%);animation:crTw 2.2s ease-in-out infinite alternate}
+@keyframes crBg{0%{background-position:0 0;box-shadow:0 0 8px rgba(255,255,255,.18)}50%{box-shadow:0 0 14px rgba(255,240,210,.38)}100%{background-position:200% 0;box-shadow:0 0 8px rgba(255,255,255,.18)}}
+@keyframes crSheen{0%,55%{left:-40%}85%,100%{left:120%}}
+@keyframes crTw{0%{opacity:.3}100%{opacity:1}}
 .title-chip.ggez{background:#0c1a12;color:#5cf08a;border:1px solid #2fbf6b;text-shadow:0 0 6px rgba(92,240,138,.7);animation:ggezPulse 1.6s ease-in-out infinite}
 @keyframes ggezPulse{0%,100%{box-shadow:0 0 0 rgba(47,191,107,0)}50%{box-shadow:0 0 10px rgba(47,191,107,.75)}}
 .title-chip.murphy{position:relative;overflow:hidden;z-index:0;background:linear-gradient(180deg,#2a1414,#120909);color:#ff6a5e;border:1px solid #8a2b24;text-shadow:0 0 6px rgba(255,80,70,.55)}
@@ -2697,7 +2697,7 @@ function renderTitles(el, p, rank){
   el.innerHTML = '';
   for (const [c, t] of titleChips(p, rank == null ? -1 : rank)) {
     const s = document.createElement('span'); s.className = 'title-chip ' + c; s.textContent = t;
-    if (c === 'creator') { s.innerHTML = '<span class="cr-t">CREATOR</span>'; s.style.setProperty('--td', -(Date.now() % 6000) + 'ms'); }
+    if (c === 'creator') { s.style.setProperty('--td', -(Date.now() % 6000) + 'ms'); }
     if (c === 'gifted') s.style.animationDelay = -(Date.now() % 3000) + 'ms';   // sync shimmer to a global clock so the 10s refresh doesn't restart it
     if (c === 'tester') s.style.setProperty('--td', -(Date.now() % 2500) + 'ms');
     if (c === 'og') s.style.setProperty('--td', -(Date.now() % 3200) + 'ms');
@@ -2720,7 +2720,7 @@ function openTitles(){
   RB_TITLES.slice().reverse().forEach(([n, t, req]) => rows.push(line(t === 'Celestial' ? 'celestial' : 't-rb', t, req)));
   rows.push('<div class="t-cat">Special</div>');
   rows.push(line('gifted', 'Aurora', 'Hand-picked by max \u00b7 luck of 100 rebirths'));
-  rows.push(`<div class="t-row"><span class="title-chip creator"><span class="cr-t">CREATOR</span></span><span>Made Jambling. There is only one</span></div>`);
+  rows.push(`<div class="t-row"><span class="title-chip creator">Creator</span><span>Made Jambling. There is only one</span></div>`);
   rows.push(line('og', 'OG', 'Given by max to the originals'));
   rows.push(line('tester', 'Tester', 'Given by max to game testers'));
   rows.push(line('jew', 'Jew', 'Given by admins'));
