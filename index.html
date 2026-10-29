@@ -222,6 +222,10 @@ canvas{width:100%;height:100%;display:block}
 @media (pointer:coarse){.obby-jump{display:block}}
 .obby-loading{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:#8fc8ff;color:#1d3557;font:600 18px Fraunces,serif}
 .obby-wrap.obby-fs{position:fixed;inset:0;z-index:999;border:0;border-radius:0}
+.obby-stagename{position:absolute;left:12px;bottom:12px;font:600 13px "IBM Plex Mono",monospace;color:#fff;text-shadow:0 1px 4px rgba(0,0,0,.6);pointer-events:none;letter-spacing:.06em}
+.obby-top-row{display:flex;gap:10px;align-items:center;padding:5px 0;border-bottom:1px solid var(--line);font-size:13px}
+.obby-top-row b{font:600 13px "IBM Plex Mono",monospace;min-width:22px;color:var(--muted)}
+.obby-top-row .n{flex:1} .obby-top-row.me .n{color:var(--accent)} .obby-top-row .t{font-family:"IBM Plex Mono",monospace}
 .arch-tools{display:flex;justify-content:flex-end;gap:6px;margin:0 0 8px}
 .arch-tools .ghost{font-size:12px;padding:4px 9px;color:var(--muted)}
 .arch-tools .ghost:hover{color:var(--ink)}
@@ -714,7 +718,8 @@ tr.me td{color:var(--accent)}
   <div id="tab-obby" hidden>
     <div class="card obby-card">
       <div class="obby-top">
-        <div class="obby-stat"><small>STAGE</small><b id="obbyStage">0 / 6</b></div>
+        <div class="obby-stat"><small>STAGE</small><b id="obbyStage">0 / 12</b></div>
+        <div class="obby-stat"><small>COINS</small><b id="obbyCoins">0</b></div>
         <div class="obby-stat"><small>TIME</small><b id="obbyTime">0.0s</b></div>
         <div class="obby-stat"><small>DEATHS</small><b id="obbyDeaths">0</b></div>
         <div class="obby-stat"><small>BEST</small><b id="obbyBest">–</b></div>
@@ -728,8 +733,11 @@ tr.me td{color:var(--accent)}
         <div class="obby-joy" hidden><div></div></div>
         <button type="button" class="obby-jump">JUMP</button>
         <div class="obby-loading" id="obbyLoading">Loading the obby…</div>
+        <div class="obby-stagename" id="obbyStageName"></div>
       </div>
-      <div class="hint" style="margin-top:8px">WASD or arrows to run, Space to jump, drag to look around, scroll to zoom, R to restart. On touch: left side is a joystick, right side turns the camera. Green pads are checkpoints, red is lava, the gold pad is the finish. Everyone online is in the same world.</div>
+      <div class="arch-emotes" id="obbyEmotes"></div>
+      <div class="obby-board"><div class="t-cat" style="margin:12px 0 6px">Fastest runs</div><div id="obbyTop" class="hint" style="margin:0">Finish the course to get on the board.</div></div>
+      <div class="hint" style="margin-top:8px">WASD or arrows to run, Space to jump, hold Shift to sprint, drag to look around, scroll to zoom, R to restart, 1-8 to emote. On touch: left side is a joystick (push far to sprint), right side turns the camera. Green pads are checkpoints, red is lava, pink pads bounce, yellow trusses are climbable, the gold pad is the finish. Grab the coins on the way. Everyone online is in the same world.</div>
     </div>
   </div>
   <div id="tab-board" hidden>
@@ -2656,7 +2664,7 @@ document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
 });
 
 /* ---------- obby (3D course, everyone online together) ---------- */
-const OBBY_V = 1;
+const OBBY_V = 2;
 let obbyMsgT = null;
 function nameColor(n){   // a steady color per name (hsl 65% / 55%)
   let h = 0; for (const c of n) h = (h * 31 + c.charCodeAt(0)) >>> 0; const hue = h % 360, s = 0.65, l = 0.55;
@@ -2672,13 +2680,23 @@ async function obbyOpen(){
   const name = (myProfile && myProfile.username) || $('who').textContent || 'player';
   try {
     await Obby.start({ sb, me: { id: user.id, name, color: nameColor(name) }, wrap: $('obbyWrap'), canvas: $('obbyCanvas'), on: {
-      hud: h => { $('obbyStage').textContent = `${h.cp} / ${h.stages}`; $('obbyDeaths').textContent = h.deaths; $('obbyBest').textContent = h.best == null ? '–' : h.best.toFixed(1) + 's'; $('obbyOnline').textContent = h.players; },
+      hud: h => { $('obbyStage').textContent = `${h.cp} / ${h.stages}`; $('obbyCoins').textContent = `${h.coins} / ${h.totalCoins}`; $('obbyDeaths').textContent = h.deaths; $('obbyBest').textContent = h.best == null ? '–' : h.best.toFixed(1) + 's'; $('obbyOnline').textContent = h.players; $('obbyStageName').textContent = h.cp ? `STAGE ${h.cp} · ${(h.stage || '').toUpperCase()}` : 'SPAWN'; },
+      finish: async (secs, deaths, coins) => { const { data, error } = await sb.rpc('obby_finish', { p_secs: +secs.toFixed(2), p_deaths: deaths, p_coins: coins }); if (!error && data) { if (data.rank) toast(`Obby: ${secs.toFixed(1)}s · #${data.rank} on the board`); obbyTop(); } },
+      emote: i => { if (window.Obby && EMOTES[i]) Obby.emote(EMOTES[i]); },
       timer: t => { if (t != null) $('obbyTime').textContent = t.toFixed(1) + 's'; },
       msg: t => { const el = $('obbyMsg'); el.textContent = t; el.classList.add('on'); clearTimeout(obbyMsgT); obbyMsgT = setTimeout(() => el.classList.remove('on'), 2200); }
     } });
-    $('obbyLoading').hidden = true;
+    $('obbyLoading').hidden = true; obbyTop();
   } catch (e) { $('obbyLoading').textContent = 'The obby could not start here (' + (e && e.message || e) + ')'; }
 }
+async function obbyTop(){
+  const { data, error } = await sb.rpc('obby_top'); if (error || !data) return;
+  if (!data.length) return;
+  $('obbyTop').className = ''; $('obbyTop').innerHTML = data.map((r, i) => `<div class="obby-top-row${r.me ? ' me' : ''}"><b>#${i + 1}</b><span class="n"></span><span class="t">${Number(r.secs).toFixed(1)}s</span><span class="hint" style="margin:0">${r.deaths} deaths · ${r.coins} coins</span></div>`).join('');
+  [...$('obbyTop').querySelectorAll('.n')].forEach((el, i) => el.textContent = data[i].username);
+}
+$('obbyEmotes').innerHTML = EMOTES.map((e, i) => `<button type="button" data-e="${i}" class="${/^[A-Z]+$/.test(e) ? 'txt' : ''}">${e}</button>`).join('');
+$('obbyEmotes').onclick = e => { const b = e.target.closest('button[data-e]'); if (b && window.Obby) Obby.emote(EMOTES[+b.dataset.e]); };
 $('obbyRestart').onclick = () => window.Obby && Obby.restart();
 $('obbyFs').onclick = async () => {
   const w = $('obbyWrap'); const on = w.classList.contains('obby-fs') || document.fullscreenElement === w;
