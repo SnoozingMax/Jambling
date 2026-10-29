@@ -89,6 +89,24 @@ canvas{width:100%;height:100%;display:block}
 .tag.wild{background:var(--gold);color:#2a1d00}
 .modal{position:fixed;inset:0;background:rgba(0,0,0,.6);display:grid;place-items:center;padding:16px;z-index:10}
 .modal-card{width:100%;max-width:380px;max-height:90vh;overflow:auto}
+.adm{max-width:440px}
+.adm-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px} .adm-head h2{margin:0} .adm-head .ghost{padding:6px 12px}
+.adm-player{margin-bottom:10px}
+.adm-tabs{display:flex;gap:4px;padding:4px;border:1px solid var(--line);border-radius:12px;margin-bottom:14px;overflow-x:auto}
+.adm-tabs button{flex:1;background:none;border:0;border-radius:8px;padding:8px 6px;font:600 13px Inter,sans-serif;color:var(--muted);cursor:pointer;white-space:nowrap}
+.adm-tabs button.on{background:var(--ink);color:var(--paper)}
+.adm-sec .adm-label{font:700 11px "IBM Plex Mono",monospace;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:14px 0 6px}
+.adm-sec > .adm-label:first-child{margin-top:0}
+.adm-row{display:flex;gap:6px} .adm-row input,.adm-row select{flex:1;min-width:0}
+.adm-row .go,.adm-row .ghost{width:auto;padding:10px 14px;white-space:nowrap;font-size:14px}
+.adm-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px} .adm-grid .go,.adm-grid .ghost{padding:10px;font-size:14px}
+.adm-sec .hint{margin:6px 0 0}
+.adm-t{display:flex;align-items:center;gap:6px;padding:7px 0;border-bottom:1px solid var(--line)} .adm-t .title-chip{margin-right:auto} .adm-t .ghost{padding:6px 12px;font-size:13px}
+.adm-wide{width:100%;padding:10px;margin-bottom:8px}
+.adm-log{max-height:300px;overflow:auto;margin-bottom:10px;border:1px solid var(--line);border-radius:10px;font-size:13px}
+.adm-red{background:var(--lose)} .adm-purple{background:#6b4bd6} .adm-gold{background:linear-gradient(90deg,var(--gold),#ff8a3c);color:#2a1d00}
+#adminTitlePick{padding:9px 10px;border:1px solid var(--line);border-radius:10px;background:var(--field);color:var(--ink);font:inherit}
+
 .modal-card h2{font-family:Fraunces;font-weight:600;font-size:24px;margin:0 0 16px}
 .warn{font-size:12px;color:var(--gold);margin-top:8px}
 .rb{font:600 13px "IBM Plex Mono",monospace;color:var(--gold)}
@@ -916,99 +934,89 @@ tr.me td{color:var(--accent)}
 </div>
 
 <div class="modal" id="adminModal" hidden>
-  <div class="card modal-card">
-    <h2>Admin</h2>
+  <div class="card modal-card adm">
+    <div class="adm-head"><h2>Admin</h2><button type="button" class="ghost" id="adminCancel">Close</button></div>
     <div class="admin-status" id="adminStatus" hidden></div>
-    <div id="waitBox" hidden style="margin:0 0 18px;border:1px solid var(--gold);border-radius:12px;padding:10px 12px">
+    <div id="waitBox" hidden style="margin:0 0 12px;border:1px solid var(--gold);border-radius:12px;padding:10px 12px">
       <div style="font-weight:600;margin-bottom:6px">Waiting room <span id="waitCount" style="color:var(--gold)"></span></div>
       <div id="waitList"></div>
     </div>
-    <div class="field">
+    <div class="field adm-player">
       <label>Player</label>
-      <input id="adminUser" type="text" maxlength="20" autocapitalize="off" spellcheck="false" autocomplete="off">
+      <input id="adminUser" type="text" maxlength="20" autocapitalize="off" spellcheck="false" autocomplete="off" placeholder="Username">
     </div>
-    <div class="owner-only">
-    <button type="button" class="go rebirth-go" id="adminBoost">Boost 3 min (free)</button>
-    <p class="hint" style="margin:6px 0 18px">Nonstop pump in Ride for 3 minutes. Stacks.</p>
-    <button type="button" class="go" id="adminRush" style="background:linear-gradient(90deg,var(--gold),#ff8a3c);color:#2a1d00">Rush hour 3 min (everyone)</button>
-    <p class="hint" style="margin:6px 0 18px">Way more luck in every game for everyone. Stacks. <a href="#" id="adminRushStop" style="color:var(--muted)">End rush hour</a></p>
+    <div class="adm-tabs" id="admTabs">
+      <button type="button" data-sec="player" class="on">Player</button>
+      <button type="button" data-sec="titles">Titles</button>
+      <button type="button" data-sec="mod">Moderate</button>
+      <button type="button" data-sec="site" class="owner-only">Site</button>
+      <button type="button" data-sec="logs">Logs</button>
     </div>
-    <button type="button" class="go" id="adminBad" style="background:#6b4bd6">Bad luck 1 min</button>
-    <p class="hint" style="margin:6px 0 18px">Rug pulls in Ride, loses every coin flip, bad blackjack deals, Rocket crashes at 1.01×. Stacks.</p>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:0 0 18px">
-      <button type="button" class="ghost" id="adminClearBoost" style="padding:10px">Remove boost</button>
-      <button type="button" class="ghost" id="adminClearBad" style="padding:10px">Remove bad luck</button>
-    </div>
-    <div class="owner-only" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:0 0 18px">
-      <button type="button" class="ghost" id="adminMod" style="padding:10px">Make mod</button>
-      <button type="button" class="ghost" id="adminUnmod" style="padding:10px">Remove mod</button>
-    </div>
-    <div class="owner-only" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:0 0 18px">
-      <button type="button" class="ghost" id="adminAddAdmin" style="padding:10px">Add admin</button>
-      <button type="button" class="ghost" id="adminDelAdmin" style="padding:10px">Remove admin</button>
-    </div>
-    <div class="owner-only" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:0 0 18px">
-      <button type="button" class="go" id="adminBan" style="background:var(--lose)">Ban</button>
-      <button type="button" class="go" id="adminUnban" style="background:var(--line);color:var(--ink)">Unban</button>
-    </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:0 0 18px">
-      <button type="button" class="ghost" id="adminBoardHide" style="padding:10px">Leaderboard ban</button>
-      <button type="button" class="ghost" id="adminBoardShow" style="padding:10px">Leaderboard unban</button>
-    </div>
-    <div class="field">
-      <label>Rename to</label>
-      <div style="display:flex;gap:8px"><input id="adminNewName" type="text" maxlength="20" autocapitalize="off" spellcheck="false" autocomplete="off" placeholder="New name"><button type="button" class="ghost" id="adminRename" style="white-space:nowrap">Rename</button></div>
-    </div>
-    <div class="field">
-      <label>Rebirths</label>
-      <div style="display:flex;gap:8px"><input id="adminRb" type="number" min="1" step="1" placeholder="How many"><button type="button" class="ghost" id="adminGiveRb" style="white-space:nowrap">Give</button><button type="button" class="ghost" id="adminTakeRb" style="white-space:nowrap">Take</button></div>
-    </div>
-    <div class="field">
-      <label>Coins</label>
-      <input id="adminCost" type="number" min="0.01" step="0.01" placeholder="Amount">
-    </div>
-    <div class="field owner-only">
-      <label>Aurora title (rainbow, max only)</label>
-      <div style="display:flex;gap:8px"><button type="button" class="ghost" id="adminGiftTitle" style="flex:1">Grant Aurora</button><button type="button" class="ghost" id="adminUnGiftTitle" style="flex:1">Remove</button></div>
-    </div>
-    <div class="field">
-      <label>Jew title (blue and white)</label>
-      <div style="display:flex;gap:8px"><button type="button" class="ghost" id="adminGiftJew" style="flex:1">Grant Jew</button><button type="button" class="ghost" id="adminUnGiftJew" style="flex:1">Remove</button></div>
-    </div>
-    <div class="field owner-only">
-      <label>OG title (gold, max only)</label>
-      <div style="display:flex;gap:8px"><button type="button" class="ghost" id="adminGiftOg" style="flex:1">Grant OG</button><button type="button" class="ghost" id="adminUnGiftOg" style="flex:1">Remove</button></div>
-    </div>
-    <div class="field owner-only">
-      <label>Tester title (rainbow outline, max only)</label>
-      <div style="display:flex;gap:8px"><button type="button" class="ghost" id="adminGiftTester" style="flex:1">Grant Tester</button><button type="button" class="ghost" id="adminUnGiftTester" style="flex:1">Remove</button></div>
-    </div>
-    <div class="field owner-only">
-      <label>Any title (max only · Creator needs Tester)</label>
-      <div style="display:flex;gap:8px"><select id="adminTitlePick" style="flex:1"></select><button type="button" class="ghost" id="adminGrantAny">Grant</button><button type="button" class="ghost" id="adminUnGrantAny">Remove</button></div>
-    </div>
-    <div class="field owner-only">
-      <label>Celestial title (needs Tester, max only)</label>
-      <div style="display:flex;gap:8px"><button type="button" class="ghost" id="adminGiftCelestial" style="flex:1">Grant Celestial</button><button type="button" class="ghost" id="adminUnGiftCelestial" style="flex:1">Remove</button></div>
-    </div>
-    <div style="display:flex;gap:8px"><button type="button" class="go" id="adminGive" style="flex:1">Gift coins</button><button type="button" class="go" id="adminTake" style="flex:1">Take coins</button></div>
-    <div class="owner-only">
-      <button type="button" class="ghost" id="adminStaffLog" style="width:100%;padding:10px;margin-top:18px">Staff log (admins + mods: actions, titles, roles)</button>
-      <div id="staffLog" hidden style="max-height:260px;overflow:auto;margin-top:8px;border:1px solid var(--line);border-radius:10px;font-size:13px"></div>
-    </div>
-    <button type="button" class="ghost" id="adminGiftLog" style="width:100%;padding:10px;margin-top:18px">Gift log (player above, or everyone if blank)</button>
-    <div id="giftLog" hidden style="max-height:260px;overflow:auto;margin-top:8px;border:1px solid var(--line);border-radius:10px;font-size:13px"></div>
-<div class="owner-only">
-    <div class="field" style="margin-top:18px">
-      <label>Site notice (empty = hidden)</label>
-      <input id="adminNotice" type="text" maxlength="200" placeholder="Message everyone sees">
-    </div>
-    <button type="button" class="ghost" id="adminNoticeSave" style="width:100%;padding:10px">Update notice</button>
-    </div>
-    <button type="button" class="go" id="adminDelete" style="margin-top:18px;background:var(--line);color:var(--lose)">Delete account</button>
-    <button type="button" class="go" id="adminSeason" style="margin-top:8px;background:var(--lose)">Start new season</button>
-    <p class="hint" style="margin:6px 0 0">Saves everyone's final coins, rebirths and rank to Past seasons, then resets everyone to 1,000 coins and 0 rebirths.</p>
-    <button type="button" class="ghost" id="adminCancel" style="width:100%;margin-top:12px;padding:10px">Close</button>
+
+    <section class="adm-sec" data-sec="player">
+      <div class="adm-label">Coins</div>
+      <div class="adm-row"><input id="adminCost" type="number" min="0.01" step="0.01" placeholder="Amount"><button type="button" class="go" id="adminGive">Give</button><button type="button" class="go adm-red" id="adminTake">Take</button></div>
+      <div class="adm-label">Rebirths</div>
+      <div class="adm-row"><input id="adminRb" type="number" min="1" step="1" placeholder="How many"><button type="button" class="ghost" id="adminGiveRb">Give</button><button type="button" class="ghost" id="adminTakeRb">Take</button></div>
+      <div class="adm-label">Luck</div>
+      <div class="adm-grid">
+        <button type="button" class="go owner-only adm-gold" id="adminBoost">Boost 3 min</button>
+        <button type="button" class="ghost" id="adminClearBoost">Remove boost</button>
+        <button type="button" class="go adm-purple" id="adminBad">Bad luck 1 min</button>
+        <button type="button" class="ghost" id="adminClearBad">Remove bad luck</button>
+      </div>
+      <p class="hint">Boost: nonstop pump in Ride. Bad luck: loses every game. Both stack.</p>
+      <div class="adm-label">Rename</div>
+      <div class="adm-row"><input id="adminNewName" type="text" maxlength="20" autocapitalize="off" spellcheck="false" autocomplete="off" placeholder="New name"><button type="button" class="ghost" id="adminRename">Rename</button></div>
+    </section>
+
+    <section class="adm-sec" data-sec="titles" hidden>
+      <div class="adm-t owner-only"><span class="title-chip gifted">Aurora</span><button type="button" class="ghost" id="adminGiftTitle">Grant</button><button type="button" class="ghost" id="adminUnGiftTitle">Remove</button></div>
+      <div class="adm-t owner-only"><span class="title-chip og">OG</span><button type="button" class="ghost" id="adminGiftOg">Grant</button><button type="button" class="ghost" id="adminUnGiftOg">Remove</button></div>
+      <div class="adm-t owner-only"><span class="title-chip tester">Tester</span><button type="button" class="ghost" id="adminGiftTester">Grant</button><button type="button" class="ghost" id="adminUnGiftTester">Remove</button></div>
+      <div class="adm-t owner-only"><span class="title-chip celestial">Celestial</span><button type="button" class="ghost" id="adminGiftCelestial">Grant</button><button type="button" class="ghost" id="adminUnGiftCelestial">Remove</button></div>
+      <div class="adm-t"><span class="title-chip jew">Jew</span><button type="button" class="ghost" id="adminGiftJew">Grant</button><button type="button" class="ghost" id="adminUnGiftJew">Remove</button></div>
+      <div class="owner-only">
+        <div class="adm-label">Any title <span class="hint" style="margin:0">(Creator and Celestial need Tester)</span></div>
+        <div class="adm-row"><select id="adminTitlePick"></select><button type="button" class="ghost" id="adminGrantAny">Grant</button><button type="button" class="ghost" id="adminUnGrantAny">Remove</button></div>
+      </div>
+    </section>
+
+    <section class="adm-sec" data-sec="mod" hidden>
+      <div class="adm-label">Leaderboard</div>
+      <div class="adm-grid"><button type="button" class="ghost" id="adminBoardHide">Leaderboard ban</button><button type="button" class="ghost" id="adminBoardShow">Leaderboard unban</button></div>
+      <div class="owner-only">
+        <div class="adm-label">Roles</div>
+        <div class="adm-grid">
+          <button type="button" class="ghost" id="adminMod">Make mod</button><button type="button" class="ghost" id="adminUnmod">Remove mod</button>
+          <button type="button" class="ghost" id="adminAddAdmin">Add admin</button><button type="button" class="ghost" id="adminDelAdmin">Remove admin</button>
+        </div>
+        <div class="adm-label">Ban</div>
+        <div class="adm-grid"><button type="button" class="go adm-red" id="adminBan">Ban</button><button type="button" class="ghost" id="adminUnban">Unban</button></div>
+      </div>
+      <div class="adm-label">Danger</div>
+      <button type="button" class="go" id="adminDelete" style="background:var(--line);color:var(--lose)">Delete account</button>
+    </section>
+
+    <section class="adm-sec" data-sec="site" hidden>
+      <div class="adm-label">Everyone</div>
+      <button type="button" class="go adm-gold" id="adminRush">Rush hour 3 min</button>
+      <p class="hint">Way more luck in every game for everyone. Stacks. <a href="#" id="adminRushStop" style="color:var(--muted)">End rush hour</a></p>
+      <div class="adm-label">Site notice</div>
+      <div class="adm-row"><input id="adminNotice" type="text" maxlength="200" placeholder="Message everyone sees (empty = hidden)"><button type="button" class="ghost" id="adminNoticeSave">Update</button></div>
+      <div class="adm-label">Season</div>
+      <button type="button" class="go adm-red" id="adminSeason">Start new season</button>
+      <p class="hint">Saves everyone's final coins, rebirths and rank to Past seasons, then resets everyone to 1,000 coins and 0 rebirths.</p>
+    </section>
+
+    <section class="adm-sec" data-sec="logs" hidden>
+      <div class="owner-only">
+        <button type="button" class="ghost adm-wide" id="adminStaffLog">Staff log (admins + mods)</button>
+        <div id="staffLog" hidden class="adm-log"></div>
+      </div>
+      <button type="button" class="ghost adm-wide" id="adminGiftLog">Gift log (player above, or everyone if blank)</button>
+      <div id="giftLog" hidden class="adm-log"></div>
+    </section>
   </div>
 </div>
 
@@ -3508,6 +3516,10 @@ async function giftOg(on){
 }
 $('adminGiftOg').onclick = () => giftOg(true);
 $('adminUnGiftOg').onclick = () => giftOg(false);
+document.querySelectorAll('#admTabs button').forEach(b => b.onclick = () => {
+  document.querySelectorAll('#admTabs button').forEach(x => x.classList.toggle('on', x === b));
+  document.querySelectorAll('#adminModal .adm-sec').forEach(sec => sec.hidden = sec.dataset.sec !== b.dataset.sec);
+});
 $('adminGiftJew').onclick = () => giftJew(true);
 $('adminUnGiftJew').onclick = () => giftJew(false);
 $('adminGiftTester').onclick = () => giftTester(true);
