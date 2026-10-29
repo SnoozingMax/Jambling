@@ -404,6 +404,17 @@ tr.me td{color:var(--accent)}
 .title-chip.og{position:relative;overflow:hidden;z-index:0;background:linear-gradient(180deg,#1b1408,#0c0904);border:1px solid #c9a24a;color:transparent;-webkit-text-fill-color:transparent;background-clip:padding-box;font-family:Fraunces,serif;font-weight:800;letter-spacing:.12em}
 .title-chip.og::before{content:"OG";position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:linear-gradient(100deg,#b8862b 0%,#f6dc8c 30%,#fff6d6 42%,#f6dc8c 54%,#b8862b 100%);background-size:250% 100%;-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;animation:ogShine 3.2s linear infinite;animation-delay:var(--td,0ms)}
 @keyframes ogShine{0%{background-position:120% 0}100%{background-position:-130% 0}}
+.title-chip.creator{position:relative;isolation:isolate;overflow:visible;padding:3px 11px 3px 9px;border:0;background:radial-gradient(120% 140% at 50% 0%,#2a1748 0%,#120a24 55%,#07040f 100%);box-shadow:0 0 10px rgba(255,190,90,.45),0 0 22px rgba(190,120,255,.35);animation:crGlow 3s ease-in-out infinite;animation-delay:var(--td,0ms)}
+.title-chip.creator::before{content:"";position:absolute;inset:-1.5px;z-index:-1;border-radius:999px;padding:1.5px;background:conic-gradient(from var(--cra,0deg),#ffd36b,#ff7ac6,#a98bff,#6fe3ff,#8affc1,#ffd36b);-webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude;animation:crSpin 4s linear infinite;animation-delay:var(--td,0ms)}
+.title-chip.creator::after{content:"";position:absolute;inset:-6px -4px;pointer-events:none;background:radial-gradient(1.6px 1.6px at 6% 20%,#fff 60%,transparent 70%),radial-gradient(1.4px 1.4px at 94% 30%,#ffe9b0 60%,transparent 70%),radial-gradient(1.8px 1.8px at 78% 88%,#fff 60%,transparent 70%),radial-gradient(1.2px 1.2px at 22% 92%,#d8c8ff 60%,transparent 70%),radial-gradient(1.4px 1.4px at 50% 2%,#fff 60%,transparent 70%);animation:crTwinkle 1.8s ease-in-out infinite alternate;animation-delay:var(--td,0ms)}
+.title-chip.creator .cr-c{display:inline-block;margin-right:4px;color:#ffd36b;-webkit-text-fill-color:#ffd36b;filter:drop-shadow(0 0 4px rgba(255,200,90,.9));animation:crBob 2.4s ease-in-out infinite}
+.title-chip.creator .cr-t{background:linear-gradient(100deg,#ffd36b 0%,#fff3c9 18%,#ff9ad6 36%,#c7b2ff 54%,#9ff0ff 72%,#fff3c9 86%,#ffd36b 100%);background-size:220% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;-webkit-text-fill-color:transparent;letter-spacing:.08em;animation:crText 3.5s linear infinite;animation-delay:var(--td,0ms);filter:drop-shadow(0 0 3px rgba(255,220,160,.35))}
+@property --cra{syntax:"<angle>";inherits:false;initial-value:0deg}
+@keyframes crSpin{to{--cra:360deg}}
+@keyframes crText{0%{background-position:0% 0}100%{background-position:-220% 0}}
+@keyframes crGlow{0%,100%{box-shadow:0 0 10px rgba(255,190,90,.45),0 0 22px rgba(190,120,255,.35)}50%{box-shadow:0 0 16px rgba(255,200,110,.75),0 0 34px rgba(200,140,255,.55)}}
+@keyframes crTwinkle{0%{opacity:.25}100%{opacity:1}}
+@keyframes crBob{0%,100%{transform:translateY(0) rotate(-6deg)}50%{transform:translateY(-1.5px) rotate(6deg)}}
 .title-chip.ggez{background:#0c1a12;color:#5cf08a;border:1px solid #2fbf6b;text-shadow:0 0 6px rgba(92,240,138,.7);animation:ggezPulse 1.6s ease-in-out infinite}
 @keyframes ggezPulse{0%,100%{box-shadow:0 0 0 rgba(47,191,107,0)}50%{box-shadow:0 0 10px rgba(47,191,107,.75)}}
 .title-chip.murphy{position:relative;overflow:hidden;z-index:0;background:linear-gradient(180deg,#2a1414,#120909);color:#ff6a5e;border:1px solid #8a2b24;text-shadow:0 0 6px rgba(255,80,70,.55)}
@@ -2672,6 +2683,7 @@ const RB_TITLES = [[200, 'Celestial', '200+ rebirths'], [100, 'The Golden', '100
 function titleChipsAll(p, rank){
   const bal = Number(p.balance) || 0, rb = Number(p.rebirths) || 0, out = [];
   if (p.gifted) out.push(['gifted', 'Aurora']);
+  if (p.creator) out.push(['creator', 'Creator']);
   if (p.og) out.push(['og', 'OG']);
   if (p.tester) out.push(['tester', 'Tester']);
   if (p.jew) out.push(['jew', 'Jew']);
@@ -2690,6 +2702,7 @@ function renderTitles(el, p, rank){
   el.innerHTML = '';
   for (const [c, t] of titleChips(p, rank == null ? -1 : rank)) {
     const s = document.createElement('span'); s.className = 'title-chip ' + c; s.textContent = t;
+    if (c === 'creator') { s.innerHTML = '<span class="cr-c">♛</span><span class="cr-t">CREATOR</span>'; s.style.setProperty('--td', -(Date.now() % 4000) + 'ms'); }
     if (c === 'gifted') s.style.animationDelay = -(Date.now() % 3000) + 'ms';   // sync shimmer to a global clock so the 10s refresh doesn't restart it
     if (c === 'tester') s.style.setProperty('--td', -(Date.now() % 2500) + 'ms');
     if (c === 'og') s.style.setProperty('--td', -(Date.now() % 3200) + 'ms');
@@ -2712,6 +2725,7 @@ function openTitles(){
   RB_TITLES.slice().reverse().forEach(([n, t, req]) => rows.push(line(t === 'Celestial' ? 'celestial' : 't-rb', t, req)));
   rows.push('<div class="t-cat">Special</div>');
   rows.push(line('gifted', 'Aurora', 'Hand-picked by max \u00b7 luck of 100 rebirths'));
+  rows.push(`<div class="t-row"><span class="title-chip creator"><span class="cr-c">♛</span><span class="cr-t">CREATOR</span></span><span>Made Jambling. There is only one</span></div>`);
   rows.push(line('og', 'OG', 'Given by max to the originals'));
   rows.push(line('tester', 'Tester', 'Given by max to game testers'));
   rows.push(line('jew', 'Jew', 'Given by admins'));
@@ -3413,7 +3427,7 @@ async function loadBoard(){
   $('onlineCount').hidden = !on; $('onlineCount').innerHTML = `<span class="online-dot" style="margin:0 6px 0 0"></span>${on} online`;
   if (mode === 'hidden' && !data.length) { $('board').innerHTML = '<tr><td></td><td>Nobody is leaderboard banned</td><td></td></tr>'; boardShown = mode; return; }
   const frag = document.createDocumentFragment();
-  if (mode === 'money') { myRank = data.findIndex(p => p.id === user.id); const mp = data.find(p => p.id === user.id); if (mp && myProfile) Object.assign(myProfile, { balance: mp.balance, rebirths: mp.rebirths, gifted: mp.gifted, tester: mp.tester, celestial: mp.celestial, ggez: mp.ggez, murphy: mp.murphy, jew: mp.jew, og: mp.og, granted_titles: mp.granted_titles, hidden_titles: mp.hidden_titles }); }
+  if (mode === 'money') { myRank = data.findIndex(p => p.id === user.id); const mp = data.find(p => p.id === user.id); if (mp && myProfile) Object.assign(myProfile, { balance: mp.balance, rebirths: mp.rebirths, gifted: mp.gifted, tester: mp.tester, celestial: mp.celestial, ggez: mp.ggez, murphy: mp.murphy, jew: mp.jew, og: mp.og, creator: mp.creator, granted_titles: mp.granted_titles, hidden_titles: mp.hidden_titles }); }
   data.forEach((p, i) => frag.appendChild(boardRow(i, p, p.id === user.id, mode === 'rebirths' ? '▲' + (p.rebirths || 0) : short(p.balance))));
   $('board').replaceChildren(frag);   // swap all rows at once: no flash, scroll stays put
   boardShown = mode;
