@@ -207,9 +207,9 @@ window.Obby = (function () {
   }
   function die() { S.deaths++; hud(); flash(); burst(S.x, S.y + 1, S.z, 0xff5a3c, 14); snd.die(); send('d', {}); respawn(); }
   function step(dt) {
-    const t = now();
+    simT += dt; const t = simT;
     for (const p of parts) {   // moving / blinking parts
-      if (p.move) { const v = Math.sin(t * p.move.speed + p.move.phase) * p.move.amp; const o = p[p.move.axis]; p[p.move.axis] = p[p.move.axis + '0'] + v; p['d' + p.move.axis] = p[p.move.axis] - o; p.mesh.position.set(p.x, p.y + p.h / 2, p.z); }
+      if (p.move) { const v = Math.sin(t * p.move.speed + p.move.phase) * p.move.amp; const o = p[p.move.axis]; p[p.move.axis] = p[p.move.axis + '0'] + v; p['d' + p.move.axis] = p[p.move.axis] - o; p['v' + p.move.axis] = Math.cos(t * p.move.speed + p.move.phase) * p.move.amp * p.move.speed; p.mesh.position.set(p.x, p.y + p.h / 2, p.z); }
       if (p.blink) { const k = (t + p.blink.phase) % p.blink.period; p.on = k < p.blink.on; p.mesh.material.opacity = p.on ? (k > p.blink.on - 0.5 ? 0.45 : 1) : 0.08; }
       if (p.tex && p.belt) p.tex.offset.y -= p.belt.z * dt * 0.08 || p.belt.x * dt * 0.08;
     }
@@ -217,7 +217,7 @@ window.Obby = (function () {
     for (const d of discs) { d.a += d.speed * dt; d.mesh.rotation.y = d.a; }
     // carried by what I'm standing on
     const g = S.ground;
-    if (g && g.move) { S.x += g.dx || 0; S.y += g.dy || 0; S.z += g.dz || 0; }
+    if (g && g.move) { S.x += g.dx || 0; S.z += g.dz || 0; S.y = g.y + g.h; }   // ride it (snap to its top: no float drift)
     if (g && g.belt) { S.x += g.belt.x * dt; S.z += g.belt.z * dt; }
     if (g && g.disc) { const dx = S.x - g.x, dz = S.z - g.z, a = g.speed * dt; S.x = g.x + dx * Math.cos(a) - dz * Math.sin(a); S.z = g.z + dx * Math.sin(a) + dz * Math.cos(a); }
     // input -> wanted velocity (relative to camera)
@@ -235,7 +235,7 @@ window.Obby = (function () {
     // jump: coyote time + jump buffer
     if (S.ground) S.air = 0; else S.air += dt;
     if (jumpQ) { S.jumpBuf = 0.12; jumpQ = false; }
-    if (S.jumpBuf > 0) { S.jumpBuf -= dt; if (S.ground || S.air < 0.1 || S.climb) { const wasClimb = S.climb; S.vy = JUMP; S.ground = null; S.air = 1; S.jumpBuf = 0; S.climb = false; snd.jump(); if (wasClimb) { S.vz -= fz * 3; S.vx -= fx * 3; } } }
+    if (S.jumpBuf > 0) { S.jumpBuf -= dt; if (S.ground || S.air < 0.1 || S.climb) { const wasClimb = S.climb, g0 = S.ground; S.vy = JUMP; if (g0 && g0.move) { S.vx += g0.vx || 0; S.vz += g0.vz || 0; if ((g0.vy || 0) > 0) S.vy += g0.vy; } if (g0 && g0.belt) { S.vx += g0.belt.x; S.vz += g0.belt.z; } S.ground = null; S.air = 1; S.jumpBuf = 0; S.climb = false; snd.jump(); if (wasClimb) { S.vz -= fz * 3; S.vx -= fx * 3; } } }
     if (!S.climb) S.vy -= G * dt; if (S.vy < -45) S.vy = -45;
     if (S.t0 == null && !S.done && (S.moving || S.vy > 0)) S.t0 = t;
     // move + collide, one axis at a time
@@ -243,12 +243,12 @@ window.Obby = (function () {
     for (const d of discs) { d.b = { x0: d.x - d.r, x1: d.x + d.r, y0: d.y, y1: d.y + d.h, z0: d.z - d.r, z1: d.z + d.r }; d.disc = true; }
     const onDisc = d => Math.hypot(S.x - d.x, S.z - d.z) < d.r + PW * 0.5;
     S.x += S.vx * dt;
-    for (const p of boxes) { const b = p.b; if (!overlapXZ(b) || S.y + PH <= b.y0 || S.y >= b.y1) continue; if (S.vx > 0) S.x = b.x0 - PW; else if (S.vx < 0) S.x = b.x1 + PW; S.vx = 0; }
+    for (const p of boxes) { const b = p.b; if (!overlapXZ(b) || S.y + PH <= b.y0 || S.y >= b.y1 - 0.08) continue; S.x = (S.vx > 0 || (S.vx === 0 && S.x < p.x)) ? b.x0 - PW : b.x1 + PW; S.vx = 0; }
     S.z += S.vz * dt;
-    for (const p of boxes) { const b = p.b; if (!overlapXZ(b) || S.y + PH <= b.y0 || S.y >= b.y1) continue; if (S.vz > 0) S.z = b.z0 - PW; else if (S.vz < 0) S.z = b.z1 + PW; S.vz = 0; }
+    for (const p of boxes) { const b = p.b; if (!overlapXZ(b) || S.y + PH <= b.y0 || S.y >= b.y1 - 0.08) continue; S.z = (S.vz > 0 || (S.vz === 0 && S.z < p.z)) ? b.z0 - PW : b.z1 + PW; S.vz = 0; }
     S.y += S.vy * dt; S.ground = null;
     for (const p of boxes) { const b = p.b; if (!overlapXZ(b) || S.y + PH <= b.y0 || S.y >= b.y1) continue;
-      if (S.vy <= 0 && S.y > b.y1 - 0.7) { S.y = b.y1; S.vy = 0; S.ground = p; } else if (S.vy > 0) { S.y = b.y0 - PH; S.vy = 0; } }
+      if (S.vy <= 0 && S.y > b.y1 - 0.9) { S.y = b.y1; S.vy = 0; S.ground = p; } else if (S.vy > 0 && S.y + PH < b.y0 + 0.5) { S.y = b.y0 - PH; S.vy = 0; } else { S.y = b.y1; S.vy = 0; S.ground = p; } }
     for (const d of discs) { if (!onDisc(d) || S.y + PH <= d.y || S.y >= d.y + d.h) continue; if (S.vy <= 0 && S.y > d.y + d.h - 0.7) { S.y = d.y + d.h; S.vy = 0; S.ground = d; } }
     if (S.ground && S.ground.bounce) { S.vy = S.ground.bounce; S.ground.top.scale.y = 0.4; S.ground = null; S.air = 1; snd.bounce(); burst(S.x, S.y, S.z, 0xff8ad8, 8); }
     for (const p of parts) if (p.top && p.top.scale.y < 1) p.top.scale.y = Math.min(1, p.top.scale.y + dt * 3);
@@ -293,7 +293,6 @@ window.Obby = (function () {
   /* ---------- camera + input ---------- */
   function updateCam(dt) {
     const t = now();
-    if (S.moving && t - cam.lastDrag > 2.5 && !joy) { let d = (S.yaw + Math.PI) - cam.yaw; d = Math.atan2(Math.sin(d), Math.cos(d)); cam.yaw += d * Math.min(1, dt * 1.2); }   // gently swing behind you after a while
     const tx = S.x, ty = S.y + 1.5, tz = S.z;
     let cx = tx + Math.sin(cam.yaw) * Math.cos(cam.pitch) * cam.dist, cy = ty + Math.sin(cam.pitch) * cam.dist, cz = tz + Math.cos(cam.yaw) * Math.cos(cam.pitch) * cam.dist;
     // keep the camera out of walls: pull it in if a solid part sits between it and the player
@@ -369,7 +368,7 @@ window.Obby = (function () {
   function emote(txt) { const t = now(); if (t - lastEmote < 1) return; lastEmote = t; showBubble(player, txt); send('e', { t: txt }); }
 
   /* ---------- loop ---------- */
-  let last = 0;
+  let last = 0, simT = 0;
   function frame() {
     if (!open) return; raf = requestAnimationFrame(frame);
     const t = now(), dt = Math.min(0.1, t - (last || t)); last = t;
@@ -384,7 +383,7 @@ window.Obby = (function () {
     for (const p of parts) if (p.ring) p.ring.rotation.z += dt * (p.cp === S.cp ? 2 : 0.5);
     for (const c of clouds) { c.sp.position.x += c.v * dt; if (c.sp.position.x > 160) c.sp.position.x = -160; }
     fxTick(dt); updateCam(dt); netTick(t);
-    if (onHud.timer) onHud.timer(S.done ? null : S.t0 == null ? 0 : t - S.t0);
+    if (onHud.timer) onHud.timer(S.done ? null : S.t0 == null ? 0 : simT - S.t0);
     const fl = wrap.querySelector('.obby-flash'); if (fl) fl.style.opacity = Math.max(0, 0.55 - (t - flashT) * 2);
     renderer.render(scene, camera);
   }
@@ -407,6 +406,6 @@ window.Obby = (function () {
   return {
     async start(opts) { if (!renderer) await init(opts); open = true; last = 0; resize(); if (!ch) connect(); if (!raf) frame(); hud(); },
     stop() { open = false; if (raf) cancelAnimationFrame(raf); raf = null; if (ch) { const c = ch; ch = null; joined = false; sb.removeChannel(c).catch(() => {}); } for (const id in remote) drop(id); },
-    resize, restart, emote, state: S, stages
+    resize, restart, emote, state: S, stages, parts: () => parts
   };
 })();
