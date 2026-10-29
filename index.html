@@ -409,6 +409,9 @@ tr.me td{color:var(--accent)}
 .title-chip.creator .cr{position:relative;z-index:1;background:linear-gradient(110deg,#ffffff 0%,#d3f4ff 25%,#ffffff 45%,#ffdcf6 65%,#fff3d6 85%,#ffffff 100%);background-size:300% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;-webkit-text-fill-color:transparent;animation:crBg 8s ease-in-out infinite;animation-delay:var(--td,0ms);filter:drop-shadow(0 0 4px rgba(220,235,255,.45))}
 @keyframes crBg{0%,100%{background-position:0% 0,0% 0}50%{background-position:100% 0,100% 0}}
 @keyframes crSheen{0%,60%{background-position:150% 0}90%,100%{background-position:-50% 0}}
+.title-chip.speedrun{position:relative;overflow:hidden;z-index:0;background:#06141c;color:#7ff3ff;border:1px solid #23b8d6;font-style:italic;text-shadow:0 0 6px rgba(80,230,255,.7)}
+.title-chip.speedrun::before{content:"";position:absolute;inset:0;z-index:-1;background:repeating-linear-gradient(90deg,transparent 0 10px,rgba(120,240,255,.22) 10px 12px,transparent 12px 22px);background-size:44px 100%;animation:speedLines .6s linear infinite}
+@keyframes speedLines{from{background-position:44px 0}to{background-position:0 0}}
 .title-chip.ggez{background:#0c1a12;color:#5cf08a;border:1px solid #2fbf6b;text-shadow:0 0 6px rgba(92,240,138,.7);animation:ggezPulse 1.6s ease-in-out infinite}
 @keyframes ggezPulse{0%,100%{box-shadow:0 0 0 rgba(47,191,107,0)}50%{box-shadow:0 0 10px rgba(47,191,107,.75)}}
 .title-chip.murphy{position:relative;overflow:hidden;z-index:0;background:linear-gradient(180deg,#2a1414,#120909);color:#ff6a5e;border:1px solid #8a2b24;text-shadow:0 0 6px rgba(255,80,70,.55)}
@@ -2683,13 +2686,14 @@ function titleChipsAll(p, rank){
   if (p.jew) out.push(['jew', 'Jew']);
   for (const [n, t] of COIN_TITLES) if (bal >= n) { out.push(['t-coin', t]); break; }
   for (const [n, t] of RB_TITLES) if (rb >= n || (t === 'Celestial' && p.celestial && p.tester)) { out.push([t === 'Celestial' ? 'celestial' : 't-rb', t]); break; }
+  if (p.speedrun) out.push(['speedrun', 'Speedrunner']);
   if (p.ggez) out.push(['ggez', 'GGEZ']);
   if (p.murphy) out.push(['murphy', "Murphy's Law"]);
   if (rank === 0) out.push(['t-rank', 'King']); else if (rank >= 0 && rank < 3) out.push(['t-rank', 'Elite']);
   for (const t of p.granted_titles || []) if (TITLE_CLASS[t] && !out.some(([, x]) => x === t)) out.push([TITLE_CLASS[t], t]);   // handed out by max (Tester holders only)
   return out;
 }
-const TITLE_CLASS = { Creator: 'creator', OG: 'og', Aurora: 'gifted', Tester: 'tester', Jew: 'jew', Spoiled: 't-coin', Goated: 't-coin', Untouchable: 't-coin', Touchable: 't-coin', Reborn: 't-rb', Ascended: 't-rb', 'The Golden': 't-rb', Celestial: 'celestial', GGEZ: 'ggez', "Murphy's Law": 'murphy', King: 't-rank', Elite: 't-rank' };
+const TITLE_CLASS = { Speedrunner: 'speedrun', Creator: 'creator', OG: 'og', Aurora: 'gifted', Tester: 'tester', Jew: 'jew', Spoiled: 't-coin', Goated: 't-coin', Untouchable: 't-coin', Touchable: 't-coin', Reborn: 't-rb', Ascended: 't-rb', 'The Golden': 't-rb', Celestial: 'celestial', GGEZ: 'ggez', "Murphy's Law": 'murphy', King: 't-rank', Elite: 't-rank' };
 const GRANTABLE = ['Creator', 'Spoiled', 'Goated', 'Untouchable', 'Touchable', 'Reborn', 'Ascended', 'The Golden', 'Celestial', 'GGEZ', "Murphy's Law", 'King', 'Elite'];
 function titleChips(p, rank){ const hid = p.hidden_titles || []; return titleChipsAll(p, rank).filter(([, t]) => !hid.includes(t)); }
 function renderTitles(el, p, rank){
@@ -2724,6 +2728,7 @@ function openTitles(){
   rows.push(line('tester', 'Tester', 'Given by max to game testers'));
   rows.push(line('jew', 'Jew', 'Given by admins'));
   rows.push('<div class="t-cat">Feats</div>');
+  rows.push(line('speedrun', 'Speedrunner', 'Beat the Obby in under 100 seconds'));
   rows.push(line('ggez', 'GGEZ', 'Win 3 1v1s in a row (any game, Archers too)'));
   rows.push(line('murphy', "Murphy's Law", 'Lose a coin flip of 1 billion or more'));
   rows.push('<div class="t-cat">Leaderboard</div>');
@@ -2876,7 +2881,7 @@ async function obbyOpen(){
   try {
     await Obby.start({ sb, me: { id: user.id, name, color: nameColor(name) }, wrap: $('obbyWrap'), canvas: $('obbyCanvas'), on: {
       hud: h => { $('obbyStage').textContent = `${h.cp} / ${h.stages}`; $('obbyCoins').textContent = `${h.coins} / ${h.totalCoins}`; $('obbyDeaths').textContent = h.deaths; $('obbyBest').textContent = h.best == null ? '–' : h.best.toFixed(1) + 's'; $('obbyOnline').textContent = h.players; $('obbyStageName').textContent = h.cp ? `STAGE ${h.cp} · ${(h.stage || '').toUpperCase()}` : 'SPAWN'; },
-      finish: async (secs, deaths, coins) => { const { data, error } = await sb.rpc('obby_finish', { p_secs: +secs.toFixed(2), p_deaths: deaths, p_coins: coins }); if (!error && data) { if (data.rank) toast(`Obby: ${secs.toFixed(1)}s · #${data.rank} on the board`); obbyTop(); } },
+      finish: async (secs, deaths, coins) => { const { data, error } = await sb.rpc('obby_finish', { p_secs: +secs.toFixed(2), p_deaths: deaths, p_coins: coins }); if (!error && data) { if (data.rank) toast(`Obby: ${secs.toFixed(1)}s · #${data.rank} on the board`); if (data.speedrun && myProfile && !myProfile.speedrun) { myProfile.speedrun = true; renderTitles($('whoTitles'), myProfile, -1); setTimeout(() => toast('Title unlocked: Speedrunner', 4000), 1500); } obbyTop(); } },
       emote: i => { if (window.Obby && EMOTES[i]) Obby.emote(EMOTES[i]); },
       timer: t => { if (t != null) $('obbyTime').textContent = t.toFixed(1) + 's'; },
       msg: t => { const el = $('obbyMsg'); el.textContent = t; el.classList.add('on'); clearTimeout(obbyMsgT); obbyMsgT = setTimeout(() => el.classList.remove('on'), 2200); }
@@ -3421,7 +3426,7 @@ async function loadBoard(){
   $('onlineCount').hidden = !on; $('onlineCount').innerHTML = `<span class="online-dot" style="margin:0 6px 0 0"></span>${on} online`;
   if (mode === 'hidden' && !data.length) { $('board').innerHTML = '<tr><td></td><td>Nobody is leaderboard banned</td><td></td></tr>'; boardShown = mode; return; }
   const frag = document.createDocumentFragment();
-  if (mode === 'money') { myRank = data.findIndex(p => p.id === user.id); const mp = data.find(p => p.id === user.id); if (mp && myProfile) Object.assign(myProfile, { balance: mp.balance, rebirths: mp.rebirths, gifted: mp.gifted, tester: mp.tester, celestial: mp.celestial, ggez: mp.ggez, murphy: mp.murphy, jew: mp.jew, og: mp.og, creator: mp.creator, granted_titles: mp.granted_titles, hidden_titles: mp.hidden_titles }); }
+  if (mode === 'money') { myRank = data.findIndex(p => p.id === user.id); const mp = data.find(p => p.id === user.id); if (mp && myProfile) Object.assign(myProfile, { balance: mp.balance, rebirths: mp.rebirths, gifted: mp.gifted, tester: mp.tester, celestial: mp.celestial, ggez: mp.ggez, murphy: mp.murphy, jew: mp.jew, og: mp.og, creator: mp.creator, speedrun: mp.speedrun, granted_titles: mp.granted_titles, hidden_titles: mp.hidden_titles }); }
   data.forEach((p, i) => frag.appendChild(boardRow(i, p, p.id === user.id, mode === 'rebirths' ? '▲' + (p.rebirths || 0) : short(p.balance))));
   $('board').replaceChildren(frag);   // swap all rows at once: no flash, scroll stays put
   boardShown = mode;
