@@ -2689,8 +2689,8 @@ function titleChipsAll(p, rank){
   for (const t of p.granted_titles || []) if (TITLE_CLASS[t] && !out.some(([, x]) => x === t)) out.push([TITLE_CLASS[t], t]);   // handed out by max (Tester holders only)
   return out;
 }
-const TITLE_CLASS = { OG: 'og', Aurora: 'gifted', Tester: 'tester', Jew: 'jew', Spoiled: 't-coin', Goated: 't-coin', Untouchable: 't-coin', Touchable: 't-coin', Reborn: 't-rb', Ascended: 't-rb', 'The Golden': 't-rb', Celestial: 'celestial', GGEZ: 'ggez', "Murphy's Law": 'murphy', King: 't-rank', Elite: 't-rank' };
-const GRANTABLE = ['Spoiled', 'Goated', 'Untouchable', 'Touchable', 'Reborn', 'Ascended', 'The Golden', 'Celestial', 'GGEZ', "Murphy's Law", 'King', 'Elite'];
+const TITLE_CLASS = { Creator: 'creator', OG: 'og', Aurora: 'gifted', Tester: 'tester', Jew: 'jew', Spoiled: 't-coin', Goated: 't-coin', Untouchable: 't-coin', Touchable: 't-coin', Reborn: 't-rb', Ascended: 't-rb', 'The Golden': 't-rb', Celestial: 'celestial', GGEZ: 'ggez', "Murphy's Law": 'murphy', King: 't-rank', Elite: 't-rank' };
+const GRANTABLE = ['Creator', 'Spoiled', 'Goated', 'Untouchable', 'Touchable', 'Reborn', 'Ascended', 'The Golden', 'Celestial', 'GGEZ', "Murphy's Law", 'King', 'Elite'];
 function titleChips(p, rank){ const hid = p.hidden_titles || []; return titleChipsAll(p, rank).filter(([, t]) => !hid.includes(t)); }
 function renderTitles(el, p, rank){
   el.innerHTML = '';
@@ -2711,7 +2711,7 @@ function openTitles(){
     const hid = myProfile.hidden_titles || [], mine = titleChipsAll(myProfile, myRank);
     rows.push('<div class="t-cat">Your titles</div>');
     if (!mine.length) rows.push('<div class="hint" style="margin:0 0 6px">Nothing yet. Keep playing.</div>');
-    for (const [c, t] of mine) rows.push(`<div class="t-inv${hid.includes(t) ? ' off' : ''}" data-t="${t}"><span class="title-chip ${c}">${t}</span><button type="button" class="t-sw">${hid.includes(t) ? 'Hidden' : 'Shown'}</button></div>`);
+    for (const [c, t] of mine) rows.push(`<div class="t-inv${hid.includes(t) ? ' off' : ''}" data-t="${t}"><span class="title-chip ${c}">${c === 'creator' ? '<span class="cr">Creator</span>' : t}</span><button type="button" class="t-sw">${hid.includes(t) ? 'Hidden' : 'Shown'}</button></div>`);
   }
   rows.push('<div class="t-cat">Coins</div>');
   COIN_TITLES.slice().reverse().forEach(([n, t, req]) => rows.push(line('t-coin', t, req)));
