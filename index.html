@@ -224,6 +224,10 @@ canvas{width:100%;height:100%;display:block}
 .obby-loading{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:#8fc8ff;color:#1d3557;font:600 18px Fraunces,serif}
 .obby-wrap.obby-fs{position:fixed;inset:0;z-index:999;border:0;border-radius:0;width:100vw;height:100vh;background:#0f0f12}
 .obby-wrap:fullscreen,.obby-wrap:-webkit-full-screen{width:100vw;height:100vh;border:0;border-radius:0}
+.hs-banner{position:absolute;left:50%;top:40%;transform:translate(-50%,-50%);z-index:5;text-align:center;pointer-events:none;padding:14px 28px;border-radius:16px;background:rgba(15,15,18,.72);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px)}
+.hs-banner b{display:block;font:700 44px Fraunces,serif;color:#fff;letter-spacing:.02em;text-shadow:0 2px 12px rgba(0,0,0,.6)}
+.hs-banner.win b{color:var(--win)} .hs-banner.lose b{color:var(--lose)}
+.hs-banner span{display:block;margin-top:4px;font:600 15px Inter,sans-serif;color:#eee}
 .hs-cross{position:absolute;left:50%;top:50%;width:26px;height:26px;margin:-13px 0 0 -13px;pointer-events:none;background:radial-gradient(circle,rgba(255,255,255,.95) 0 2px,transparent 3px),linear-gradient(#fff,#fff) center/2px 8px no-repeat,linear-gradient(#fff,#fff) center/8px 2px no-repeat;border:1.5px solid rgba(255,255,255,.7);border-radius:50%;filter:drop-shadow(0 0 2px #000)}
 .hs-fire{position:absolute;right:18px;bottom:118px;width:84px;height:84px;border-radius:50%;border:2px solid rgba(255,255,255,.7);background:rgba(220,50,40,.8);color:#fff;font:800 14px Inter,sans-serif;touch-action:none;display:none}
 @media (pointer:coarse){.hs-fire:not([hidden]){display:block}}
@@ -727,6 +731,7 @@ tr.me td{color:var(--accent)}
         </div>
         <div class="g3-tools"><button type="button" class="ghost g3-zin" title="Zoom in (=)">＋</button><button type="button" class="ghost g3-zout" title="Zoom out (-)">－</button><button type="button" class="ghost" id="hsFs">⛶</button></div>
         <div class="obby-msg" id="hsMsg"></div>
+        <div class="hs-banner" id="hsBanner" hidden><b id="hsBannerT"></b><span id="hsBannerS"></span></div>
         <div class="hs-cross" id="hsCross" hidden></div>
         <div class="obby-joy" hidden><div></div></div>
         <button type="button" class="obby-jump">JUMP</button>
@@ -1901,7 +1906,7 @@ function renderArcher(m){
   archDraw();
 }
 /* ---------- Chameleon (3D hide & seek, hide.js) ---------- */
-const HS_V = 4;
+const HS_V = 5;
 let hsOwned = [], hsPrices = { freeze: 3e9, smoke: 2e9, decoy: 5e9 }, hsShopKind = null, hsStarting = null, hsDeadline = null, hsMsgT = null, hsTauntCool = 0, hsLive = null;
 const HS_ITEMS = { freeze: { name: 'Freeze', icon: '❄️', desc: 'Freezes the hunter in place for 4 seconds' }, smoke: { name: 'Smoke bomb', icon: '💨', desc: 'A cloud nobody can see into for 9 seconds' }, decoy: { name: 'Decoy', icon: '🪆', desc: 'Drops a painted copy of you. The hunter has to shoot it to find out' } };
 async function hsLoadItems(){ const { data, error } = await sb.rpc('hs_items'); if (!error && data) { hsOwned = data.owned || []; hsPrices = data.prices || hsPrices; } hsShopRender(); }
@@ -1979,8 +1984,9 @@ async function renderHide(m){
     const label = { win: 'You win!', lose: m.opp + ' wins', tie: 'Draw' }[m.outcome] || '';
     const money = m.friendly ? ' (friendly)' : m.outcome === 'win' ? ` +${fmt(m.stake)}` : m.outcome === 'lose' ? ` −${fmt(m.stake)}` : ' · stakes back';
     const el = $('hsResult'); el.textContent = label ? label + money : ''; el.className = 'bj-msg ' + (m.outcome === 'win' ? 'win' : m.outcome === 'lose' ? 'lose' : '');
+    if (label) { const bn = $('hsBanner'); bn.hidden = false; bn.className = 'hs-banner ' + (m.outcome === 'win' ? 'win' : m.outcome === 'lose' ? 'lose' : ''); $('hsBannerT').textContent = m.outcome === 'win' ? 'YOU WIN' : m.outcome === 'lose' ? 'YOU LOSE' : 'DRAW'; $('hsBannerS').textContent = `${Number(m.my_score || 0).toFixed(0)} pts vs ${Number(m.opp_score || 0).toFixed(0)} pts${money}`; }
     if (m.balance != null) setBalance(m.balance); $('hsBlind').hidden = true; $('hsCross').hidden = true; $('hsFireBtn').hidden = true; $('hsPaint').hidden = true; $('hsActions').hidden = true; $('hsAmmoBox').hidden = true; $('hsTimer').textContent = '–';
-  } else $('hsResult').textContent = '';
+  } else { $('hsResult').textContent = ''; $('hsBanner').hidden = true; }
 }
 function hsScores(){
   const L = hsLive; if (!L) return;
@@ -2835,7 +2841,7 @@ document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
 });
 
 /* ---------- obby (3D course, everyone online together) ---------- */
-const OBBY_V = 4;
+const OBBY_V = 5;
 let obbyMsgT = null;
 function nameColor(n){   // a steady color per name (hsl 65% / 55%)
   let h = 0; for (const c of n) h = (h * 31 + c.charCodeAt(0)) >>> 0; const hue = h % 360, s = 0.65, l = 0.55;

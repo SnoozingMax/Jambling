@@ -1,6 +1,6 @@
 /* Jambling Obby: a 3D obstacle course (three.js) with everyone online shown live through Supabase Realtime. */
 window.Obby = (function () {
-  const G = 32, JUMP = 11.5, SPEED = 8, SPRINT = 1.35, PW = 0.4, PH = 1.8;   // gravity, jump speed, run speed, sprint mult, player half-width / height
+  const G = 32, JUMP = 13, SPEED = 8, SPRINT = 1.35, PW = 0.4, PH = 1.8;   // gravity, jump speed, run speed, sprint mult, player half-width / height
   let THREE, sb, me, renderer, scene, camera, wrap, canvas, raf = null, open = false, ch = null, joined = false;
   let parts = [], killers = [], spinners = [], discs = [], coins = [], cps = [], stages = [], finishBox = null, player, remote = {}, lastSend = 0, lastSig = '', fx = [], clouds = [];
   const S = { x: 0, y: 1, z: 0, vx: 0, vy: 0, vz: 0, yaw: 0, ground: null, cp: 0, deaths: 0, t0: null, done: false, best: null, moving: false, coins: 0, air: 0, jumpBuf: 0, climb: false, lastGround: null, sprint: false };
