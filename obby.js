@@ -37,12 +37,27 @@ window.Obby = (function () {
     cannon(x, y, z, B) { B.box(x, y, z + 18, 5, 0.5, 28, { color: 0x8d93a6 });
       [[-1.2, 11, 0, 1.6], [1.2, 11, 14, 1.6], [0, 15, 7, 1.2]].forEach(([dx, sp, ph, w]) => B.box(x + dx, y + 0.5, z + 28, w, 0.8, w, { color: C.lava, kill: true, cyc: { axis: 'z', from: z + 5, to: z + 32, speed: sp, phase: ph } }));
       B.coin(x, y + 2, z + 18); return [x, y, z + 36]; },
+    // the final exam: every mechanic in one run. ice -> wind beam over lava -> crumble -> moving blocks -> spinner disc -> blink -> truss -> low-g cannon alley -> warp -> bounce up
+    final(x, y, z, B) {
+      B.box(x, y - 4, z + 60, 30, 0.5, 120, { color: C.lava, kill: true, lava: true });
+      [[0, 6, 3, 4], [2, 12, 2.5, 3], [-2, 18, 2.5, 3]].forEach(([dx, dz, w, d]) => B.box(x + dx, y, z + dz, w, 0.5, d, { color: C.ice, ice: true }));
+      B.box(x, y, z + 28, 1.2, 0.5, 14, { color: C.beam }); B.box(x, y, z + 28, 14, 6, 14, { color: 0x9ad8ff, zone: 'wind', wind: { x: 8, z: 0 } });
+      [[0, 38], [1.5, 42], [-1.5, 46]].forEach(([dx, dz]) => B.box(x + dx, y, z + dz, 2.2, 0.6, 2.2, { color: 0xc98a5a, fall: true }));
+      B.box(x, y, z + 52, 3, 0.6, 3, { color: C.ice, move: { axis: 'x', amp: 4, speed: 1.3, phase: 0 } }); B.box(x, y + 1, z + 58, 3, 0.6, 3, { color: C.ice, move: { axis: 'y', amp: 2, speed: 1.5, phase: 1 } });
+      discs.push({ x, y: y + 1, z: z + 68, r: 5, h: 0.6, speed: 1.1, a: 0, color: C.teal }); spinners.push({ x, y: y + 1.7, z: z + 68, len: 9, speed: 2.4, a: 0, color: 0xff5a3c }); B.coin(x, y + 3.5, z + 68);
+      [[0, 77], [-1.5, 81], [1.5, 85]].forEach(([dx, dz], i) => B.box(x + dx, y + 1, z + dz, 2.2, 0.6, 2.2, { color: C.white, blink: { period: 3.2, on: 1.9, phase: i * 0.6 } }));
+      B.wall(x, y + 1, z + 91, 8, 9, 1.2, { color: 0x6a7086 }); B.box(x, y + 1, z + 89.9, 2, 9.6, 1, { color: C.truss, truss: true }); B.box(x, y + 10, z + 94, 6, 0.6, 5, { color: C.purple }); B.coin(x, y + 12, z + 94);
+      B.box(x, y + 10, z + 108, 5, 0.5, 22, { color: 0x8d93a6 }); B.box(x, y + 10, z + 108, 20, 14, 26, { color: 0xc9a8ff, zone: 'lowg' });
+      [[-1.2, 10, 0], [1.2, 10, 11], [0, 13, 6]].forEach(([dx, sp, ph]) => B.box(x + dx, y + 10.5, z + 118, 1.4, 0.8, 1.4, { color: C.lava, kill: true, cyc: { axis: 'z', from: z + 98, to: z + 119, speed: sp, phase: ph } }));
+      B.box(x, y + 10, z + 124, 2.2, 0.6, 2.2, { color: C.teal, tp: [x, y + 16, z + 134] }); B.box(x, y + 15, z + 134, 4, 1, 4, { color: C.purple }); B.coin(x, y + 18, z + 134);
+      B.box(x, y + 13, z + 141, 3, 0.6, 3, { color: C.bounce, bounce: 23 }); B.box(x, y + 20, z + 150, 4, 0.6, 4, { color: C.purple });
+      return [x, y + 20, z + 157]; },
     warp(x, y, z, B) { B.box(x - 3, y, z + 6, 2.2, 0.6, 2.2, { color: C.teal, tp: [x, y + 12, z + 20] }); B.box(x + 3, y, z + 6, 2.2, 0.6, 2.2, { color: C.teal, tp: [x, y + 1, z] });
       B.box(x, y + 11, z + 20, 6, 1, 6, { color: C.purple }); B.coin(x, y + 14, z + 20); B.box(x, y + 8, z + 28, 3, 0.6, 3, { color: C.bounce, bounce: 22 }); B.box(x, y + 14, z + 37, 4, 0.6, 4, { color: C.purple }); return [x, y + 14, z + 44]; }
   };
   // the course, easiest first: the pad named X is where stage X starts
   const ORDER = [['Spawn', 'jump'], ['Lava Hop', 'lava'], ['Bounce', 'bounce'], ['Climb', 'climb'], ['Sliders', 'sliders'], ['Moon Jumps', 'moon'], ['Conveyors', 'conveyors'], ['Spinner', 'spinner'],
-    ['Ice Rink', 'ice'], ['Warp', 'warp'], ['Crumble', 'crumble'], ['Beams', 'beams'], ['Carousel', 'carousel'], ['Blink', 'blink'], ['Wind Bridge', 'wind'], ['Cannon Alley', 'cannon'], ['Gauntlet', 'gauntlet']];
+    ['Ice Rink', 'ice'], ['Warp', 'warp'], ['Crumble', 'crumble'], ['Beams', 'beams'], ['Carousel', 'carousel'], ['Blink', 'blink'], ['Wind Bridge', 'wind'], ['Cannon Alley', 'cannon'], ['Gauntlet', 'gauntlet'], ['Final Exam', 'final']];
   function course() {
     const P = [];
     const B = {
