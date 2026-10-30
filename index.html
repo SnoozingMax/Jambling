@@ -2872,7 +2872,7 @@ document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
 });
 
 /* ---------- obby (3D course, everyone online together) ---------- */
-const OBBY_V = 8;
+const OBBY_V = 9;
 let obbyMsgT = null;
 function nameColor(n){   // a steady color per name (hsl 65% / 55%)
   let h = 0; for (const c of n) h = (h * 31 + c.charCodeAt(0)) >>> 0; const hue = h % 360, s = 0.65, l = 0.55;

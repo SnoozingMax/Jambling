@@ -31,7 +31,7 @@ window.Obby = (function () {
       spinners.push({ x, y: y + 0.9, z: z + 14, len: 9, speed: 2.6, a: 0, color: 0xff5a3c });
       B.box(x, y + 3, z + 29, 3, 0.6, 8, { color: C.conveyor, belt: { x: 0, z: -5 }, stripe: true }); B.box(x, y + 3, z + 36, 3, 0.6, 3, { color: C.bounce, bounce: 20 }); B.box(x, y + 8.5, z + 44, 4, 0.6, 4, { color: C.purple }); return [x, y + 8.5, z + 51]; },
     ice(x, y, z, B) { [[0, 6, 3, 5], [-2, 14, 3, 4], [2.5, 21, 3, 4], [0, 28, 2.5, 4]].forEach(([dx, dz, w, d]) => B.box(x + dx, y, z + dz, w, 0.5, d, { color: C.ice, ice: true })); B.coin(x - 2, y + 2, z + 14); B.coin(x + 2.5, y + 2, z + 21); return [x, y, z + 35]; },
-    wind(x, y, z, B) { B.box(x, y, z + 15, 1.4, 0.5, 24, { color: C.beam }); B.box(x, y, z + 9, 14, 6, 8, { color: 0x9ad8ff, zone: 'wind', wind: { x: 9, z: 0 } }); B.box(x, y, z + 21, 14, 6, 8, { color: 0x9ad8ff, zone: 'wind', wind: { x: -9, z: 0 } }); B.coin(x, y + 2, z + 15); return [x, y, z + 31]; },
+    wind(x, y, z, B) { B.box(x, y, z + 15, 1.4, 0.5, 24, { color: C.beam }); B.box(x, y, z + 9, 14, 6, 8, { color: 0x9ad8ff, zone: 'wind', wind: { x: 5, z: 0 } }); B.box(x, y, z + 21, 14, 6, 8, { color: 0x9ad8ff, zone: 'wind', wind: { x: -5, z: 0 } }); B.coin(x, y + 2, z + 15); return [x, y, z + 31]; },
     crumble(x, y, z, B) { [[0, 5], [-1.5, 9], [1.5, 13], [0, 17], [-1.5, 21], [1.5, 25], [0, 29]].forEach(([dx, dz]) => B.box(x + dx, y, z + dz, 2.2, 0.6, 2.2, { color: 0xc98a5a, fall: true })); B.coin(x, y + 2, z + 17); return [x, y, z + 35]; },
     moon(x, y, z, B) { B.box(x, y, z + 22, 30, 14, 50, { color: 0xc9a8ff, zone: 'lowg' }); [[0, 9], [0, 19], [0, 30], [0, 41]].forEach(([dx, dz], i) => B.box(x + dx, y + (i % 2) * 2, z + dz, 3, 0.6, 3, { color: C.purple })); B.coin(x, y + 6, z + 14); B.coin(x, y + 8, z + 25); B.coin(x, y + 8, z + 36); return [x, y, z + 49]; },
     cannon(x, y, z, B) { B.box(x, y, z + 18, 5, 0.5, 28, { color: 0x8d93a6 });
@@ -41,7 +41,7 @@ window.Obby = (function () {
     final(x, y, z, B) {
       B.box(x, y - 4, z + 60, 30, 0.5, 120, { color: C.lava, kill: true, lava: true });
       [[0, 6, 3, 4], [2, 12, 2.5, 3], [-2, 18, 2.5, 3]].forEach(([dx, dz, w, d]) => B.box(x + dx, y, z + dz, w, 0.5, d, { color: C.ice, ice: true }));
-      B.box(x, y, z + 28, 1.2, 0.5, 14, { color: C.beam }); B.box(x, y, z + 28, 14, 6, 14, { color: 0x9ad8ff, zone: 'wind', wind: { x: 8, z: 0 } });
+      B.box(x, y, z + 28, 1.2, 0.5, 14, { color: C.beam }); B.box(x, y, z + 28, 14, 6, 14, { color: 0x9ad8ff, zone: 'wind', wind: { x: 5.5, z: 0 } });
       [[0, 38], [1.5, 42], [-1.5, 46]].forEach(([dx, dz]) => B.box(x + dx, y, z + dz, 2.2, 0.6, 2.2, { color: 0xc98a5a, fall: true }));
       B.box(x, y, z + 52, 3, 0.6, 3, { color: C.ice, move: { axis: 'x', amp: 4, speed: 1.3, phase: 0 } }); B.box(x, y + 1, z + 58, 3, 0.6, 3, { color: C.ice, move: { axis: 'y', amp: 2, speed: 1.5, phase: 1 } });
       discs.push({ x, y: y + 1, z: z + 68, r: 5, h: 0.6, speed: 1.1, a: 0, color: C.teal }); spinners.push({ x, y: y + 1.7, z: z + 68, len: 9, speed: 2.4, a: 0, color: 0xff5a3c }); B.coin(x, y + 3.5, z + 68);
@@ -87,15 +87,19 @@ window.Obby = (function () {
     x.strokeStyle = 'rgba(0,0,0,.08)'; x.lineWidth = 2; x.strokeRect(1, 1, 62, 62);
     const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 4; return t;
   }
-  function stripeTexture() {
+  function arrowTexture(dir) {   // chevrons pointing along the belt: 'u+' 'u-' (texture x) or 'v+' 'v-' (texture y)
     const c = document.createElement('canvas'); c.width = c.height = 64; const x = c.getContext('2d');
-    x.fillStyle = '#3b3f4a'; x.fillRect(0, 0, 64, 64); x.fillStyle = '#f5e36c'; x.fillRect(0, 0, 64, 10);
+    x.fillStyle = '#3b3f4a'; x.fillRect(0, 0, 64, 64); x.translate(32, 32);
+    x.rotate(dir === 'v+' ? 0 : dir === 'v-' ? Math.PI : dir === 'u+' ? -Math.PI / 2 : Math.PI / 2);
+    x.strokeStyle = '#f5e36c'; x.lineWidth = 7; x.lineCap = 'round'; x.lineJoin = 'round';
+    x.beginPath(); x.moveTo(-16, -4); x.lineTo(0, -18); x.lineTo(16, -4); x.stroke();   // chevron pointing to -y of the canvas (= +v on the face)
+    x.beginPath(); x.moveTo(-16, 16); x.lineTo(0, 2); x.lineTo(16, 16); x.stroke();
     const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; return t;
   }
   function matFor(p) {
     if (p.lava) return new THREE.MeshLambertMaterial({ color: p.color, emissive: 0x6a1008 });
     if (p.zone) return new THREE.MeshBasicMaterial({ color: p.color, transparent: true, opacity: 0.12, depthWrite: false });
-    if (p.stripe) { const t = stripeTexture(); t.repeat.set(1, p.d / 2); p.tex = t; return new THREE.MeshLambertMaterial({ map: t }); }
+    if (p.stripe) { const t = arrowTexture(p.belt.x > 0 ? 'u-' : p.belt.x < 0 ? 'u+' : p.belt.z > 0 ? 'v-' : 'v+'); t.repeat.set(Math.max(1, p.w / 2), Math.max(1, p.d / 2)); p.tex = t; return new THREE.MeshLambertMaterial({ map: t }); }
     const t = studTex.clone(); t.needsUpdate = true; t.repeat.set(Math.max(1, Math.round(p.w)), Math.max(1, Math.round(p.d)));
     return new THREE.MeshLambertMaterial({ color: p.color, map: t, transparent: !!p.blink || !!p.truss, opacity: p.truss ? 0.85 : 1 });
   }
@@ -141,6 +145,12 @@ window.Obby = (function () {
     for (let i = 0; i < 40; i++) { const sp = new THREE.Sprite(cloudMat); const s = 14 + Math.random() * 24; sp.scale.set(s * 1.7, s, 1); sp.position.set((Math.random() - 0.5) * 300, 40 + Math.random() * 50, -40 + Math.random() * 420); scene.add(sp); clouds.push({ sp, v: 0.6 + Math.random() }); }
     // sea far below
     const sea = new THREE.Mesh(new THREE.PlaneGeometry(900, 900), new THREE.MeshLambertMaterial({ color: 0x4f98e3 })); sea.rotation.x = -Math.PI / 2; sea.position.set(0, -40, 170); scene.add(sea);
+    for (const p of parts) if (p.zone === 'wind') {   // wind streaks so you can see which way it blows
+      const g = new THREE.Group(); const mat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.75 });
+      const len = Math.hypot(p.wind.x, p.wind.z) * 0.35, ang = Math.atan2(p.wind.x, p.wind.z);
+      for (let i = 0; i < 28; i++) { const m = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, len), mat); m.rotation.y = ang; m.position.set(p.x + (Math.random() - 0.5) * p.w, p.y + 0.6 + Math.random() * (p.h - 1), p.z + (Math.random() - 0.5) * p.d); g.add(m); }
+      scene.add(g); p.streaks = g;
+    }
     player = avatar(me.color, me.name); scene.add(player.g);
   }
   function discTex(r, g, b) {
@@ -202,7 +212,7 @@ window.Obby = (function () {
     for (const p of parts) {   // moving / blinking parts
       if (p.move) { const v = Math.sin(t * p.move.speed + p.move.phase) * p.move.amp; const o = p[p.move.axis]; p[p.move.axis] = p[p.move.axis + '0'] + v; p['d' + p.move.axis] = p[p.move.axis] - o; p['v' + p.move.axis] = Math.cos(t * p.move.speed + p.move.phase) * p.move.amp * p.move.speed; p.mesh.position.set(p.x, p.y + p.h / 2, p.z); }
       if (p.blink) { const k = (t + p.blink.phase) % p.blink.period; p.on = k < p.blink.on; p.mesh.material.opacity = p.on ? (k > p.blink.on - 0.5 ? 0.45 : 1) : 0.08; }
-      if (p.tex && p.belt) p.tex.offset.y -= p.belt.z * dt * 0.08 || p.belt.x * dt * 0.08;
+      if (p.tex && p.belt) { p.tex.offset.x -= p.belt.x * dt * 0.12; p.tex.offset.y += p.belt.z * dt * 0.12; }
       if (p.cyc) { const c = p.cyc, len = c.to - c.from; p[c.axis] = c.to - ((t * c.speed + c.phase) % len); p.mesh.position.set(p.x, p.y + p.h / 2, p.z); }
       if (p.fall && p.fallT != null) { const age = t - p.fallT;
         if (age < 0.5) p.mesh.position.x = p.x + Math.sin(age * 70) * 0.08;
@@ -210,6 +220,8 @@ window.Obby = (function () {
         else { p.fallT = null; p.gone = false; p.mesh.position.set(p.x, p.y + p.h / 2, p.z); } }
     }
     for (const s of spinners) { s.a += s.speed * dt; s.mesh.rotation.y = s.a; }
+    for (const p of parts) if (p.streaks) for (const m of p.streaks.children) { m.position.x += p.wind.x * 2.2 * dt; m.position.z += p.wind.z * 2.2 * dt;
+      if (m.position.x > p.x + p.w / 2) m.position.x -= p.w; if (m.position.x < p.x - p.w / 2) m.position.x += p.w; if (m.position.z > p.z + p.d / 2) m.position.z -= p.d; if (m.position.z < p.z - p.d / 2) m.position.z += p.d; }
     for (const d of discs) { d.a += d.speed * dt; d.mesh.rotation.y = d.a; }
     // carried by what I'm standing on
     const g = S.ground;
@@ -223,9 +235,9 @@ window.Obby = (function () {
     const il = Math.hypot(ix, iz); if (il > 1) { ix /= il; iz /= il; }
     const fy = cam.yaw, fx = -Math.sin(fy), fz = -Math.cos(fy), rx = Math.cos(fy), rz = -Math.sin(fy);
     const sp = SPEED * (S.sprint ? SPRINT : 1), wx = (fx * iz + rx * ix) * sp, wz = (fz * iz + rz * ix) * sp;
-    let gMul = 1;
-    for (const z of parts) if (z.zone) { const b = partBox(z); if (overlapXZ(b) && S.y + PH > b.y0 && S.y < b.y1) { if (z.wind) { S.vx += z.wind.x * dt; S.vz += z.wind.z * dt; } if (z.zone === 'lowg') gMul = 0.4; } }
-    const acc = S.ground ? (S.ground.ice ? 1.6 : 20) : 7; S.vx += (wx - S.vx) * Math.min(1, acc * dt); S.vz += (wz - S.vz) * Math.min(1, acc * dt);
+    let gMul = 1, wx2 = wx, wz2 = wz;
+    for (const z of parts) if (z.zone) { const b = partBox(z); if (overlapXZ(b) && S.y + PH > b.y0 && S.y < b.y1) { if (z.wind) { wx2 += z.wind.x; wz2 += z.wind.z; } if (z.zone === 'lowg') gMul = 0.4; } }
+    const acc = S.ground ? (S.ground.ice ? 1.6 : 20) : 7; S.vx += (wx2 - S.vx) * Math.min(1, acc * dt); S.vz += (wz2 - S.vz) * Math.min(1, acc * dt);
     S.moving = il > 0.1; if (S.moving) S.yaw = Math.atan2(wx, wz);
     // trusses: hug one and push into it to climb
     S.climb = false;
@@ -267,7 +279,7 @@ window.Obby = (function () {
   }
   function finish(t) {
     S.done = true; const secs = S.t0 == null ? 0 : t - S.t0; const prev = S.best;
-    if (prev == null || secs < prev) { S.best = secs; try { localStorage.setItem('obby_best', String(secs)); } catch {} }
+    if (prev == null || secs < prev) { S.best = secs; try { localStorage.setItem('obby_best2', String(secs)); } catch {} }
     hud(); snd.win(); toastLocal(`Finished in ${secs.toFixed(1)}s${prev == null || secs < prev ? ' · new best!' : ''}`);
     for (let i = 0; i < 6; i++) setTimeout(() => burst(S.x + (Math.random() - 0.5) * 6, S.y + 2 + Math.random() * 4, S.z + (Math.random() - 0.5) * 6, [0xff5a3c, 0xffd34d, 0x58c46a, 0x6fd3ff, 0xff7bb0][i % 5], 16, 1.8), i * 220);
     send('fin', { secs: +secs.toFixed(1), deaths: S.deaths });
@@ -412,7 +424,7 @@ window.Obby = (function () {
     THREE = window.THREE;
     renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2)); renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    try { const b = parseFloat(localStorage.getItem('obby_best')); if (b > 0) S.best = b; } catch {}
+    try { const b = parseFloat(localStorage.getItem('obby_best2')); if (b > 0) S.best = b; } catch {}
     build(); bindInput(); window.addEventListener('resize', resize); respawn(); hud();
   }
   return {
