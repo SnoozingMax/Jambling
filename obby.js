@@ -12,112 +12,54 @@ window.Obby = (function () {
 
   /* ---------- course ---------- */
   const C = { spawn: 0x6c8ef5, blockA: 0xf5a66c, blockB: 0xf58f6c, stone: 0x5a5f6e, lava: 0xff3b2f, ice: 0x8fe3ff, beam: 0xf5e36c, purple: 0xa98cf5, white: 0xf5f5f5, grass: 0x58c46a, conveyor: 0x3b3f4a, bounce: 0xff8ad8, truss: 0xd9b36c, gold: 0xe8b23a, pink: 0xff7bb0, teal: 0x4fd1c5, navy: 0x2f3b7a };
+  // every stage is built relative to its checkpoint pad (x, y, z) and returns where the next pad goes
+  const STAGES = {
+    jump(x, y, z, B) { [[1, 7], [-1.2, 11], [1.4, 15], [-1, 19.5], [1.2, 24]].forEach(([dx, dz], i) => { B.box(x + dx, y, z + dz, 2.2, 1, 2.2, { color: i % 2 ? C.blockA : C.blockB }); B.coin(x + dx, y + 2.2, z + dz); }); return [x, y, z + 29]; },
+    lava(x, y, z, B) { B.box(x, y - 1.2, z + 17, 24, 0.6, 28, { color: C.lava, kill: true, lava: true });
+      [[0, 6, 0], [2.4, 10, 0.3], [-1.5, 14, 0.7], [1.8, 18, 1.0], [-2.2, 22, 1.3], [0.5, 26, 1.6]].forEach(([dx, dz, dy], i) => B.box(x + dx, y + dy, z + dz, 1.8, 0.6, 1.8, { color: C.stone, move: i === 2 || i === 4 ? { axis: 'y', amp: 0.9, speed: 1.3, phase: i } : null }));
+      B.coin(x - 1.5, y + 3.2, z + 14); B.coin(x - 2.2, y + 3.8, z + 22); return [x, y + 1.8, z + 32]; },
+    sliders(x, y, z, B) { B.box(x, y, z + 6, 3, 0.6, 3, { color: C.ice, move: { axis: 'x', amp: 4.5, speed: 1.1, phase: 0 } }); B.box(x, y, z + 12, 3, 0.6, 3, { color: C.ice, move: { axis: 'x', amp: 4.5, speed: 1.1, phase: Math.PI } }); B.box(x, y, z + 18, 3, 0.6, 3, { color: C.ice, move: { axis: 'y', amp: 2.2, speed: 1.4, phase: 0 } }); B.coin(x, y + 3.2, z + 12); return [x, y, z + 24]; },
+    spinner(x, y, z, B) { B.box(x, y, z + 12, 16, 0.6, 16, { color: 0x8d93a6 }); spinners.push({ x, y: y + 0.7, z: z + 12, len: 14, speed: 1.5, a: 0, color: 0xff5a3c }); spinners.push({ x, y: y + 2.8, z: z + 12, len: 14, speed: -0.9, a: 1.2, color: 0xff8a3c }); B.coin(x + 5, y + 1.6, z + 12); B.coin(x - 5, y + 1.6, z + 12); return [x, y, z + 24]; },
+    beams(x, y, z, B) { B.box(x + 3, y - 3.8, z + 15, 16, 0.5, 26, { color: C.lava, kill: true, lava: true }); B.box(x, y, z + 9, 0.7, 0.5, 12, { color: C.beam }); B.box(x + 3, y, z + 15.5, 6.7, 0.5, 0.7, { color: C.beam }); B.box(x + 6, y, z + 22, 0.7, 0.5, 12, { color: C.beam }); B.coin(x + 3, y + 1.4, z + 15.5); return [x + 6, y, z + 31]; },
+    bounce(x, y, z, B) { B.box(x, y, z + 6, 3, 0.6, 3, { color: C.bounce, bounce: 19 }); B.box(x, y + 5.2, z + 13, 3, 0.6, 3, { color: C.purple }); B.box(x, y + 5.2, z + 18, 3, 0.6, 3, { color: C.bounce, bounce: 21 }); B.box(x, y + 11.7, z + 26, 4, 0.6, 4, { color: C.purple }); B.coin(x, y + 13.7, z + 26); return [x, y + 11.7, z + 32]; },
+    conveyors(x, y, z, B) { B.box(x, y, z + 8, 3, 0.6, 10, { color: C.conveyor, belt: { x: 3.2, z: 0 }, stripe: true }); B.box(x, y, z + 20, 3, 0.6, 10, { color: C.conveyor, belt: { x: -3.2, z: 0 }, stripe: true }); B.box(x, y, z + 32, 3, 0.6, 10, { color: C.conveyor, belt: { x: 0, z: -4.5 }, stripe: true }); B.coin(x, y + 2, z + 20); return [x, y, z + 41]; },
+    climb(x, y, z, B) { B.wall(x, y, z + 6, 8, 12, 1.2, { color: 0x6a7086 }); B.box(x, y, z + 4.9, 2, 12.6, 1, { color: C.truss, truss: true }); B.box(x, y + 12, z + 9, 8, 0.6, 6, { color: C.purple }); B.coin(x, y + 14, z + 9); return [x, y + 12, z + 16]; },
+    blink(x, y, z, B) { [[0, 5], [-1.5, 9], [1.5, 13], [0, 17], [-1.5, 21], [1.5, 25]].forEach(([dx, dz], i) => B.box(x + dx, y, z + dz, 2.2, 0.6, 2.2, { color: C.white, blink: { period: 3.2, on: 1.9, phase: i * 0.55 } })); B.coin(x, y + 2, z + 17); return [x, y, z + 31]; },
+    carousel(x, y, z, B) { discs.push({ x, y, z: z + 10, r: 5, h: 0.6, speed: 0.8, a: 0, color: C.teal }); discs.push({ x, y, z: z + 22, r: 4, h: 0.6, speed: -1.2, a: 0, color: C.pink }); spinners.push({ x, y: y + 0.7, z: z + 22, len: 7, speed: 2.2, a: 0, color: 0xff5a3c }); B.coin(x, y + 2.5, z + 10); B.coin(x, y + 2.5, z + 22); return [x, y, z + 31]; },
+    gauntlet(x, y, z, B) { B.box(x, y - 3.5, z + 15, 14, 0.5, 24, { color: C.lava, kill: true, lava: true });
+      [[0, 6, 0], [2, 10, 0.5], [-2, 14, 1], [0, 18, 1.5], [2, 22, 2]].forEach(([dx, dz, dy]) => B.box(x + dx, y + dy, z + dz, 1.6, 0.5, 1.6, { color: C.ice }));
+      spinners.push({ x, y: y + 0.9, z: z + 14, len: 9, speed: 2.6, a: 0, color: 0xff5a3c });
+      B.box(x, y + 3, z + 29, 3, 0.6, 8, { color: C.conveyor, belt: { x: 0, z: -5 }, stripe: true }); B.box(x, y + 3, z + 36, 3, 0.6, 3, { color: C.bounce, bounce: 20 }); B.box(x, y + 8.5, z + 44, 4, 0.6, 4, { color: C.purple }); return [x, y + 8.5, z + 51]; },
+    ice(x, y, z, B) { [[0, 6, 3, 5], [-2, 14, 3, 4], [2.5, 21, 3, 4], [0, 28, 2.5, 4]].forEach(([dx, dz, w, d]) => B.box(x + dx, y, z + dz, w, 0.5, d, { color: C.ice, ice: true })); B.coin(x - 2, y + 2, z + 14); B.coin(x + 2.5, y + 2, z + 21); return [x, y, z + 35]; },
+    wind(x, y, z, B) { B.box(x, y, z + 15, 1.4, 0.5, 24, { color: C.beam }); B.box(x, y, z + 9, 14, 6, 8, { color: 0x9ad8ff, zone: 'wind', wind: { x: 9, z: 0 } }); B.box(x, y, z + 21, 14, 6, 8, { color: 0x9ad8ff, zone: 'wind', wind: { x: -9, z: 0 } }); B.coin(x, y + 2, z + 15); return [x, y, z + 31]; },
+    crumble(x, y, z, B) { [[0, 5], [-1.5, 9], [1.5, 13], [0, 17], [-1.5, 21], [1.5, 25], [0, 29]].forEach(([dx, dz]) => B.box(x + dx, y, z + dz, 2.2, 0.6, 2.2, { color: 0xc98a5a, fall: true })); B.coin(x, y + 2, z + 17); return [x, y, z + 35]; },
+    moon(x, y, z, B) { B.box(x, y, z + 22, 30, 14, 50, { color: 0xc9a8ff, zone: 'lowg' }); [[0, 9], [0, 19], [0, 30], [0, 41]].forEach(([dx, dz], i) => B.box(x + dx, y + (i % 2) * 2, z + dz, 3, 0.6, 3, { color: C.purple })); B.coin(x, y + 6, z + 14); B.coin(x, y + 8, z + 25); B.coin(x, y + 8, z + 36); return [x, y, z + 49]; },
+    cannon(x, y, z, B) { B.box(x, y, z + 18, 5, 0.5, 28, { color: 0x8d93a6 });
+      [[-1.2, 11, 0, 1.6], [1.2, 11, 14, 1.6], [0, 15, 7, 1.2]].forEach(([dx, sp, ph, w]) => B.box(x + dx, y + 0.5, z + 28, w, 0.8, w, { color: C.lava, kill: true, cyc: { axis: 'z', from: z + 5, to: z + 32, speed: sp, phase: ph } }));
+      B.coin(x, y + 2, z + 18); return [x, y, z + 36]; },
+    warp(x, y, z, B) { B.box(x - 3, y, z + 6, 2.2, 0.6, 2.2, { color: C.teal, tp: [x, y + 12, z + 20] }); B.box(x + 3, y, z + 6, 2.2, 0.6, 2.2, { color: C.teal, tp: [x, y + 1, z] });
+      B.box(x, y + 11, z + 20, 6, 1, 6, { color: C.purple }); B.coin(x, y + 14, z + 20); B.box(x, y + 8, z + 28, 3, 0.6, 3, { color: C.bounce, bounce: 22 }); B.box(x, y + 14, z + 37, 4, 0.6, 4, { color: C.purple }); return [x, y + 14, z + 44]; }
+  };
+  // the course, easiest first: the pad named X is where stage X starts
+  const ORDER = [['Spawn', 'jump'], ['Lava Hop', 'lava'], ['Bounce', 'bounce'], ['Climb', 'climb'], ['Sliders', 'sliders'], ['Moon Jumps', 'moon'], ['Conveyors', 'conveyors'], ['Spinner', 'spinner'],
+    ['Ice Rink', 'ice'], ['Warp', 'warp'], ['Crumble', 'crumble'], ['Beams', 'beams'], ['Carousel', 'carousel'], ['Blink', 'blink'], ['Wind Bridge', 'wind'], ['Cannon Alley', 'cannon'], ['Gauntlet', 'gauntlet']];
   function course() {
     const P = [];
-    const box = (x, y, z, w, h, d, o = {}) => { const p = Object.assign({ x, y, z, w, h, d, color: 0x9aa4b2 }, o); P.push(p); return p; };
-    const cp = (x, y, z, name) => { box(x, y, z, 6, 1, 6, { color: C.grass, cp: stages.length }); stages.push(name); cps.push([x, y + 1, z]); };
-    const coin = (x, y, z) => coins.push({ x, y, z });
-    const wall = (x, y, z, w, h, d, o) => box(x, y, z, w, h, d, Object.assign({ color: C.navy }, o));
-    // ---- 0 spawn
-    box(0, 0, 0, 12, 1, 12, { color: C.spawn }); stages.push('Spawn'); cps.push([0, 1, 0]);
-    wall(0, 1, -6, 12, 2, 0.6); wall(-6, 1, 0, 0.6, 2, 12); wall(6, 1, 0, 0.6, 2, 12);
-    // ---- 1 jump blocks
-    [[1, 7], [-1.2, 11], [1.4, 15], [-1, 19.5], [1.2, 24]].forEach(([x, z], i) => { box(x, 0, z, 2.2, 1, 2.2, { color: i % 2 ? C.blockA : C.blockB }); coin(x, 2.2, z); });
-    cp(0, 0, 29, 'Lava Hop');
-    // ---- 2 lava field with stepping stones (some sink and rise)
-    box(0, -1.2, 46, 24, 0.6, 28, { color: C.lava, kill: true, lava: true });
-    [[0, 35, 0], [2.4, 39, 0.3], [-1.5, 43, 0.7], [1.8, 47, 1.0], [-2.2, 51, 1.3], [0.5, 55, 1.6]].forEach(([x, z, y], i) => box(x, y, z, 1.8, 0.6, 1.8, { color: C.stone, move: i === 2 || i === 4 ? { axis: 'y', amp: 0.9, speed: 1.3, phase: i } : null }));
-    coin(-1.5, 3.2, 43); coin(-2.2, 3.8, 51);
-    cp(0, 1.8, 61, 'Sliders');
-    // ---- 3 moving platforms over the void
-    box(0, 1.8, 67, 3, 0.6, 3, { color: C.ice, move: { axis: 'x', amp: 4.5, speed: 1.1, phase: 0 } });
-    box(0, 1.8, 73, 3, 0.6, 3, { color: C.ice, move: { axis: 'x', amp: 4.5, speed: 1.1, phase: Math.PI } });
-    box(0, 1.8, 79, 3, 0.6, 3, { color: C.ice, move: { axis: 'y', amp: 2.2, speed: 1.4, phase: 0 } });
-    coin(0, 5, 73);
-    cp(0, 1.8, 85, 'Spinner');
-    // ---- 4 spinner arena (two bars at different heights)
-    box(0, 1.8, 97, 16, 0.6, 16, { color: 0x8d93a6 });
-    spinners.push({ x: 0, y: 2.5, z: 97, len: 14, speed: 1.5, a: 0, color: 0xff5a3c });
-    spinners.push({ x: 0, y: 4.6, z: 97, len: 14, speed: -0.9, a: 1.2, color: 0xff8a3c, high: true });
-    coin(5, 3.4, 97); coin(-5, 3.4, 97);
-    cp(0, 1.8, 109, 'Beams');
-    // ---- 5 narrow beams with a lava pit under them
-    box(3, -2, 124, 16, 0.5, 26, { color: C.lava, kill: true, lava: true });
-    box(0, 1.8, 118, 0.7, 0.5, 12, { color: C.beam });
-    box(3, 1.8, 124.5, 6.7, 0.5, 0.7, { color: C.beam });
-    box(6, 1.8, 131, 0.7, 0.5, 12, { color: C.beam });
-    coin(3, 3.2, 124.5);
-    cp(6, 1.8, 140, 'Bounce');
-    // ---- 6 bounce pads up a cliff
-    box(6, 1.8, 146, 3, 0.6, 3, { color: C.bounce, bounce: 19 });
-    box(6, 7, 153, 3, 0.6, 3, { color: C.purple });
-    box(6, 7, 158, 3, 0.6, 3, { color: C.bounce, bounce: 21 });
-    box(6, 13.5, 166, 4, 0.6, 4, { color: C.purple }); coin(6, 15.5, 166);
-    cp(6, 13.5, 172, 'Conveyors');
-    // ---- 7 conveyor belts pushing sideways over void, then one pushing back
-    box(6, 13.5, 180, 3, 0.6, 10, { color: C.conveyor, belt: { x: 3.2, z: 0 }, stripe: true });
-    box(6, 13.5, 192, 3, 0.6, 10, { color: C.conveyor, belt: { x: -3.2, z: 0 }, stripe: true });
-    box(6, 13.5, 204, 3, 0.6, 10, { color: C.conveyor, belt: { x: 0, z: -4.5 }, stripe: true });   // pushes you backwards: sprint through it
-    coin(6, 15.5, 192);
-    cp(6, 13.5, 213, 'Climb');
-    // ---- 8 truss climb (climbable lattice) up a tall wall
-    wall(6, 13.5, 219, 8, 12, 1.2, { color: 0x6a7086 });
-    box(6, 13.5, 217.9, 2, 12.6, 1, { color: C.truss, truss: true });
-    box(6, 25.5, 222, 8, 0.6, 6, { color: C.purple }); coin(6, 27.5, 222);
-    cp(6, 25.5, 229, 'Blink');
-    // ---- 9 vanishing blocks
-    [[6, 234], [4.5, 238], [7.5, 242], [6, 246], [4.5, 250], [7.5, 254]].forEach(([x, z], i) => box(x, 25.5, z, 2.2, 0.6, 2.2, { color: C.white, blink: { period: 3.2, on: 1.9, phase: i * 0.55 } }));
-    coin(6, 27.5, 246);
-    cp(6, 25.5, 260, 'Carousel');
-    // ---- 10 rotating discs that carry you around
-    discs.push({ x: 6, y: 25.5, z: 270, r: 5, h: 0.6, speed: 0.8, a: 0, color: C.teal });
-    discs.push({ x: 6, y: 25.5, z: 282, r: 4, h: 0.6, speed: -1.2, a: 0, color: C.pink });
-    spinners.push({ x: 6, y: 26.2, z: 282, len: 7, speed: 2.2, a: 0, color: 0xff5a3c });
-    coin(6, 28, 270); coin(6, 28, 282);
-    cp(6, 25.5, 291, 'Gauntlet');
-    // ---- 11 the gauntlet: thin ice blocks + bars + a backwards belt + lava walls
-    box(6, 22, 306, 14, 0.5, 24, { color: C.lava, kill: true, lava: true });
-    [[6, 297, 0], [8, 301, 0.5], [4, 305, 1], [6, 309, 1.5], [8, 313, 2]].forEach(([x, z, y]) => box(x, 25.5 + y, z, 1.6, 0.5, 1.6, { color: C.ice }));
-    spinners.push({ x: 6, y: 26.4, z: 305, len: 9, speed: 2.6, a: 0, color: 0xff5a3c });
-    box(6, 28.5, 320, 3, 0.6, 8, { color: C.conveyor, belt: { x: 0, z: -5 }, stripe: true });
-    box(6, 28.5, 327, 3, 0.6, 3, { color: C.bounce, bounce: 20 });
-    box(6, 34, 335, 4, 0.6, 4, { color: C.purple });
-    cp(6, 34, 342, 'Ice Rink');
-    // ---- 12 ice rink: slippery, you slide. Don't overshoot the gaps
-    [[6, 348, 3, 5], [4, 356, 3, 4], [8.5, 363, 3, 4], [6, 370, 2.5, 4]].forEach(([x, z, w, d]) => box(x, 34, z, w, 0.5, d, { color: C.ice, ice: true }));
-    coin(4, 36, 356); coin(8.5, 36, 363);
-    cp(6, 34, 377, 'Wind Bridge');
-    // ---- 13 wind bridge: a narrow bridge with crosswinds. Lean into it
-    box(6, 34, 392, 1.4, 0.5, 24, { color: C.beam });
-    box(6, 34, 386, 14, 6, 8, { color: 0x9ad8ff, zone: 'wind', wind: { x: 9, z: 0 } });
-    box(6, 34, 398, 14, 6, 8, { color: 0x9ad8ff, zone: 'wind', wind: { x: -9, z: 0 } });
-    coin(6, 36, 392);
-    cp(6, 34, 408, 'Crumble');
-    // ---- 14 crumbling blocks: they drop half a second after you land. Keep moving
-    [[6, 413], [4.5, 417], [7.5, 421], [6, 425], [4.5, 429], [7.5, 433], [6, 437]].forEach(([x, z]) => box(x, 34, z, 2.2, 0.6, 2.2, { color: 0xc98a5a, fall: true }));
-    coin(6, 36, 425);
-    cp(6, 34, 443, 'Moon Jumps');
-    // ---- 15 low gravity: huge floaty jumps over huge gaps
-    box(6, 34, 465, 30, 14, 50, { color: 0xc9a8ff, zone: 'lowg' });
-    [[6, 452], [6, 462], [6, 473], [6, 484]].forEach(([x, z], i) => box(x, 34 + (i % 2) * 2, z, 3, 0.6, 3, { color: C.purple }));
-    coin(6, 40, 457); coin(6, 42, 468); coin(6, 42, 479);
-    cp(6, 34, 492, 'Cannon Alley');
-    // ---- 16 cannon alley: blocks come flying at you down two lanes. Jump them
-    box(6, 34, 510, 5, 0.5, 28, { color: 0x8d93a6 });
-    box(4.8, 34.5, 520, 1.6, 0.8, 1.6, { color: C.lava, kill: true, cyc: { axis: 'z', from: 497, to: 524, speed: 11, phase: 0 } });
-    box(7.2, 34.5, 520, 1.6, 0.8, 1.6, { color: C.lava, kill: true, cyc: { axis: 'z', from: 497, to: 524, speed: 11, phase: 14 } });
-    box(6, 34.5, 520, 1.2, 0.8, 1.2, { color: C.lava, kill: true, cyc: { axis: 'z', from: 497, to: 524, speed: 15, phase: 7 } });
-    coin(6, 36, 510);
-    cp(6, 34, 528, 'Warp');
-    // ---- 17 warp pads: step on one to teleport. One of them is a trap
-    box(3, 34, 534, 2.2, 0.6, 2.2, { color: C.teal, tp: [6, 46, 548] }); box(9, 34, 534, 2.2, 0.6, 2.2, { color: C.teal, tp: [6, 35, 528] });
-    box(6, 45, 548, 6, 1, 6, { color: C.purple }); coin(6, 48, 548);
-    box(6, 42, 556, 3, 0.6, 3, { color: C.bounce, bounce: 22 });
-    box(6, 48, 565, 4, 0.6, 4, { color: C.purple });
-    cp(6, 48, 572, 'Finish');
-    // ---- 18 finish
-    box(6, 48, 582, 10, 1, 10, { color: C.gold, finish: true }); finishBox = P[P.length - 1];
-    [-4, 4].forEach(dx => wall(6 + dx, 49, 582, 0.8, 5, 0.8, { color: C.white }));
+    const B = {
+      box: (x, y, z, w, h, d, o = {}) => { const p = Object.assign({ x, y, z, w, h, d, color: 0x9aa4b2 }, o); P.push(p); return p; },
+      coin: (x, y, z) => coins.push({ x, y, z }),
+      wall: (x, y, z, w, h, d, o) => B.box(x, y, z, w, h, d, Object.assign({ color: C.navy }, o))
+    };
+    let x = 0, y = 0, z = 0;
+    B.box(0, 0, 0, 12, 1, 12, { color: C.spawn }); B.wall(0, 1, -6, 12, 2, 0.6); B.wall(-6, 1, 0, 0.6, 2, 12); B.wall(6, 1, 0, 0.6, 2, 12);
+    ORDER.forEach(([name, key], i) => {
+      if (i > 0) B.box(x, y, z, 6, 1, 6, { color: C.grass, cp: stages.length });
+      stages.push(name); cps.push([x, y + 1, z]);
+      [x, y, z] = STAGES[key](x, y, z, B);
+    });
+    B.box(x, y, z, 6, 1, 6, { color: C.grass, cp: stages.length }); stages.push('Finish'); cps.push([x, y + 1, z]);
+    B.box(x, y, z + 10, 10, 1, 10, { color: C.gold, finish: true }); finishBox = P[P.length - 1];
+    [-4, 4].forEach(dx => B.wall(x + dx, y + 1, z + 10, 0.8, 5, 0.8, { color: C.white }));
     return P;
   }
 
