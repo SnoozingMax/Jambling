@@ -1,4 +1,4 @@
--- Jambling: Obby best times leaderboard + Speedrunner title (beat it in under 100s). Run once in Supabase > SQL Editor.
+-- Jambling: Obby best times leaderboard + Quick title (beat it in under 150s). Run once in Supabase > SQL Editor.
 alter table profiles add column if not exists speedrun boolean not null default false;
 
 create table if not exists obby_runs (
@@ -21,8 +21,8 @@ begin
     deaths = case when excluded.secs < obby_runs.secs then excluded.deaths else obby_runs.deaths end,
     coins = greatest(obby_runs.coins, excluded.coins);
   select secs into best from obby_runs where user_id = auth.uid();
-  if p_secs < 100 then update profiles set speedrun = true where id = auth.uid() and not speedrun; end if;
-  return json_build_object('best', best, 'rank', (select count(*) + 1 from obby_runs where secs < best), 'speedrun', p_secs < 100);
+  if p_secs < 150 then update profiles set speedrun = true where id = auth.uid() and not speedrun; end if;
+  return json_build_object('best', best, 'rank', (select count(*) + 1 from obby_runs where secs < best), 'speedrun', p_secs < 150);
 end $$;
 revoke execute on function obby_finish(numeric, int, int) from anon;
 grant execute on function obby_finish(numeric, int, int) to authenticated;
