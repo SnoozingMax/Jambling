@@ -976,6 +976,7 @@ tr.me td{color:var(--accent)}
       <div class="adm-t owner-only"><span class="title-chip tester">Tester</span><button type="button" class="ghost" id="adminGiftTester">Grant</button><button type="button" class="ghost" id="adminUnGiftTester">Remove</button></div>
       <div class="adm-t owner-only"><span class="title-chip celestial">Celestial</span><button type="button" class="ghost" id="adminGiftCelestial">Grant</button><button type="button" class="ghost" id="adminUnGiftCelestial">Remove</button></div>
       <div class="adm-t"><span class="title-chip jew">Jew</span><button type="button" class="ghost" id="adminGiftJew">Grant</button><button type="button" class="ghost" id="adminUnGiftJew">Remove</button></div>
+      <div class="adm-t"><span class="title-chip murphy">Abuser</span><button type="button" class="ghost" id="adminGiftAbuser">Grant</button><button type="button" class="ghost" id="adminUnGiftAbuser">Remove</button></div>
       <div class="owner-only">
         <div class="adm-label">Any title <span class="hint" style="margin:0">(Creator and Celestial need Tester)</span></div>
         <div class="adm-row"><select id="adminTitlePick"></select><button type="button" class="ghost" id="adminGrantAny">Grant</button><button type="button" class="ghost" id="adminUnGrantAny">Remove</button></div>
@@ -2696,13 +2697,13 @@ function titleChipsAll(p, rank){
   for (const [n, t] of RB_TITLES) if (rb >= n || (t === 'Celestial' && p.celestial && p.tester)) { out.push([t === 'Celestial' ? 'celestial' : 't-rb', t]); break; }
   if (p.speedrun) out.push(['speedrun', 'Quick']);
   if (p.ggez) out.push(['ggez', 'GGEZ']);
-  if (p.murphy) out.push(['murphy', "Murphy's Law"]);
+  if (p.murphy) out.push(['murphy', 'Abuser']);
   if (rank === 0) out.push(['t-rank', 'King']); else if (rank >= 0 && rank < 3) out.push(['t-rank', 'Elite']);
   for (const t of p.granted_titles || []) if (TITLE_CLASS[t] && !out.some(([, x]) => x === t)) out.push([TITLE_CLASS[t], t]);   // handed out by max (Tester holders only)
   return out;
 }
-const TITLE_CLASS = { Quick: 'speedrun', Creator: 'creator', OG: 'og', Aurora: 'gifted', Tester: 'tester', Jew: 'jew', Spoiled: 't-coin', Goated: 't-coin', Untouchable: 't-coin', Touchable: 't-coin', Reborn: 't-rb', Ascended: 't-rb', 'The Golden': 't-rb', Celestial: 'celestial', GGEZ: 'ggez', "Murphy's Law": 'murphy', King: 't-rank', Elite: 't-rank' };
-const GRANTABLE = ['Creator', 'OG', 'Aurora', 'Tester', 'Jew', 'Quick', 'Spoiled', 'Goated', 'Untouchable', 'Touchable', 'Reborn', 'Ascended', 'The Golden', 'Celestial', 'GGEZ', "Murphy's Law", 'King', 'Elite'];
+const TITLE_CLASS = { Quick: 'speedrun', Creator: 'creator', OG: 'og', Aurora: 'gifted', Tester: 'tester', Jew: 'jew', Spoiled: 't-coin', Goated: 't-coin', Untouchable: 't-coin', Touchable: 't-coin', Reborn: 't-rb', Ascended: 't-rb', 'The Golden': 't-rb', Celestial: 'celestial', GGEZ: 'ggez', Abuser: 'murphy', King: 't-rank', Elite: 't-rank' };
+const GRANTABLE = ['Creator', 'OG', 'Aurora', 'Tester', 'Jew', 'Quick', 'Spoiled', 'Goated', 'Untouchable', 'Touchable', 'Reborn', 'Ascended', 'The Golden', 'Celestial', 'GGEZ', 'Abuser', 'King', 'Elite'];
 function titleChips(p, rank){ const hid = p.hidden_titles || []; return titleChipsAll(p, rank).filter(([, t]) => !hid.includes(t)); }
 function renderTitles(el, p, rank){
   el.innerHTML = '';
@@ -2738,7 +2739,7 @@ function openTitles(){
   rows.push('<div class="t-cat">Feats</div>');
   rows.push(line('speedrun', 'Quick', 'Beat the Obby in under 150 seconds'));
   rows.push(line('ggez', 'GGEZ', 'Win 3 1v1s in a row (any game, Archers too)'));
-  rows.push(line('murphy', "Murphy's Law", 'Lose a coin flip of 1 billion or more'));
+  rows.push(line('murphy', 'Abuser', 'Given by admins'));
   rows.push('<div class="t-cat">Leaderboard</div>');
   rows.push(line('t-rank', 'King', '#1 on the money board'));
   rows.push(line('t-rank', 'Elite', 'Top 3 on the money board'));
@@ -2965,7 +2966,6 @@ $('flipBtn').onclick = async () => {
   $('coin').style.transform = `rotateY(${coinRot}deg)`;
   setTimeout(() => {
     setBalance(data.balance);
-    if (data.murphy && myProfile && !myProfile.murphy) { myProfile.murphy = true; renderTitles($('whoTitles'), myProfile, -1); toast("Title unlocked: Murphy's Law", 4000); }
     const r = $('coinResult');
     r.textContent = data.won ? `${data.result}! +${fmt(data.delta ?? bet)}` : `${data.result}. −${fmt(bet)}`;
     r.className = 'result ' + (data.won ? 'win' : 'lose');
@@ -3520,6 +3520,15 @@ document.querySelectorAll('#admTabs button').forEach(b => b.onclick = () => {
   document.querySelectorAll('#admTabs button').forEach(x => x.classList.toggle('on', x === b));
   document.querySelectorAll('#adminModal .adm-sec').forEach(sec => sec.hidden = sec.dataset.sec !== b.dataset.sec);
 });
+async function giftAbuser(on){
+  const n = adminName(); if (!n) return;
+  const { data, error } = await sb.rpc('admin_grant_abuser', { p_user: n, p_on: on });
+  if (error) { adminStatus(error.message, false); return toast(error.message); }
+  const m = `${data.user} ${on ? 'now has' : 'no longer has'} the Abuser title`; adminStatus(m, true); toast(m);
+  if (!$('tab-board').hidden) loadBoard();
+}
+$('adminGiftAbuser').onclick = () => giftAbuser(true);
+$('adminUnGiftAbuser').onclick = () => giftAbuser(false);
 $('adminGiftJew').onclick = () => giftJew(true);
 $('adminUnGiftJew').onclick = () => giftJew(false);
 $('adminGiftTester').onclick = () => giftTester(true);
