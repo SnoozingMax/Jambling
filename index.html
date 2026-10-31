@@ -430,6 +430,11 @@ tr.me td{color:var(--accent)}
 .title-chip.speedrun{position:relative;overflow:hidden;z-index:0;background:#06141c;color:#7ff3ff;border:1px solid #23b8d6;font-style:italic;text-shadow:0 0 6px rgba(80,230,255,.7)}
 .title-chip.speedrun::before{content:"";position:absolute;inset:0;z-index:-1;background:repeating-linear-gradient(90deg,transparent 0 10px,rgba(120,240,255,.22) 10px 12px,transparent 12px 22px);background-size:44px 100%;animation:speedLines .6s linear infinite}
 @keyframes speedLines{from{background-position:44px 0}to{background-position:0 0}}
+.title-chip.ridegod{position:relative;overflow:hidden;z-index:0;color:#fff;background:linear-gradient(90deg,#2a0f3d,#5a1a7a,#2a0f3d);background-size:200% 100%;border:1px solid #c084fc;text-shadow:0 0 6px rgba(220,160,255,.9);animation:rgPulse 2.4s ease-in-out infinite}
+.title-chip.ridegod::before{content:"";position:absolute;left:0;right:0;bottom:0;height:45%;z-index:-1;background:linear-gradient(180deg,transparent,rgba(240,180,255,.35));-webkit-mask:linear-gradient(90deg,transparent,#000 20%,#000 80%,transparent);mask:linear-gradient(90deg,transparent,#000 20%,#000 80%,transparent)}
+.title-chip.ridegod::after{content:"";position:absolute;top:-30%;bottom:-30%;left:-10%;width:25%;z-index:-1;background:linear-gradient(100deg,transparent,rgba(255,255,255,.55),transparent);transform:skewX(-18deg);animation:rgRide 2.4s cubic-bezier(.2,.9,.3,1) infinite}
+@keyframes rgPulse{0%,100%{background-position:0 0;box-shadow:0 0 8px rgba(192,132,252,.45)}50%{background-position:100% 0;box-shadow:0 0 16px rgba(220,160,255,.8)}}
+@keyframes rgRide{0%{left:-30%;opacity:0}15%{opacity:1}60%{left:110%;opacity:0}100%{left:110%;opacity:0}}
 .title-chip.ggez{background:#0c1a12;color:#5cf08a;border:1px solid #2fbf6b;text-shadow:0 0 6px rgba(92,240,138,.7);animation:ggezPulse 1.6s ease-in-out infinite}
 @keyframes ggezPulse{0%,100%{box-shadow:0 0 0 rgba(47,191,107,0)}50%{box-shadow:0 0 10px rgba(47,191,107,.75)}}
 .title-chip.murphy{position:relative;overflow:hidden;z-index:0;background:linear-gradient(180deg,#2a1414,#120909);color:#ff6a5e;border:1px solid #8a2b24;text-shadow:0 0 6px rgba(255,80,70,.55)}
@@ -976,7 +981,8 @@ tr.me td{color:var(--accent)}
       <div class="adm-t owner-only"><span class="title-chip tester">Tester</span><button type="button" class="ghost" id="adminGiftTester">Grant</button><button type="button" class="ghost" id="adminUnGiftTester">Remove</button></div>
       <div class="adm-t owner-only"><span class="title-chip celestial">Celestial</span><button type="button" class="ghost" id="adminGiftCelestial">Grant</button><button type="button" class="ghost" id="adminUnGiftCelestial">Remove</button></div>
       <div class="adm-t"><span class="title-chip jew">Jew</span><button type="button" class="ghost" id="adminGiftJew">Grant</button><button type="button" class="ghost" id="adminUnGiftJew">Remove</button></div>
-      <div class="adm-t"><span class="title-chip murphy">Abuser</span><button type="button" class="ghost" id="adminGiftAbuser">Grant</button><button type="button" class="ghost" id="adminUnGiftAbuser">Remove</button></div>
+      <div class="adm-t owner-only"><span class="title-chip murphy">Abuser</span><button type="button" class="ghost" id="adminGiftAbuser">Grant</button><button type="button" class="ghost" id="adminUnGiftAbuser">Remove</button></div>
+      <div class="adm-t owner-only"><span class="title-chip ridegod">Ride God</span><button type="button" class="ghost" id="adminGiftRideGod">Grant</button><button type="button" class="ghost" id="adminUnGiftRideGod">Remove</button></div>
       <div class="owner-only">
         <div class="adm-label">Any title <span class="hint" style="margin:0">(Creator and Celestial need Tester)</span></div>
         <div class="adm-row"><select id="adminTitlePick"></select><button type="button" class="ghost" id="adminGrantAny">Grant</button><button type="button" class="ghost" id="adminUnGrantAny">Remove</button></div>
@@ -2698,12 +2704,13 @@ function titleChipsAll(p, rank){
   if (p.speedrun) out.push(['speedrun', 'Quick']);
   if (p.ggez) out.push(['ggez', 'GGEZ']);
   if (p.murphy) out.push(['murphy', 'Abuser']);
+  if (p.ridegod) out.push(['ridegod', 'Ride God']);
   if (rank === 0) out.push(['t-rank', 'King']); else if (rank >= 0 && rank < 3) out.push(['t-rank', 'Elite']);
   for (const t of p.granted_titles || []) if (TITLE_CLASS[t] && !out.some(([, x]) => x === t)) out.push([TITLE_CLASS[t], t]);   // handed out by max (Tester holders only)
   return out;
 }
-const TITLE_CLASS = { Quick: 'speedrun', Creator: 'creator', OG: 'og', Aurora: 'gifted', Tester: 'tester', Jew: 'jew', Spoiled: 't-coin', Goated: 't-coin', Untouchable: 't-coin', Touchable: 't-coin', Reborn: 't-rb', Ascended: 't-rb', 'The Golden': 't-rb', Celestial: 'celestial', GGEZ: 'ggez', Abuser: 'murphy', King: 't-rank', Elite: 't-rank' };
-const GRANTABLE = ['Creator', 'OG', 'Aurora', 'Tester', 'Jew', 'Quick', 'Spoiled', 'Goated', 'Untouchable', 'Touchable', 'Reborn', 'Ascended', 'The Golden', 'Celestial', 'GGEZ', 'Abuser', 'King', 'Elite'];
+const TITLE_CLASS = { 'Ride God': 'ridegod', Quick: 'speedrun', Creator: 'creator', OG: 'og', Aurora: 'gifted', Tester: 'tester', Jew: 'jew', Spoiled: 't-coin', Goated: 't-coin', Untouchable: 't-coin', Touchable: 't-coin', Reborn: 't-rb', Ascended: 't-rb', 'The Golden': 't-rb', Celestial: 'celestial', GGEZ: 'ggez', Abuser: 'murphy', King: 't-rank', Elite: 't-rank' };
+const GRANTABLE = ['Creator', 'OG', 'Aurora', 'Tester', 'Jew', 'Quick', 'Spoiled', 'Goated', 'Untouchable', 'Touchable', 'Reborn', 'Ascended', 'The Golden', 'Celestial', 'GGEZ', 'Abuser', 'Ride God', 'King', 'Elite'];
 function titleChips(p, rank){ const hid = p.hidden_titles || []; return titleChipsAll(p, rank).filter(([, t]) => !hid.includes(t)); }
 function renderTitles(el, p, rank){
   el.innerHTML = '';
@@ -2739,7 +2746,8 @@ function openTitles(){
   rows.push('<div class="t-cat">Feats</div>');
   rows.push(line('speedrun', 'Quick', 'Beat the Obby in under 150 seconds'));
   rows.push(line('ggez', 'GGEZ', 'Win 3 1v1s in a row (any game, Archers too)'));
-  rows.push(line('murphy', 'Abuser', 'Given by admins'));
+  rows.push(line('murphy', 'Abuser', 'Given by max'));
+  rows.push(line('ridegod', 'Ride God', 'Given by max to the Ride legends'));
   rows.push('<div class="t-cat">Leaderboard</div>');
   rows.push(line('t-rank', 'King', '#1 on the money board'));
   rows.push(line('t-rank', 'Elite', 'Top 3 on the money board'));
@@ -3434,7 +3442,7 @@ async function loadBoard(){
   $('onlineCount').hidden = !on; $('onlineCount').innerHTML = `<span class="online-dot" style="margin:0 6px 0 0"></span>${on} online`;
   if (mode === 'hidden' && !data.length) { $('board').innerHTML = '<tr><td></td><td>Nobody is leaderboard banned</td><td></td></tr>'; boardShown = mode; return; }
   const frag = document.createDocumentFragment();
-  if (mode === 'money') { myRank = data.findIndex(p => p.id === user.id); const mp = data.find(p => p.id === user.id); if (mp && myProfile) Object.assign(myProfile, { balance: mp.balance, rebirths: mp.rebirths, gifted: mp.gifted, tester: mp.tester, celestial: mp.celestial, ggez: mp.ggez, murphy: mp.murphy, jew: mp.jew, og: mp.og, creator: mp.creator, speedrun: mp.speedrun, granted_titles: mp.granted_titles, hidden_titles: mp.hidden_titles }); }
+  if (mode === 'money') { myRank = data.findIndex(p => p.id === user.id); const mp = data.find(p => p.id === user.id); if (mp && myProfile) Object.assign(myProfile, { balance: mp.balance, rebirths: mp.rebirths, gifted: mp.gifted, tester: mp.tester, celestial: mp.celestial, ggez: mp.ggez, murphy: mp.murphy, jew: mp.jew, og: mp.og, creator: mp.creator, speedrun: mp.speedrun, ridegod: mp.ridegod, granted_titles: mp.granted_titles, hidden_titles: mp.hidden_titles }); }
   data.forEach((p, i) => frag.appendChild(boardRow(i, p, p.id === user.id, mode === 'rebirths' ? '▲' + (p.rebirths || 0) : short(p.balance))));
   $('board').replaceChildren(frag);   // swap all rows at once: no flash, scroll stays put
   boardShown = mode;
@@ -3520,15 +3528,17 @@ document.querySelectorAll('#admTabs button').forEach(b => b.onclick = () => {
   document.querySelectorAll('#admTabs button').forEach(x => x.classList.toggle('on', x === b));
   document.querySelectorAll('#adminModal .adm-sec').forEach(sec => sec.hidden = sec.dataset.sec !== b.dataset.sec);
 });
-async function giftAbuser(on){
+async function grantNamed(title, on){
   const n = adminName(); if (!n) return;
-  const { data, error } = await sb.rpc('admin_grant_abuser', { p_user: n, p_on: on });
+  const { data, error } = await sb.rpc('owner_grant_title', { p_user: n, p_title: title, p_on: on });
   if (error) { adminStatus(error.message, false); return toast(error.message); }
-  const m = `${data.user} ${on ? 'now has' : 'no longer has'} the Abuser title`; adminStatus(m, true); toast(m);
+  const m = `${data.user} ${on ? 'now has' : 'no longer has'} the ${title} title`; adminStatus(m, true); toast(m);
   if (!$('tab-board').hidden) loadBoard();
 }
-$('adminGiftAbuser').onclick = () => giftAbuser(true);
-$('adminUnGiftAbuser').onclick = () => giftAbuser(false);
+$('adminGiftAbuser').onclick = () => grantNamed('Abuser', true);
+$('adminUnGiftAbuser').onclick = () => grantNamed('Abuser', false);
+$('adminGiftRideGod').onclick = () => grantNamed('Ride God', true);
+$('adminUnGiftRideGod').onclick = () => grantNamed('Ride God', false);
 $('adminGiftJew').onclick = () => giftJew(true);
 $('adminUnGiftJew').onclick = () => giftJew(false);
 $('adminGiftTester').onclick = () => giftTester(true);
