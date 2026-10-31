@@ -31,7 +31,7 @@ window.Obby = (function () {
       spinners.push({ x, y: y + 0.9, z: z + 14, len: 9, speed: 2.6, a: 0, color: 0xff5a3c });
       B.box(x, y + 3, z + 29, 3, 0.6, 8, { color: C.conveyor, belt: { x: 0, z: -5 }, stripe: true }); B.box(x, y + 3, z + 36, 3, 0.6, 3, { color: C.bounce, bounce: 20 }); B.box(x, y + 8.5, z + 44, 4, 0.6, 4, { color: C.purple }); return [x, y + 8.5, z + 51]; },
     ice(x, y, z, B) { [[0, 6, 3, 5], [-2, 14, 3, 4], [2.5, 21, 3, 4], [0, 28, 2.5, 4]].forEach(([dx, dz, w, d]) => B.box(x + dx, y, z + dz, w, 0.5, d, { color: C.ice, ice: true })); B.coin(x - 2, y + 2, z + 14); B.coin(x + 2.5, y + 2, z + 21); return [x, y, z + 35]; },
-    wind(x, y, z, B) { B.box(x, y, z + 15, 1.4, 0.5, 24, { color: C.beam }); B.box(x, y, z + 9, 14, 6, 8, { color: 0x9ad8ff, zone: 'wind', wind: { x: 5, z: 0 } }); B.box(x, y, z + 21, 14, 6, 8, { color: 0x9ad8ff, zone: 'wind', wind: { x: -5, z: 0 } }); B.coin(x, y + 2, z + 15); return [x, y, z + 31]; },
+    wind(x, y, z, B) { B.box(x, y, z + 15, 1.4, 0.5, 24, { color: C.beam }); B.box(x, y, z + 9, 14, 6, 8, { color: 0x9ad8ff, zone: 'wind', wind: { x: 3, z: 0 } }); B.box(x, y, z + 21, 14, 6, 8, { color: 0x9ad8ff, zone: 'wind', wind: { x: -3, z: 0 } }); B.coin(x, y + 2, z + 15); return [x, y, z + 31]; },
     crumble(x, y, z, B) { [[0, 5], [-1.5, 9], [1.5, 13], [0, 17], [-1.5, 21], [1.5, 25], [0, 29]].forEach(([dx, dz]) => B.box(x + dx, y, z + dz, 2.2, 0.6, 2.2, { color: 0xc98a5a, fall: true })); B.coin(x, y + 2, z + 17); return [x, y, z + 35]; },
     moon(x, y, z, B) { B.box(x, y, z + 22, 30, 14, 50, { color: 0xc9a8ff, zone: 'lowg' }); [[0, 9], [0, 19], [0, 30], [0, 41]].forEach(([dx, dz], i) => B.box(x + dx, y + (i % 2) * 2, z + dz, 3, 0.6, 3, { color: C.purple })); B.coin(x, y + 6, z + 14); B.coin(x, y + 8, z + 25); B.coin(x, y + 8, z + 36); return [x, y, z + 49]; },
     cannon(x, y, z, B) { B.box(x, y, z + 18, 5, 0.5, 28, { color: 0x8d93a6 });
@@ -41,7 +41,7 @@ window.Obby = (function () {
     final(x, y, z, B) {
       B.box(x, y - 4, z + 60, 30, 0.5, 120, { color: C.lava, kill: true, lava: true });
       [[0, 6, 3, 4], [2, 12, 2.5, 3], [-2, 18, 2.5, 3]].forEach(([dx, dz, w, d]) => B.box(x + dx, y, z + dz, w, 0.5, d, { color: C.ice, ice: true }));
-      B.box(x, y, z + 28, 1.2, 0.5, 14, { color: C.beam }); B.box(x, y, z + 28, 14, 6, 14, { color: 0x9ad8ff, zone: 'wind', wind: { x: 5.5, z: 0 } });
+      B.box(x, y, z + 28, 1.2, 0.5, 14, { color: C.beam }); B.box(x, y, z + 28, 14, 6, 14, { color: 0x9ad8ff, zone: 'wind', wind: { x: 3.3, z: 0 } });
       [[0, 38], [1.5, 42], [-1.5, 46]].forEach(([dx, dz]) => B.box(x + dx, y, z + dz, 2.2, 0.6, 2.2, { color: 0xc98a5a, fall: true }));
       B.box(x, y, z + 52, 3, 0.6, 3, { color: C.ice, move: { axis: 'x', amp: 4, speed: 1.3, phase: 0 } }); B.box(x, y + 1, z + 58, 3, 0.6, 3, { color: C.ice, move: { axis: 'y', amp: 2, speed: 1.5, phase: 1 } });
       discs.push({ x, y: y + 1, z: z + 68, r: 5, h: 0.6, speed: 1.1, a: 0, color: C.teal }); spinners.push({ x, y: y + 1.7, z: z + 68, len: 9, speed: 2.4, a: 0, color: 0xff5a3c }); B.coin(x, y + 3.5, z + 68);
