@@ -237,7 +237,7 @@ window.Obby = (function () {
     const sp = SPEED * (S.sprint ? SPRINT : 1), wx = (fx * iz + rx * ix) * sp, wz = (fz * iz + rz * ix) * sp;
     let gMul = 1, wx2 = wx, wz2 = wz;
     for (const z of parts) if (z.zone) { const b = partBox(z); if (overlapXZ(b) && S.y + PH > b.y0 && S.y < b.y1) { if (z.wind) { wx2 += z.wind.x; wz2 += z.wind.z; } if (z.zone === 'lowg') gMul = 0.4; } }
-    const acc = S.ground ? (S.ground.ice ? 1.6 : 20) : 7; S.vx += (wx2 - S.vx) * Math.min(1, acc * dt); S.vz += (wz2 - S.vz) * Math.min(1, acc * dt);
+    const acc = S.ground ? (S.ground.ice ? 0.7 : 20) : 7; S.vx += (wx2 - S.vx) * Math.min(1, acc * dt); S.vz += (wz2 - S.vz) * Math.min(1, acc * dt);
     S.moving = il > 0.1; if (S.moving) S.yaw = Math.atan2(wx, wz);
     // trusses: hug one and push into it to climb
     S.climb = false;
