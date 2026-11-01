@@ -153,10 +153,10 @@ window.Obby = (function () {
     }
     player = avatar(me.color, me.name); scene.add(player.g);
   }
-  function discTex(r, g, b) {
-    const c = document.createElement('canvas'); c.width = c.height = 128; const x = c.getContext('2d');
-    const gr = x.createRadialGradient(64, 64, 10, 64, 64, 64); gr.addColorStop(0, `rgba(${r},${g},${b},1)`); gr.addColorStop(0.6, `rgba(${r},${g},${b},.6)`); gr.addColorStop(1, `rgba(${r},${g},${b},0)`);
-    x.fillStyle = gr; x.fillRect(0, 0, 128, 128); return new THREE.CanvasTexture(c);
+  function discTex(r, g, b) {   // soft disc written pixel by pixel (Safari dithers canvas gradients into rainbow noise)
+    const n = 128, c = document.createElement('canvas'); c.width = c.height = n; const x = c.getContext('2d'), img = x.createImageData(n, n), d = img.data;
+    for (let py = 0; py < n; py++) for (let px = 0; px < n; px++) { const dx = (px + 0.5) / n - 0.5, dy = (py + 0.5) / n - 0.5, q = Math.min(1, Math.hypot(dx, dy) * 2); const a = q < 0.16 ? 1 : q < 0.6 ? 1 - (q - 0.16) / 0.44 * 0.4 : 0.6 * (1 - (q - 0.6) / 0.4); const i = (py * n + px) * 4; d[i] = r; d[i + 1] = g; d[i + 2] = b; d[i + 3] = Math.round(Math.max(0, a) * 255); }
+    x.putImageData(img, 0, 0); const t = new THREE.CanvasTexture(c); t.premultiplyAlpha = false; return t;
   }
   function avatar(color, name) {
     const g = new THREE.Group(), skin = new THREE.MeshLambertMaterial({ color: 0xf1c27d }), body = new THREE.MeshLambertMaterial({ color }), pants = new THREE.MeshLambertMaterial({ color: 0x2c3e66 });

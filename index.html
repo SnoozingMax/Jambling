@@ -1936,7 +1936,7 @@ function renderArcher(m){
   archDraw();
 }
 /* ---------- Chameleon (3D hide & seek, hide.js) ---------- */
-const HS_V = 5;
+const HS_V = 6;
 let hsOwned = [], hsPrices = { freeze: 3e9, smoke: 2e9, decoy: 5e9 }, hsShopKind = null, hsStarting = null, hsDeadline = null, hsMsgT = null, hsTauntCool = 0, hsLive = null;
 const HS_ITEMS = { freeze: { name: 'Freeze', icon: '❄️', desc: 'Freezes the hunter in place for 4 seconds' }, smoke: { name: 'Smoke bomb', icon: '💨', desc: 'A cloud nobody can see into for 9 seconds' }, decoy: { name: 'Decoy', icon: '🪆', desc: 'Drops a painted copy of you. The hunter has to shoot it to find out' } };
 async function hsLoadItems(){ const { data, error } = await sb.rpc('hs_items'); if (!error && data) { hsOwned = data.owned || []; hsPrices = data.prices || hsPrices; } hsShopRender(); }
@@ -2881,7 +2881,7 @@ document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
 });
 
 /* ---------- obby (3D course, everyone online together) ---------- */
-const OBBY_V = 11;
+const OBBY_V = 12;
 let obbyMsgT = null;
 function nameColor(n){   // a steady color per name (hsl 65% / 55%)
   let h = 0; for (const c of n) h = (h * 31 + c.charCodeAt(0)) >>> 0; const hue = h % 360, s = 0.65, l = 0.55;
