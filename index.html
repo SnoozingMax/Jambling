@@ -3505,6 +3505,40 @@ async function giftCelestial(on){
 }
 $('adminGiftCelestial').onclick = () => giftCelestial(true);
 $('adminUnGiftCelestial').onclick = () => giftCelestial(false);
+$('adminTitlePick').innerHTML = GRANTABLE.map(t => `<option>${t}</option>`).join('');
+async function grantAny(on){
+  const n = adminName(); if (!n) return; const t = $('adminTitlePick').value;
+  const { data, error } = await sb.rpc('owner_grant_title', { p_user: n, p_title: t, p_on: on });
+  if (error) { adminStatus(error.message, false); return toast(error.message); }
+  const m = `${data.user} ${on ? 'now has' : 'no longer has'} the ${t} title`; adminStatus(m, true); toast(m);
+  if (!$('tab-board').hidden) loadBoard();
+}
+$('adminGrantAny').onclick = () => grantAny(true);
+$('adminUnGrantAny').onclick = () => grantAny(false);
+async function giftOg(on){
+  const n = adminName(); if (!n) return;
+  const { data, error } = await sb.rpc('owner_grant_og', { p_user: n, p_on: on });
+  if (error) { adminStatus(error.message, false); return toast(error.message); }
+  const m = `${data.user} ${on ? 'now has' : 'no longer has'} the OG title`; adminStatus(m, true); toast(m);
+  if (!$('tab-board').hidden) loadBoard();
+}
+$('adminGiftOg').onclick = () => giftOg(true);
+$('adminUnGiftOg').onclick = () => giftOg(false);
+document.querySelectorAll('#admTabs button').forEach(b => b.onclick = () => {
+  document.querySelectorAll('#admTabs button').forEach(x => x.classList.toggle('on', x === b));
+  document.querySelectorAll('#adminModal .adm-sec').forEach(sec => sec.hidden = sec.dataset.sec !== b.dataset.sec);
+});
+async function grantNamed(title, on){
+  const n = adminName(); if (!n) return;
+  const { data, error } = await sb.rpc('owner_grant_title', { p_user: n, p_title: title, p_on: on });
+  if (error) { adminStatus(error.message, false); return toast(error.message); }
+  const m = `${data.user} ${on ? 'now has' : 'no longer has'} the ${title} title`; adminStatus(m, true); toast(m);
+  if (!$('tab-board').hidden) loadBoard();
+}
+$('adminGiftAbuser').onclick = () => grantNamed('Abuser', true);
+$('adminUnGiftAbuser').onclick = () => grantNamed('Abuser', false);
+$('adminGiftRideGod').onclick = () => grantNamed('Ride God', true);
+$('adminUnGiftRideGod').onclick = () => grantNamed('Ride God', false);
 $('adminGiveRb').onclick = async () => {
   const n = adminName(); if (!n) return;
   const { data, error } = await sb.rpc('admin_give_rebirths', { p_user: n, p_n: parseInt($('adminRb').value) });
