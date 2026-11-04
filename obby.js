@@ -234,7 +234,7 @@ window.Obby = (function () {
     if (joy) { ix += joy.x; iz -= joy.y; }
     const il = Math.hypot(ix, iz); if (il > 1) { ix /= il; iz /= il; }
     const fy = cam.yaw, fx = -Math.sin(fy), fz = -Math.cos(fy), rx = Math.cos(fy), rz = -Math.sin(fy);
-    const sp = SPEED * (S.sprint ? SPRINT : 1), wx = (fx * iz + rx * ix) * sp, wz = (fz * iz + rz * ix) * sp;
+    const sp = SPEED, wx = (fx * iz + rx * ix) * sp, wz = (fz * iz + rz * ix) * sp;
     let gMul = 1, wx2 = wx, wz2 = wz;
     for (const z of parts) if (z.zone) { const b = partBox(z); if (overlapXZ(b) && S.y + PH > b.y0 && S.y < b.y1) { if (z.wind) { wx2 += z.wind.x; wz2 += z.wind.z; } if (z.zone === 'lowg') gMul = 0.4; } }
     const acc = S.ground ? (S.ground.ice ? 0.7 : 20) : 7; S.vx += (wx2 - S.vx) * Math.min(1, acc * dt); S.vz += (wz2 - S.vz) * Math.min(1, acc * dt);
@@ -344,7 +344,7 @@ window.Obby = (function () {
           p.lx = e.clientX; p.ly = e.clientY; const d = pinchDist(); if (pinch.d0 > 10 && d > 10) zoom(pinch.dist0 * pinch.d0 / d, true); p.pinched = true; return;
         }
       }
-      if (p.kind === 'joy') { const dx = e.clientX - p.ox, dy = e.clientY - p.oy, l = Math.hypot(dx, dy), m = Math.min(1, l / 45); joy = { x: l ? dx / l * m : 0, y: l ? dy / l * m : 0 }; S.sprint = l > 60; const r = canvas.getBoundingClientRect(); showJoy(p.ox - r.left, p.oy - r.top, dx, dy); }
+      if (p.kind === 'joy') { const dx = e.clientX - p.ox, dy = e.clientY - p.oy, l = Math.hypot(dx, dy), m = Math.min(1, l / 45); joy = { x: l ? dx / l * m : 0, y: l ? dy / l * m : 0 }; const r = canvas.getBoundingClientRect(); showJoy(p.ox - r.left, p.oy - r.top, dx, dy); }
       else { cam.yaw -= (e.clientX - p.lx) * 0.006; cam.pitch = Math.max(-0.3, Math.min(1.25, cam.pitch + (e.clientY - p.ly) * 0.005)); p.lx = e.clientX; p.ly = e.clientY; cam.lastDrag = now(); }
     });
     const end = e => { const p = ptr[e.pointerId]; if (!p) return; delete ptr[e.pointerId]; if (pinch.ids && pinch.ids.includes(String(e.pointerId))) pinch.ids = null; if (p.kind === 'joy') { joy = null; S.sprint = false; hideJoy(); } };

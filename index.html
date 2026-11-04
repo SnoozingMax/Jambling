@@ -850,7 +850,7 @@ tr.me td{color:var(--accent)}
       </div>
       <div class="arch-emotes" id="obbyEmotes"></div>
       <div class="obby-board"><div class="t-cat" style="margin:12px 0 6px">Fastest runs</div><div id="obbyTop" class="hint" style="margin:0">Finish the course to get on the board.</div></div>
-      <div class="hint" style="margin-top:8px">WASD or arrows to run, Space to jump, hold Shift to sprint, drag to look around, scroll, pinch or the + / − buttons to zoom, R to restart, 1-8 to emote. On touch: left side is a joystick (push far to sprint), right side turns the camera. Green pads are checkpoints, red is lava, pink pads bounce, yellow trusses are climbable, the gold pad is the finish. Grab the coins on the way. Everyone online is in the same world.</div>
+      <div class="hint" style="margin-top:8px">WASD or arrows to run, Space to jump, drag to look around, scroll, pinch or the + / − buttons to zoom, R to restart, 1-8 to emote. On touch: left side is a joystick, right side turns the camera. Green pads are checkpoints, red is lava, pink pads bounce, yellow trusses are climbable, the gold pad is the finish. Grab the coins on the way. Everyone online is in the same world.</div>
     </div>
   </div>
   <div id="tab-board" hidden>
@@ -2881,7 +2881,7 @@ document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
 });
 
 /* ---------- obby (3D course, everyone online together) ---------- */
-const OBBY_V = 12;
+const OBBY_V = 13;
 let obbyMsgT = null;
 function nameColor(n){   // a steady color per name (hsl 65% / 55%)
   let h = 0; for (const c of n) h = (h * 31 + c.charCodeAt(0)) >>> 0; const hue = h % 360, s = 0.65, l = 0.55;
